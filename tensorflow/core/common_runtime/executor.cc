@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cuda_profiler_api.h"
 #include "cuda/include/nvToolsExt.h"
 #endif  // GOOGLE_CUDA
 
@@ -1646,6 +1645,7 @@ inline uint32_t get_color(unsigned hash) {
 }
 
 inline nvtxRangeId_t nvtxRangeStart(const char* msg,
+                                    nvtxDomainHandle_t nvtx_domain,
                                     uint32_t color = 0x008D9BAF,
                                     uint32_t category = 0) {
   nvtxEventAttributes_t attrs = {};
@@ -1656,18 +1656,37 @@ inline nvtxRangeId_t nvtxRangeStart(const char* msg,
   attrs.messageType = NVTX_MESSAGE_TYPE_ASCII;
   attrs.message.ascii = msg;
   attrs.category = category;
-  return ::nvtxRangeStartEx(&attrs);
+  return ::nvtxDomainRangeStartEx(nvtx_domain, &attrs);
 }
 
-inline nvtxRangeId_t nvtxRangeStart(const char* msg, const char* type,
+inline nvtxRangeId_t nvtxRangeStart(const char* msg,
+                                    const char* type,
+                                    nvtxDomainHandle_t nvtx_domain,
                                     bool set_category = true) {
   unsigned h = hash_string(type);
   uint32_t color = get_color(h);
   uint32_t category = set_category ? h : 0;
-  return nvtxRangeStart(msg, color, category);
+  return nvtxRangeStart(msg, nvtx_domain, color, category);
 }
 
 }  // namespace nvtx_helper
+
+class NvtxDomain {
+ public:
+  explicit NvtxDomain(const char* name) : handle_(nvtxDomainCreateA(name)) {}
+  ~NvtxDomain() { nvtxDomainDestroy(handle_); }
+  operator nvtxDomainHandle_t() const { return handle_; }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(NvtxDomain);
+  nvtxDomainHandle_t handle_;
+};
+
+static const NvtxDomain& GetNvtxTensorFlowCoreDomain() {
+  // Singleton because we want the same domain for the lifetime of the process.
+  static NvtxDomain nvtx_domain("tensorflow-core");
+  return nvtx_domain;
+}
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
 static bool NvtxRangesEnabled() {
@@ -1955,8 +1974,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       } else {
         msg = node->def().op() + ": " + node->name();
       }
-      nvtx_range =
-          nvtx_helper::nvtxRangeStart(msg.c_str(), node->def().op().c_str());
+      nvtx_range = nvtx_helper::nvtxRangeStart(
+          msg.c_str(), node->def().op().c_str(), GetNvtxTensorFlowCoreDomain());
     }
 #endif  // GOOGLE_CUDA
 
@@ -1983,8 +2002,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         // Continue to process the nodes in 'inline_ready'.
         completed = NodeDone(s, item.node, ready, stats, &inline_ready);
 #if GOOGLE_CUDA
-        if (NvtxRangesEnabled()) {
-          nvtxRangeEnd(nvtx_range);
+        if (NvtxRangesEnabled() || NvtxRangesDetailedEnabled()) {
+          nvtxDomainRangeEnd(GetNvtxTensorFlowCoreDomain(), nvtx_range);
         }
 #endif  // GOOGLE_CUDA
         continue;
@@ -2053,8 +2072,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           const bool completed =
               NodeDone(s, state->item->node, ready, stats, nullptr);
 #if GOOGLE_CUDA
-          if (NvtxRangesEnabled()) {
-            nvtxRangeEnd(nvtx_range);
+          if (NvtxRangesEnabled() || NvtxRangesDetailedEnabled()) {
+            nvtxDomainRangeEnd(GetNvtxTensorFlowCoreDomain(), nvtx_range);
           }
 #endif  // GOOGLE_CUDA
           delete state;
@@ -2144,8 +2163,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       // Postprocess.
       completed = NodeDone(s, item.node, ready, stats, &inline_ready);
 #if GOOGLE_CUDA
-      if (NvtxRangesEnabled()) {
-        nvtxRangeEnd(nvtx_range);
+      if (NvtxRangesEnabled() || NvtxRangesDetailedEnabled()) {
+        nvtxDomainRangeEnd(GetNvtxTensorFlowCoreDomain(), nvtx_range);
       }
 #endif  // GOOGLE_CUDA
     }

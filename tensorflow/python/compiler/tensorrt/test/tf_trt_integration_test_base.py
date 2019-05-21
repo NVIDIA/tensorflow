@@ -316,7 +316,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             if val is not None:
               # Some ops may have nondeterministic output. E.g. Conv2D may use
               # winograd algorithm. So we set atol/rtol be larger than 1.e-06.
-              self.assertAllClose(val, new_val, atol=1.e-05, rtol=1.e-05)
+              self.assertAllClose(
+                  val, new_val,
+                  atol=1.e-05 if run_params.precision_mode=="FP32" else 1.e-4,
+                  rtol=1.e-05 if run_params.precision_mode=="FP32" else 1.e-4)
             val = new_val
           vals.append(val)
         return vals

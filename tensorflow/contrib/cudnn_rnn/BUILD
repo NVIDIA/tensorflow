@@ -90,7 +90,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-    shard_count = 6,
+    shard_count = 12,
     tags = [
         "noasan",  # http://b/62067814
     ],

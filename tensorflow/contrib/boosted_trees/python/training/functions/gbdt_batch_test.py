@@ -1484,7 +1484,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
                        len(output.trees[0].nodes[1].leaf.sparse_vector.index))
       self.assertEqual(3, output.trees[0].nodes[1].leaf.sparse_vector.index[0])
       self.assertAlmostEqual(
-          -1.13134455681, output.trees[0].nodes[1].leaf.sparse_vector.value[0])
+          -1.13134455681, output.trees[0].nodes[1].leaf.sparse_vector.value[0],
+          places=6)
 
       self.assertEqual(1,
                        len(output.trees[0].nodes[2].leaf.sparse_vector.index))

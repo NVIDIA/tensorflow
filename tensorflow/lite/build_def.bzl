@@ -12,6 +12,10 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
+	str(Label("//tensorflow:arm")): [
+            "-flax-vector-conversions",
+	    "-fomit-frame-pointer",
+	],
         str(Label("//tensorflow:android_arm64")): [
             "-O3",
         ],

@@ -1403,7 +1403,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('map/while/MaxPool_1-0-2', nodes)
-      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+      self.assertAllClose(output_val_ref, output_val, atol=1.5e-3)
 
   @test_util.deprecated_graph_mode_only
   def testLoopWithBranch(self):

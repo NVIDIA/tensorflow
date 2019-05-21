@@ -1497,7 +1497,7 @@ tf_py_test(
 
 tf_py_test(
     name = "training_generator_test",
-    size = "medium",
+    size = "enormous",
     srcs = ["engine/training_generator_test.py"],
     additional_deps = [
         ":keras",

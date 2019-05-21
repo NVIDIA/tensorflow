@@ -126,8 +126,8 @@ class TrainingOpsTest(TensorFlowTestCase):
             linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5)
         self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
       else:
-        self.assertAllClose(linear_update, self.evaluate(linear))
-        self.assertAllClose(expected_out, out)
+        self.assertAllClose(linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5)
+        self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
 
   @test_util.run_v1_only("b/120545219")
   def testApplyAdagrad(self):

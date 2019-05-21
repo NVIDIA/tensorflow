@@ -24,7 +24,7 @@ import argparse
 import sys
 
 import tensorflow as tf
-
+import platform
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python.client import timeline
 
@@ -57,7 +57,7 @@ def main(_):
   train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
   config = tf.ConfigProto()
-  jit_level = 0
+  jit_level = tf.OptimizerOptions.DEFAULT
   if FLAGS.xla:
     # Turns on XLA JIT compilation.
     jit_level = tf.OptimizerOptions.ON_1
@@ -73,7 +73,7 @@ def main(_):
 
     # Create a timeline for the last loop and export to json to view with
     # chrome://tracing/.
-    if i == train_loops - 1:
+    if i == train_loops - 1 and platform.machine() != "aarch64": #cupti is broken on jp 4.1.1 on xavier
       sess.run(train_step,
                feed_dict={x: batch_xs,
                           y_: batch_ys},

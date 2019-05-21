@@ -276,7 +276,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                   list(params.expected_output_dims[shape_index][i]),
                   list(new_val[i].shape))
             if val is not None:
-              self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
+              self.assertAllClose(
+                  val, new_val,
+                  atol=1.e-05 if run_params.precision_mode=="FP32" else 1.e-4,
+                  rtol=1.e-05 if run_params.precision_mode=="FP32" else 1.e-4)
             val = new_val
           vals.append(val)
         return vals

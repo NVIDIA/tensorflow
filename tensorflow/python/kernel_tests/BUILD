@@ -152,7 +152,8 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
     ],
-    tags = ["no_windows"],
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    tags = ["no_windows","no_arm",],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1760,6 +1761,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "notsan",  # TODO(b/132205147): Re-enable this.
+        "no_arm",  # TODO(mconley): remove once ignored test lists are merged in
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -1873,6 +1875,8 @@ cuda_py_test(
         "//tensorflow/python:platform",
     ],
     xla_enable_strict_auto_jit = True,
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    tags = ["no_arm"],
 )
 
 cuda_py_test(
@@ -2909,7 +2913,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2927,7 +2931,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_rocm",
         "optonly",  # times out
@@ -3133,7 +3137,8 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_windows"],
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    tags = ["no_windows","no_arm",],
     xla_enable_strict_auto_jit = True,
 )
 

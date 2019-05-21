@@ -72,7 +72,7 @@ class ClassifierMetricsTest(test.TestCase):
           })
     for x in range(3):
       self.assertAllClose(
-          pyramid[x].transpose(0, 2, 3, 1), pyramid_tf[x], atol=1e-6)
+          pyramid[x].transpose(0, 2, 3, 1), pyramid_tf[x], rtol=1e-5, atol=1e-5)
 
   def test_sliced_wasserstein_distance(self):
     """Test the distance."""

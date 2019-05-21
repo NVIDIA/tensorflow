@@ -80,9 +80,10 @@ def _apply_delete(ctx, paths):
     _execute_and_check_ret_code(ctx, cmd)
 
 def _tf_http_archive(ctx):
-    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
+    if ("file:///" not in ctx.attr.urls[0] and
+        ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list()))):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -124,7 +125,7 @@ def _tf_http_archive(ctx):
 tf_http_archive = repository_rule(
     implementation = _tf_http_archive,
     attrs = {
-        "sha256": attr.string(mandatory = True),
+        "sha256": attr.string(mandatory = False),
         "urls": attr.string_list(mandatory = True, allow_empty = False),
         "strip_prefix": attr.string(),
         "type": attr.string(),

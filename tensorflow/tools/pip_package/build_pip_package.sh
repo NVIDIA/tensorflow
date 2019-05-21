@@ -25,6 +25,10 @@ function real_path() {
   is_absolute "$1" && echo "$1" || echo "$PWD/${1#./}"
 }
 
+function cp() {
+    /bin/cp -u "$@"
+}
+
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
@@ -127,7 +131,7 @@ function prepare_src() {
       if [ -n "${so_lib_dir}" ]; then
         mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
         if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
+          mkdir -p "${TMPDIR}/${so_lib_dir}"
           cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
@@ -147,7 +151,7 @@ function prepare_src() {
       if [ -n "${so_lib_dir}" ]; then
         mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
         if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
+          mkdir -p "${TMPDIR}/${so_lib_dir}"
           cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi

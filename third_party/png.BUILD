@@ -44,7 +44,9 @@ cc_library(
         "png.h",
         "pngconf.h",
     ],
-    copts = select({
+    copts = [
+        "-DPNG_ARM_NEON_OPT=0",
+    ] + select({
         ":windows": ["-DPNG_INTEL_SSE_OPT=1"],
         "//conditions:default": [],
     }),

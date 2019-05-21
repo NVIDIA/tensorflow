@@ -242,7 +242,14 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
   // In this test, we force each node (a, b) on every possible device.
   // We test all possible cases.
   for (const auto& a_dev : cluster->devices()) {
+    // EXCEPT exclude XLA devices.
+    if (a_dev.device_type().compare(0, 4, "XLA_") == 0) {
+      continue; 
+    }
     for (const auto& b_dev : cluster->devices()) {
+      if (b_dev.device_type().compare(0, 4, "XLA_") == 0) {
+        continue; 
+      }
       LOG(INFO) << "a: " << a_dev.name() << " b: " << b_dev.name();
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());

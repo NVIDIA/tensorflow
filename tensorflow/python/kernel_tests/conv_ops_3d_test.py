@@ -439,7 +439,7 @@ class Conv3DTest(test.TestCase):
       if data_type == dtypes.float64:
         tolerance = 1e-8
       elif data_type == dtypes.float32:
-        tolerance = 5e-3
+        tolerance = 9e-3
       elif data_type == dtypes.float16:
         tolerance = 1e-3
 

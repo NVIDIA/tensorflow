@@ -165,20 +165,25 @@ class ClusterTest(test.TestCase):
 
       real_cluster = cluster.Cluster()
       supported_dev = real_cluster.GetSupportedDevices(grappler_item)
+      #NCL 18.04 -- Hack to account for possible XLA devices
       if test.is_gpu_available():
-        self.assertEqual(supported_dev['add'], [
+        add_devices = [d for d in supported_dev['add'] if not d.split(':')[-2].startswith('XLA')]
+        self.assertEqual(add_devices, [
             '/job:localhost/replica:0/task:0/device:CPU:0',
             '/job:localhost/replica:0/task:0/device:GPU:0'
         ])
-        self.assertEqual(supported_dev['Sum'], [
+        Sum_devices = [d for d in supported_dev['Sum'] if not d.split(':')[-2].startswith('XLA')]
+        self.assertEqual(Sum_devices, [
             '/job:localhost/replica:0/task:0/device:CPU:0',
             '/job:localhost/replica:0/task:0/device:GPU:0'
         ])
         # The axis tensor must reside on the host
-        self.assertEqual(supported_dev['range'],
+        range_devices = [d for d in supported_dev['range'] if not d.split(':')[-2].startswith('XLA')]
+        self.assertEqual(range_devices,
                          ['/job:localhost/replica:0/task:0/device:CPU:0'])
       else:
-        self.assertEqual(supported_dev['add'],
+        add_devices = [d for d in supported_dev['add'] if not d.split(':')[-2].startswith('XLA')]
+        self.assertEqual(add_devices,
                          ['/job:localhost/replica:0/task:0/device:CPU:0'])
 
 

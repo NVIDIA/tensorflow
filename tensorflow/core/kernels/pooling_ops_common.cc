@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -306,11 +307,13 @@ void DnnPoolingGradOp<T>::Compute(
     return;
   }
 
+  bool use_nhwc = CanUseNHWC(data_format, DataTypeToEnum<T>::value,
+                             CUDNN_VERSION);
   /// For now, cudnn does not support NHWC format, so we need to convert it
   /// to NCHW before calling cudnn. We need to get rid of this once it is done
   Tensor transformed_input;
   TensorShape transformed_input_shape;
-  if (data_format == FORMAT_NHWC || !tensor_in) {
+  if (!use_nhwc && data_format == FORMAT_NHWC || !tensor_in) {
     transformed_input_shape =
         ShapeFromFormat(FORMAT_NCHW, tensor_in_shape, data_format);
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
@@ -321,7 +324,7 @@ void DnnPoolingGradOp<T>::Compute(
   }
   Tensor transformed_output;
   TensorShape transformed_output_shape;
-  if (data_format == FORMAT_NHWC || !tensor_out) {
+  if (!use_nhwc && data_format == FORMAT_NHWC || !tensor_out) {
     transformed_output_shape =
         ShapeFromFormat(FORMAT_NCHW, out_backprop.shape(), data_format);
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
@@ -331,7 +334,7 @@ void DnnPoolingGradOp<T>::Compute(
     transformed_output = *tensor_out;
   }
   Tensor transformed_input_backprop;
-  if (data_format == FORMAT_NHWC) {
+  if (!use_nhwc && data_format == FORMAT_NHWC) {
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DataTypeToEnum<T>::value,
                                           transformed_input_shape,
@@ -340,7 +343,7 @@ void DnnPoolingGradOp<T>::Compute(
     transformed_input_backprop = *input_backprop;
   }
   Tensor transformed_output_backprop;
-  if (data_format == FORMAT_NHWC) {
+  if (!use_nhwc && data_format == FORMAT_NHWC) {
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DataTypeToEnum<T>::value,
                                           transformed_output_shape,
@@ -349,7 +352,7 @@ void DnnPoolingGradOp<T>::Compute(
     transformed_output_backprop = out_backprop;
   }
 
-  if (data_format == FORMAT_NHWC) {
+  if (!use_nhwc && data_format == FORMAT_NHWC) {
     /// Convert the data from NHWC to NCHW if necessary.
     if (tensor_in) {
       // For AvgPoolGrad, the original input tensor is not necessary. However,
@@ -388,14 +391,18 @@ void DnnPoolingGradOp<T>::Compute(
       .set_height(params.out_height)
       .set_width(params.out_width)
       .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(use_nhwc?
+                  (se::dnn::DataLayout::kBatchYXDepth):
+                  (se::dnn::DataLayout::kBatchDepthYX));
 
   se::dnn::BatchDescriptor orig_input_desc;
   orig_input_desc.set_count(params.tensor_in_batch)
       .set_height(params.tensor_in_rows)
       .set_width(params.tensor_in_cols)
       .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(use_nhwc?
+                  (se::dnn::DataLayout::kBatchYXDepth):
+                  (se::dnn::DataLayout::kBatchDepthYX));
 
   auto orig_output_data =
       AsDeviceMemory(transformed_output.template flat<T>().data(),
@@ -422,7 +429,7 @@ void DnnPoolingGradOp<T>::Compute(
   OP_REQUIRES(context, status,
               errors::Internal("cudnn PoolBackward launch failed"));
 
-  if (data_format == FORMAT_NHWC) {
+  if (!use_nhwc && data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC.
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
     functor::NCHWToNHWC<GPUDevice, T, 4>()(

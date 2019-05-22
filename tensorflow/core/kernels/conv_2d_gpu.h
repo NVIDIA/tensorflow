@@ -467,6 +467,26 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
     for (int i = 3; i < NDIMS; ++i) {
       combined_dims[2] *= in.dimension(i);
     }
+    CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
+    ShuffleInTensor3Simple<T, 2, 1, 0>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, in.data(), combined_dims, out.data());
+  }
+};
+
+// NOTE(kaixih): Support reverse transformation from filter format OHWI.
+template <typename T, int NDIMS>
+struct ReverseTransformFilterV2<GPUDevice, T, NDIMS> {
+  typedef GPUDevice Device;
+  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+                  typename TTypes<T, NDIMS>::Tensor out) {
+    Dimension<3> combined_dims;
+    combined_dims[0] = 1;  // output filters
+    combined_dims[1] = in.dimension(0);  // input filters
+    combined_dims[2] = in.dimension(1);  // spatial dimensions
+    for (int i = 2; i < NDIMS; ++i) {
+      combined_dims[2] *= in.dimension(i);
+    }
     GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
     TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
                                  config.block_count, config.thread_per_block, 0,

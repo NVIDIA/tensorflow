@@ -1168,8 +1168,11 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                                stride_, padding_, data_format_, tensor_in,
                                out_shape, propagate_nans_);
 #else
+    bool use_nhwc = CanUseNHWC(data_format_, DataTypeToEnum<T>::value,
+                               CUDNN_VERSION);
+
     // These is_int8x4 checks avoid linker errors for missing qint8 kernels.
-    if (!is_int8x4 && use_dnn_ && data_format_ == FORMAT_NCHW) {
+    if (!is_int8x4 && use_dnn_ && (use_nhwc || data_format_ == FORMAT_NCHW)) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize_,
                                stride_, padding_, data_format_, tensor_in,
                                out_shape, propagate_nans_);

@@ -352,6 +352,12 @@ struct ReverseTransformFilter {
                   typename TTypes<T, NDIMS>::Tensor out);
 };
 
+template <typename Device, typename T, int NDIMS>
+struct ReverseTransformFilterV2 {
+  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+                  typename TTypes<T, NDIMS>::Tensor out);
+};
+
 }  // namespace functor
 
 template <class T>

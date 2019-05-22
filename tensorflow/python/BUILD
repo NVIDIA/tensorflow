@@ -115,6 +115,7 @@ py_library(
     deps = [
         ":array_ops",
         ":audio_ops_gen",
+        ":auto_mixed_precision_scope",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
@@ -6427,9 +6428,11 @@ cuda_py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":array_ops",
+        ":auto_mixed_precision_scope",
         ":constant_op",
         ":dtypes",
         ":math_ops",
+        ":mixed_precision",
         ":nn",
         ":ops",
         ":random_ops",
@@ -6441,6 +6444,14 @@ cuda_py_test(
     tags = [
         "grappler",
     ],
+)
+
+py_library(
+    name = "auto_mixed_precision_scope",
+    visibility = ["//visibility:public"],
+    srcs = ["grappler/auto_mixed_precision_scope.py"],
+    srcs_version = "PY2AND3",
+    tags = ["grappler"],
 )
 
 tf_gen_op_wrapper_private_py(

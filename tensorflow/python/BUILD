@@ -6828,6 +6828,7 @@ cuda_py_test(
         ":constant_op",
         ":dtypes",
         ":math_ops",
+        ":mixed_precision",
         ":nn",
         ":ops",
         ":random_ops",
@@ -6843,6 +6844,7 @@ cuda_py_test(
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
 )
+
 
 tf_gen_op_wrapper_private_py(
     name = "nccl_ops_gen",

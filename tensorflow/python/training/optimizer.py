@@ -23,6 +23,7 @@ from __future__ import print_function
 import abc
 
 import six
+import os
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -32,7 +33,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -310,7 +314,10 @@ class Optimizer(
   GATE_OP = 1
   GATE_GRAPH = 2
 
-  def __init__(self, use_locking, name):
+  # Sentinel value to enable DynamicLossScaling
+  AUTO_GRADIENT_SHIFT = float('inf')
+
+  def __init__(self, use_locking, name, gradient_shift=None):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -320,6 +327,10 @@ class Optimizer(
         to variables.
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
+      gradient_shift: float factor applied to loss in order to shift gradients
+        to representable range. Defaults to None in which case no loss scaling
+        is performed. Setting to AUTO_GRADIENT_SHIFT enables dynamic tuning of
+        the gradient shift during the training procedure.
 
     Raises:
       ValueError: If name is malformed.
@@ -328,6 +339,22 @@ class Optimizer(
       raise ValueError("Must specify the optimizer name")
     self._use_locking = use_locking
     self._name = name
+
+    self._gradient_shift = gradient_shift
+    # Environment variable only overrides default behavior
+    if gradient_shift is None:
+      if 'TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING' in os.environ:
+        if os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING'] == "1":
+          self._gradient_shift = self.AUTO_GRADIENT_SHIFT
+      elif os.environ.get('TF_ENABLE_AUTO_MIXED_PRECISION') == "1":
+        self._gradient_shift = self.AUTO_GRADIENT_SHIFT
+
+    # Handle this special case once for all. Note that doing this after
+    # TF_ENABLE_AMP check means gradient_shift=1.0 will force-disable gradient
+    # shifting.
+    if gradient_shift == 1.0:
+      self._gradient_shift = None
+
     # Dictionary of slots.
     #  {slot_name :
     #      {_var_key(variable_to_train): slot_for_the_variable, ... },
@@ -473,6 +500,7 @@ class Optimizer(
       # to be executed.
       with ops.control_dependencies([loss_value]):
         grads = tape.gradient(loss_value, var_list, grad_loss)
+        #TODO(nluehr) figure out if gradient shifts apply to callable loss functions
       return list(zip(grads, var_list))
 
     # Non-callable/Tensor loss case
@@ -483,6 +511,8 @@ class Optimizer(
 
     # Scale loss if using a "mean" loss reduction and multiple replicas.
     loss = self._scale_loss(loss)
+    if self._gradient_shift is not None:
+      loss = self._shift_loss(loss)
 
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
@@ -510,6 +540,8 @@ class Optimizer(
         gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops)
+    if self._gradient_shift is not None:
+      grads = self._unshift_grads(grads)
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
     grads_and_vars = list(zip(grads, var_list))
@@ -551,6 +583,30 @@ class Optimizer(
       ValueError: If none of the variables have gradients.
       RuntimeError: If you should use `_distributed_apply()` instead.
     """
+
+    if self._gradient_shift != self.AUTO_GRADIENT_SHIFT:
+      return self._apply_gradients_helper(grads_and_vars, global_step,
+                                          name)
+
+    all_finite = self._check_grads_finite(grads_and_vars)
+    shift_update_op = self._update_gradient_shift(all_finite)
+
+    name = name if name is not None else self._name
+    
+    def do_update():
+      return self._apply_gradients_helper(grads_and_vars, global_step,
+                                          name+'-apply')
+
+    def skip_update():
+      return gen_control_flow_ops.no_op()
+
+    with ops.control_dependencies([shift_update_op]):
+      cond = control_flow_ops.cond(all_finite, do_update, skip_update, 
+                                   name=name)
+    return cond.op
+
+
+  def _apply_gradients_helper(self, grads_and_vars, global_step=None, name=None):
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
@@ -565,6 +621,7 @@ class Optimizer(
                            "`apply_gradients()` in a cross-replica context.")
 
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
+      #TODO(nluehr) handle distributed case for gradient shift
       return distribute_ctx.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
@@ -730,6 +787,81 @@ class Optimizer(
           train_op.append(apply_updates)
 
       return apply_updates
+
+  def _shift_loss(self, loss_tensor):
+    if self._gradient_shift == self.AUTO_GRADIENT_SHIFT:
+      scalar = self._create_non_slot_variable(float(2.**16), # Initial value
+                                              'grad_shift_scalar', loss_tensor)
+    else:
+      scalar = self._create_non_slot_variable(self._gradient_shift,
+                                              'grad_shift_scalar', loss_tensor)
+    return loss_tensor * scalar
+
+  def _unshift_grads(self, grads):
+    graph = ops.get_default_graph()
+    scalar = self._get_non_slot_variable('grad_shift_scalar', graph)
+    if scalar is None:
+      raise RuntimeError(
+          "Attempting to use uninitialized loss scalar. Please call "
+          "Optimizer.compute_gradients() before Optimizer.apply_gradients()")
+    descale = 1. / scalar
+    descaled_grads = []
+    for grad in grads:
+      if grad is not None:
+        if isinstance(grad, ops.IndexedSlices):
+          grad_values = grad.values * descale
+          grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
+        else:
+          grad *= descale
+      descaled_grads.append(grad)
+    return descaled_grads
+
+  def _check_grads_finite(self, grads_and_vars):
+    all_finite_ops = []
+    for grad, _ in grads_and_vars:
+      if grad is not None:
+        if isinstance(grad, ops.IndexedSlices):
+          x = grad.values
+        else:
+          x = grad
+      all_finite_ops.append(math_ops.reduce_all(gen_math_ops.is_finite(x)))
+    all_finite = math_ops.reduce_all(all_finite_ops)
+    with ops.device('/cpu:0'):
+      return array_ops.identity(all_finite)
+
+  def _update_gradient_shift(self, all_finite):
+    graph = ops.get_default_graph()
+    scalar = self._get_non_slot_variable('grad_shift_scalar', graph)
+    with ops.device('/cpu:0'):
+      counter = self._create_non_slot_variable(1, 'grad_shift_counter', all_finite)
+    scale_min = 1.0
+    scale_max = 2.**24
+
+    def overflow_branch():
+      new_scalar = clip_ops.clip_by_value(scalar / 2.0, scale_min, scale_max)
+      scalar_assign = state_ops.assign(scalar, new_scalar)
+      with ops.device('/cpu:0'):
+        counter_reset = state_ops.assign(counter, 1)
+        return control_flow_ops.group(scalar_assign, counter_reset)
+
+    def finite_branch():
+      def boost_branch():
+        new_scale_val = clip_ops.clip_by_value(scalar * 2.0, scale_min, scale_max)
+        scalar_assign = state_ops.assign(scalar, new_scale_val)
+        with ops.device('/cpu:0'):
+          counter_reset = state_ops.assign(counter, 1)
+        return control_flow_ops.group(scalar_assign, counter_reset)
+
+      def incr_branch():
+        with ops.device("/cpu:0"):
+          return state_ops.assign_add(counter, 1).op
+
+      with ops.device("/cpu:0"):
+        should_update = gen_math_ops.greater_equal(counter, 2000)
+      return control_flow_ops.cond(should_update, boost_branch, incr_branch)
+
+    return control_flow_ops.cond(all_finite, finite_branch, overflow_branch)
+
 
   def get_slot(self, var, name):
     """Return a slot named `name` created for `var` by the Optimizer.

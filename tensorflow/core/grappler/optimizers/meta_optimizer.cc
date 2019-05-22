@@ -210,12 +210,17 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<LayoutOptimizer>());
-  }
+  // AutoMixedPrecision (AMP) should run after ModelPruning and ConstantFolding
+  // because their simplifications enable better mixed precision conversion
+  // (e.g., SimplifyReduction avoids unnecessary blacklisting in AMP).
+  // It should run _before_ LayoutOptimizer because LayoutOptimizer may depend
+  // on the data type.
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
+  }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<LayoutOptimizer>());
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {

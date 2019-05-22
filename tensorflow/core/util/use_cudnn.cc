@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
@@ -88,6 +90,19 @@ FP16ConvMode CudnnConvComputeMode() {
                << value;
   }
   return FP16ConvMode::kAccurate;
+}
+
+bool CanUseNHWC(TensorFormat data_format, DataType type, size_t cudnn_ver){
+  if (cudnn_ver < 7500) {
+    return false;
+  }
+  bool ret;
+  Status status = ReadBoolFromEnvVar("TF_ENABLE_NHWC", /*default_val=*/false,
+                                     &ret);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return (ret && data_format == FORMAT_NHWC && type == DT_HALF);
 }
 
 }  // namespace tensorflow

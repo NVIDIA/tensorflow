@@ -49,6 +49,7 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
@@ -804,8 +805,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     return;
   }
 
+  bool use_nhwc = CanUseNHWC(data_format, DataTypeToEnum<T>::value,
+                             CUDNN_VERSION);
+                             
   const int64 common_padding_rows = std::min(padding_top, padding_bottom);
   const int64 common_padding_cols = std::min(padding_left, padding_right);
+
   TensorShape compatible_input_shape;
   if (padding_top != padding_bottom || padding_left != padding_right) {
     // Pad the input in the same way we did during the forward pass, so that
@@ -831,18 +836,25 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       .set_height(GetTensorDim(compatible_input_shape, data_format, 'H'))
       .set_width(GetTensorDim(compatible_input_shape, data_format, 'W'))
       .set_feature_map_count(dims.in_depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(use_nhwc?
+                  (se::dnn::DataLayout::kBatchYXDepth): 
+                  (se::dnn::DataLayout::kBatchDepthYX));
   se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(dims.batch_size)
       .set_height(dims.spatial_dims[0].output_size)
       .set_width(dims.spatial_dims[1].output_size)
       .set_feature_map_count(dims.out_depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(use_nhwc?
+                  (se::dnn::DataLayout::kBatchYXDepth):
+                  (se::dnn::DataLayout::kBatchDepthYX));
   se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
       .set_input_filter_width(dims.spatial_dims[1].filter_size)
       .set_input_feature_map_count(filter_shape.dim_size(2))
-      .set_output_feature_map_count(filter_shape.dim_size(3));
+      .set_output_feature_map_count(filter_shape.dim_size(3))
+      .set_layout(use_nhwc?
+                  (se::dnn::FilterLayout::kOutputYXInput):
+                  (se::dnn::FilterLayout::kOutputInputYX));
   se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(dims.spatial_dims[0].dilation)
       .set_horizontal_dilation_rate(dims.spatial_dims[1].dilation)
@@ -857,21 +869,28 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   // Whereas, we have: R x C x FD x OD
   // TransformFilter performs (R x C x FD x OD) => (OD x FD x R x C)
   Tensor transformed_filter;
+  TensorShape transformed_filter_shape = (use_nhwc? 
+      TensorShape({filter_shape.dim_size(3),
+                   filter_shape.dim_size(0),
+                   filter_shape.dim_size(1),
+                   filter_shape.dim_size(2)}):
+      TensorShape({filter_shape.dim_size(3),
+                   filter_shape.dim_size(2),
+                   filter_shape.dim_size(0),
+                   filter_shape.dim_size(1)}));
   OP_REQUIRES_OK(
       ctx,
       ctx->allocate_temp(
-          DataTypeToEnum<T>::value,
-          TensorShape({filter_shape.dim_size(3), filter_shape.dim_size(2),
-                       filter_shape.dim_size(0), filter_shape.dim_size(1)}),
+          DataTypeToEnum<T>::value, transformed_filter_shape,
           &transformed_filter));
 
   functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+      ctx->eigen_device<GPUDevice>(), (use_nhwc? FORMAT_OHWI: FORMAT_OIHW),
       To32Bit(filter.tensor<T, 4>()),
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_out_backprop;
-  if (data_format == FORMAT_NHWC) {
+  if (!use_nhwc && data_format == FORMAT_NHWC) {
     TensorShape nchw_shape = ShapeFromFormat(
         FORMAT_NCHW, dims.batch_size, dims.spatial_dims[0].output_size,
         dims.spatial_dims[1].output_size, dims.out_depth);
@@ -895,7 +914,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       ctx, ctx->allocate_temp(
                DataTypeToEnum<T>::value,
                ShapeFromFormat(
-                   FORMAT_NCHW,
+                   (use_nhwc? FORMAT_NHWC: FORMAT_NCHW),
                    GetTensorDim(compatible_input_shape, data_format, 'N'),
                    GetTensorDim(compatible_input_shape, data_format, 'H'),
                    GetTensorDim(compatible_input_shape, data_format, 'W'),
@@ -919,23 +938,23 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
   ConvParameters conv_parameters = {
-      dims.batch_size,                     // batch
-      dims.in_depth,                       // in_depths
-      {{input_desc.height(),               // in_rows
-        input_desc.width()}},              // in_cols
-      FORMAT_NCHW,                         // compute_data_format
-      dims.out_depth,                      // out_depths
-      {{dims.spatial_dims[0].filter_size,  // filter_rows
-        dims.spatial_dims[1].filter_size,  // filter_cols
-        filter_shape.dim_size(2)}},        // filter_depths
-      {{dims.spatial_dims[0].dilation,     // dilation_rows
-        dims.spatial_dims[1].dilation}},   // dilation_cols
-      {{dims.spatial_dims[0].stride,       // stride_rows
-        dims.spatial_dims[1].stride}},     // stride_cols
-      {{common_padding_rows,               // padding_rows
-        common_padding_cols}},             // padding_cols
-      dtype,                               // tensor data type
-      device_id,                           // device_id
+      dims.batch_size,                        // batch
+      dims.in_depth,                          // in_depths
+      {{input_desc.height(),                  // in_rows
+        input_desc.width()}},                 // in_cols
+      (use_nhwc? FORMAT_NHWC: FORMAT_NCHW),   // compute_data_format
+      dims.out_depth,                         // out_depths
+      {{dims.spatial_dims[0].filter_size,     // filter_rows
+        dims.spatial_dims[1].filter_size,     // filter_cols
+        filter_shape.dim_size(2)}},           // filter_depths
+      {{dims.spatial_dims[0].dilation,        // dilation_rows
+        dims.spatial_dims[1].dilation}},      // dilation_cols
+      {{dims.spatial_dims[0].stride,          // stride_rows
+        dims.spatial_dims[1].stride}},        // stride_cols
+      {{common_padding_rows,                  // padding_rows
+        common_padding_cols}},                // padding_cols
+      dtype,                                  // tensor data type
+      device_id,                              // device_id
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
@@ -998,7 +1017,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(
                  DataTypeToEnum<T>::value,
-                 ShapeFromFormat(FORMAT_NCHW,
+                 ShapeFromFormat((use_nhwc? FORMAT_NHWC: FORMAT_NCHW),
                                  GetTensorDim(input_shape, data_format, 'N'),
                                  GetTensorDim(input_shape, data_format, 'H'),
                                  GetTensorDim(input_shape, data_format, 'W'),
@@ -1017,12 +1036,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         {{static_cast<int>(-input_pad_top), static_cast<int>(-input_pad_left)}},
         {{static_cast<int>(-input_pad_bottom),
           static_cast<int>(-input_pad_right)}},
-        To32Bit(in_backprop_remove_padding.tensor<T, 4>()), FORMAT_NCHW);
+        To32Bit(in_backprop_remove_padding.tensor<T, 4>()), (use_nhwc?
+            FORMAT_NHWC: FORMAT_NCHW));
 
     pre_transformed_in_backprop = in_backprop_remove_padding;
   }
 
-  if (data_format == FORMAT_NHWC) {
+  if (!use_nhwc && data_format == FORMAT_NHWC) {
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
     functor::NCHWToNHWC<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),

@@ -46,6 +46,7 @@ template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, float2,
 // For 2d ops.
 template struct TransformFilter<Eigen::GpuDevice, float, int, 4>;
 template struct ReverseTransformFilter<Eigen::GpuDevice, float, 4>;
+template struct ReverseTransformFilterV2<Eigen::GpuDevice, float, 4>;
 template struct NHWCToNCHW<Eigen::GpuDevice, float, 4>;
 template struct NCHWToNHWC<Eigen::GpuDevice, float, 4>;
 template struct PadInput<Eigen::GpuDevice, float, int, 4>;
@@ -53,6 +54,7 @@ template struct PadInput<Eigen::GpuDevice, float, int, 4>;
 // For 3d ops.
 template struct TransformFilter<Eigen::GpuDevice, float, int, 5>;
 template struct ReverseTransformFilter<Eigen::GpuDevice, float, 5>;
+template struct ReverseTransformFilterV2<Eigen::GpuDevice, float, 5>;
 template struct NHWCToNCHW<Eigen::GpuDevice, float, 5>;
 template struct NCHWToNHWC<Eigen::GpuDevice, float, 5>;
 template struct PadInput<Eigen::GpuDevice, float, int, 5>;

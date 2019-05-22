@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -583,7 +584,11 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     Tensor x_backprop_transformed;
     se::DeviceMemory<T> x_backprop_ptr;
 
-    if (tensor_format == FORMAT_NCHW) {
+    // Cudnn 7.4.2 begins to support fast nhwc batch norm; however, for
+    // consistency for using nhwc, we still set 7.5.0.
+    bool use_nhwc = CanUseNHWC(tensor_format, DataTypeToEnum<T>::value,
+                               CUDNN_VERSION) && reserve_space != nullptr;
+    if (use_nhwc || tensor_format == FORMAT_NCHW) {
       x_backprop_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*x_backprop);
     } else if (tensor_format == FORMAT_NHWC) {
       // Transform inputs from 'NHWC' to 'NCHW'
@@ -629,7 +634,9 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
         .set_feature_map_count(channels)
         .set_height(height)
         .set_width(width)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(use_nhwc?
+          (se::dnn::DataLayout::kBatchYXDepth):
+          (se::dnn::DataLayout::kBatchDepthYX));
 
     se::dnn::BatchDescriptor scale_offset_desc;
     scale_offset_desc.set_count(1)
@@ -671,7 +678,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
           errors::Internal("cuDNN launch failure : input shape (",
                            x.shape().DebugString(), ")"));
     }
-    if (tensor_format == FORMAT_NHWC) {
+    if (!use_nhwc && tensor_format == FORMAT_NHWC) {
       functor::NCHWToNHWC<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(x_backprop_transformed).tensor<T, 4>(),

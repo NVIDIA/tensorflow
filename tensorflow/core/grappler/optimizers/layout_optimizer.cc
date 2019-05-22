@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -2006,6 +2007,30 @@ class DataLayoutOptimizer : GraphProcessor {
       }
       if (ops_format_supported.find(graph_->node(i).op()) !=
           ops_format_supported.end()) {
+        auto attr = graph_->node(i).attr();
+        bool ret = false;
+        auto status = ReadBoolFromEnvVar("TF_ENABLE_NHWC",
+                                         /*default_val=*/false, &ret);
+        if (!status.ok()) {
+          VLOG(1) << status.ToString();
+          return status;
+        }
+        if (ret && attr.find("T") != attr.end()
+            && attr.at("T").type() == DT_HALF) {
+          auto nd = graph_->node(i);
+          auto device_properties = virtual_placer_.get_device(nd);
+          if (device_properties.type() == "GPU" &&
+              device_properties.environment().at("architecture") >= "7" &&
+              device_properties.environment().at("cudnn") >= "7500" )
+          {
+            VLOG(1) << "NHWC skipped node (" << nd.op() << ", " << 
+                nd.attr().at("T").type() << ", " <<
+                device_properties.type() << ", " <<
+                device_properties.environment().at("architecture") << ", " <<
+                device_properties.environment().at("cudnn") << ")";
+            continue;
+          }
+        }
         auto node = graph_->mutable_node(i);
         bool is_in_frame = frame_view.IsInFrame(*node);
         OptimizeContext opt_cxt(graph_, node, node_map_, graph_properties_,

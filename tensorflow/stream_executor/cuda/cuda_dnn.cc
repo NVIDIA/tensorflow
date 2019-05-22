@@ -496,7 +496,18 @@ class CudnnTensorDescriptor {
                         cudnnDataType_t elem_type)
       : handle_(CreateTensorDescriptor()) {
     switch (batch_descriptor.layout()) {
-      case dnn::DataLayout::kBatchYXDepth:
+      case dnn::DataLayout::kBatchYXDepth: {
+        const int nd = batch_descriptor.ndims() + 2;
+        // cuDNN requires the strides and dims to be ordered as BDYX.
+        std::vector<int64> dims64 =
+            batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
+        std::vector<int> dims(nd);
+        std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
+                       &CheckedNarrowing<int64, int>);
+        CHECK_CUDNN_OK(cudnnSetTensorNdDescriptorEx(handle_.get(), 
+                       CUDNN_TENSOR_NHWC, elem_type, nd, dims.data()))
+            << "batch_descriptor: " << batch_descriptor.ToString();
+      } break;
       case dnn::DataLayout::kBatchDepthYX: {
         const int nd = batch_descriptor.ndims() + 2;
         // cuDNN requires the strides and dims to be ordered as BDYX.

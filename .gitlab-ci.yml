@@ -1,0 +1,58 @@
+variables:
+    GIT_STRATEGY: checkout
+    GIT_SUBMODULE_STRATEGY: none
+    BUILD_REPO: ssh://git@gitlab-master.nvidia.com:12051/dl/dgx/tensorflow
+
+stages:
+    - build
+
+.build_template : &BUILD
+  stage: build
+  script:
+    - BUILDWITH="$(echo "$CI_COMMIT_MESSAGE" | sed -n 's/^.*\[buildwith \([^]]*\)\].*$/\1/p')"
+    - if [[ -n "$BUILDWITH" ]]; then
+        REF="$BUILDWITH";
+      else
+        EXACT_MATCH_BUILDER=$(git ls-remote --heads --refs ${BUILD_REPO}
+                                     "refs/heads/${CI_COMMIT_REF_NAME}" 2>/dev/null | wc -l);
+        if [[ "${EXACT_MATCH_BUILDER}" -ne 0 ]]; then
+          REF="${CI_COMMIT_REF_NAME}";
+        else
+          NOT_IN_MASTER="$(git rev-list --count ^origin/master ${CI_COMMIT_SHA})";
+          NOT_IN_UPSTREAM="$(git rev-list --count ^origin/upstream ${CI_COMMIT_SHA})";
+          if [[ "$NOT_IN_MASTER" -lt "$NOT_IN_UPSTREAM" ]]; then
+            REF="master";
+          elif [[ "$NOT_IN_UPSTREAM" -lt "$NOT_IN_MASTER" ]]; then
+            REF="upstream";
+          else
+            EXTRA_IN_MASTER="$(git rev-list --count origin/master ^${CI_COMMIT_SHA})";
+            EXTRA_IN_UPSTREAM="$(git rev-list --count origin/upstream ^${CI_COMMIT_SHA})";
+            if [[ "$EXTRA_IN_MASTER" -le "$EXTRA_IN_UPSTREAM" ]]; then
+              REF="master";
+            else
+              REF="upstream";
+            fi;
+          fi;
+        fi;
+      fi
+    - echo "Selected builder branch $REF"
+    - curl -X POST 
+           -F token="${CI_JOB_TOKEN}"
+           -F ref="$REF" 
+           -F "variables[TF_HASH]=${CI_COMMIT_SHA}"
+           https://gitlab-master.nvidia.com/api/v4/projects/9743/trigger/pipeline
+  
+
+auto-build:
+  <<: *BUILD
+  when: always
+  only:
+    refs:
+      - merge_requests
+
+build:
+  <<: *BUILD
+  when: manual
+  except:
+    refs:
+      - merge_requests

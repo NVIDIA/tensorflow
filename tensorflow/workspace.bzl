@@ -136,6 +136,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_google_absl",
+        patch_file = clean_dep("//third_party:string_view_h.patch"),
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
         sha256 = "56cd3fbbbd94468a5fff58f5df2b6f9de7a0272870c61f6ca05b869934f4802a",
         strip_prefix = "abseil-cpp-daf381e8535a1f1f1b8a75966a74e7cca63dee89",

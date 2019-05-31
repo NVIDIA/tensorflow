@@ -272,33 +272,33 @@ def RunLSTM(sess,
 # Basic set of RNN configs to test. They can be further extended in relevant
 # test (e.g. adding num_dirs).
 NAMED_RNN_TESTCASES = ({
-#    "testcase_name": "xsmall",
-#    "num_units": 1,
-#    "input_size": 1,
-#    "batch_size": 1,
-#    "time": 1,
-#    "num_layers": 1,
-#}, {
+    "testcase_name": "xsmall",
+    "num_units": 1,
+    "input_size": 1,
+    "batch_size": 1,
+    "time": 1,
+    "num_layers": 1,
+}, {
     "testcase_name": "small",
     "num_units": 4,
     "input_size": 4,
     "batch_size": 4,
     "time": 4,
     "num_layers": 1,
-#}, {
-#    "testcase_name": "medium",
-#    "num_units": 128,
-#    "input_size": 64,
-#    "batch_size": 8,
-#    "time": 16,
-#    "num_layers": 1,
-#}, {
-#    "testcase_name": "large",
-#    "num_units": 128,
-#    "input_size": 128,
-#    "batch_size": 16,
-#    "time": 32,
-#    "num_layers": 1,
+}, {
+    "testcase_name": "medium",
+    "num_units": 128,
+    "input_size": 64,
+    "batch_size": 8,
+    "time": 16,
+    "num_layers": 1,
+}, {
+    "testcase_name": "large",
+    "num_units": 128,
+    "input_size": 128,
+    "batch_size": 16,
+    "time": 32,
+    "num_layers": 1,
 }, )
 
 

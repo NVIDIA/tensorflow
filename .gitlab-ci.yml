@@ -10,27 +10,23 @@ build:
   stage: build
   script:
     - export EXACT_MATCH_BUILDER=$(git ls-remote --heads --refs ${BUILD_REPO}
-                                    "refs/heads/${CI_COMMIT_REF_NAME}" | wc -l)
-    - if [[ "${CI_COMMIT_REF_NAME}" == "upstream" ]]; then
-        export REF="upstream-build";
-      elif [[ "${CI_COMMIT_REF_NAME}" == "master" ]]; then
-        export REF="master-build";
-      elif [[ "${EXACT_MATCH_BUILDER}" -ne 0 ]]; then
+                                   "refs/heads/${CI_COMMIT_REF_NAME}" 2>/dev/null | wc -l)
+    - if [[ "${EXACT_MATCH_BUILDER}" -ne 0 ]]; then
         export REF="${CI_COMMIT_REF_NAME}";
       else
-        NOT_IN_MASTER="$(git rev-list --count ^origin/master ${CI_COMMIT_REF_NAME})";
-        NOT_IN_UPSTREAM="$(git rev-list --count ^origin/upstream ${CI_COMMIT_REF_NAME})";
+        NOT_IN_MASTER="$(git rev-list --count ^origin/master ${CI_COMMIT_REF})";
+        NOT_IN_UPSTREAM="$(git rev-list --count ^origin/upstream ${CI_COMMIT_REF})";
         if [[ "$NOT_IN_MASTER" -lt "$NOT_IN_UPSTREAM" ]]; then
-          export REF="master-build";
+          export REF="master";
         elif [[ "$NOT_IN_UPSTREAM" -lt "$NOT_IN_MASTER" ]]; then
-          export REF="upstream-build";
+          export REF="upstream";
         else
-          EXTRA_IN_MASTER="$(git rev-list --count origin/master ^${CI_COMMIT_REF_NAME})";
-          EXTRA_IN_UPSTREAM="$(git rev-list --count origin/upstream ^${CI_COMMIT_REF_NAME})";
+          EXTRA_IN_MASTER="$(git rev-list --count origin/master ^${CI_COMMIT_REF})";
+          EXTRA_IN_UPSTREAM="$(git rev-list --count origin/upstream ^${CI_COMMIT_REF})";
           if [[ "$EXTRA_IN_MASTER" -le "$EXTRA_IN_UPSTREAM" ]]; then
-            export REF="master-build";
+            export REF="master";
           else
-            export REF="upstream-build";
+            export REF="upstream";
           fi;
         fi;
       fi

@@ -6,27 +6,27 @@ variables:
 stages:
     - build
 
-build:
+.build_template : &BUILD
   stage: build
   script:
-    - export EXACT_MATCH_BUILDER=$(git ls-remote --heads --refs ${BUILD_REPO}
+    - EXACT_MATCH_BUILDER=$(git ls-remote --heads --refs ${BUILD_REPO}
                                    "refs/heads/${CI_COMMIT_REF_NAME}" 2>/dev/null | wc -l)
     - if [[ "${EXACT_MATCH_BUILDER}" -ne 0 ]]; then
-        export REF="${CI_COMMIT_REF_NAME}";
+        REF="${CI_COMMIT_REF_NAME}";
       else
-        NOT_IN_MASTER="$(git rev-list --count ^origin/master ${CI_COMMIT_REF})";
-        NOT_IN_UPSTREAM="$(git rev-list --count ^origin/upstream ${CI_COMMIT_REF})";
+        NOT_IN_MASTER="$(git rev-list --count ^origin/master ${CI_COMMIT_SHA})";
+        NOT_IN_UPSTREAM="$(git rev-list --count ^origin/upstream ${CI_COMMIT_SHA})";
         if [[ "$NOT_IN_MASTER" -lt "$NOT_IN_UPSTREAM" ]]; then
-          export REF="master";
+          REF="master";
         elif [[ "$NOT_IN_UPSTREAM" -lt "$NOT_IN_MASTER" ]]; then
-          export REF="upstream";
+          REF="upstream";
         else
-          EXTRA_IN_MASTER="$(git rev-list --count origin/master ^${CI_COMMIT_REF})";
-          EXTRA_IN_UPSTREAM="$(git rev-list --count origin/upstream ^${CI_COMMIT_REF})";
+          EXTRA_IN_MASTER="$(git rev-list --count origin/master ^${CI_COMMIT_SHA})";
+          EXTRA_IN_UPSTREAM="$(git rev-list --count origin/upstream ^${CI_COMMIT_SHA})";
           if [[ "$EXTRA_IN_MASTER" -le "$EXTRA_IN_UPSTREAM" ]]; then
-            export REF="master";
+            REF="master";
           else
-            export REF="upstream";
+            REF="upstream";
           fi;
         fi;
       fi
@@ -36,3 +36,18 @@ build:
            -F ref="$REF" 
            -F "variables[TF_HASH]=${CI_COMMIT_SHA}"
            https://gitlab-master.nvidia.com/api/v4/projects/9743/trigger/pipeline
+  
+
+auto-build:
+  <<: *BUILD
+  when: always
+  only:
+    refs:
+      - merge_requests
+
+build:
+  <<: *BUILD
+  when: manual
+  except:
+    refs:
+      - merge_requests

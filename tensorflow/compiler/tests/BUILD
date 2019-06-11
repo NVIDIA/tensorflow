@@ -187,6 +187,13 @@ tf_xla_py_test(
     name = "argminmax_test",
     size = "small",
     srcs = ["argminmax_test.py"],
+    # ArgMax needs CustomCall on CPU, which is not available in normal
+    # (not precompiled) TensorFlow. The flag below excludes the CPU
+    # backend.
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

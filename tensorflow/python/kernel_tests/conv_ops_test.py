@@ -945,7 +945,7 @@ class Conv2DTest(test.TestCase):
           expected=expected_output,
           data_format=data_format,
           use_gpu=use_gpu,
-          err=1e-4)
+          err=3e-4)
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth3ValidBackpropInputStride1x2(self):

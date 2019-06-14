@@ -216,7 +216,8 @@ def _get_processor(v):
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
-class OptimizerBase(
+@tf_export(v1=["train.Optimizer"])
+class Optimizer(
     # Optimizers inherit from Trackable rather than AutoTrackable
     # since they do most of their dependency management themselves (slot
     # variables are special-cased, and non-slot variables are keyed to graphs).
@@ -344,6 +345,15 @@ class OptimizerBase(
     #   ... }
     self._deferred_slot_restorations = {}
 
+    self._loss_scale = None
+    if 'TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING' in os.environ:
+      if os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING'] == "1":
+        self._loss_scale = loss_scale_module.DynamicLossScale()
+        self._track_trackable(self._loss_scale, 'loss_scale')
+    elif os.environ.get('TF_ENABLE_AUTO_MIXED_PRECISION') == "1":
+      self._loss_scale = loss_scale_module.DynamicLossScale()
+      self._track_trackable(self._loss_scale, 'loss_scale')
+
     # TODO(isaprykin): When using a DistributionStrategy, and when an
     # optimizer is created in each replica, it might be dangerous to
     # rely on some Optimizer methods.  When such methods are called on a
@@ -353,6 +363,10 @@ class OptimizerBase(
 
   def get_name(self):
     return self._name
+
+  def doing_loss_scaling(self):
+    """Check if `_loss_scale` optimizer is performing loss scaling."""
+    return self._loss_scale is not None
 
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,
@@ -457,6 +471,13 @@ class OptimizerBase(
     and `colocate_gradients_with_ops` are ignored.
     @end_compatibility
     """
+    if self.doing_loss_scaling():
+      loss_scale = self._loss_scale()
+      if callable(loss):
+        loss = lambda: loss() * loss_scale
+      else:
+        loss = loss * loss_scale
+
     if callable(loss):
       with backprop.GradientTape() as tape:
         if var_list is not None:
@@ -475,6 +496,8 @@ class OptimizerBase(
       # to be executed.
       with ops.control_dependencies([loss_value]):
         grads = tape.gradient(loss_value, var_list, grad_loss)
+      if self.doing_loss_scaling():
+        grads = self._unscale_grads(grads)
       return list(zip(grads, var_list))
 
     # Non-callable/Tensor loss case
@@ -486,8 +509,8 @@ class OptimizerBase(
     # Scale loss if using a "mean" loss reduction and multiple replicas.
     loss = self._scale_loss(loss)
 
-    if gate_gradients not in [OptimizerBase.GATE_NONE, OptimizerBase.GATE_OP,
-                              OptimizerBase.GATE_GRAPH]:
+    if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
+                              Optimizer.GATE_GRAPH]:
       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
                        "Optimizer.GATE_OP, Optimizer.GATE_GRAPH.  Not %s" %
                        gate_gradients)
@@ -509,10 +532,12 @@ class OptimizerBase(
     var_refs = [p.target() for p in processors]
     grads = gradients.gradients(
         loss, var_refs, grad_ys=grad_loss,
-        gate_gradients=(gate_gradients == OptimizerBase.GATE_OP),
+        gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops)
-    if gate_gradients == OptimizerBase.GATE_GRAPH:
+    if self.doing_loss_scaling():
+      grads = self._unscale_grads(grads)
+    if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
@@ -529,6 +554,20 @@ class OptimizerBase(
         loss_value *= (1. / num_replicas)
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
+
+  def _unscale_grads(self, grads):
+    loss_scale = self._loss_scale()
+    loss_scale_reciprical = 1 / loss_scale
+    return [
+        None if g is None else self._scale_grad(g, loss_scale_reciprical)
+        for g in grads
+    ]
+
+  def _scale_grad(self, grad, loss_scale_reciprical):
+    if isinstance(grad, ops.IndexedSlices):
+      grad_vals = grad.values * loss_scale_reciprical
+      return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
+    return grad * loss_scale_reciprical
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
@@ -570,73 +609,87 @@ class OptimizerBase(
       return distribute_ctx.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
-    # No DistributionStrategy case.
-    grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
-    if not grads_and_vars:
-      raise ValueError("No variables provided.")
-    converted_grads_and_vars = []
-    for g, v in grads_and_vars:
-      if g is not None:
-        try:
-          # Convert the grad to Tensor or IndexedSlices if necessary.
-          g = ops.convert_to_tensor_or_indexed_slices(g)
-        except TypeError:
-          raise TypeError(
-              "Gradient must be convertible to a Tensor"
-              " or IndexedSlices, or None: %s" % g)
-        if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
-          raise TypeError(
-              "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
-      p = _get_processor(v)
-      converted_grads_and_vars.append((g, v, p))
+    name = name if name is not None else self.get_name()
+    def apply_fn():
+      # No DistributionStrategy case.
+      tgrads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
+      if not tgrads_and_vars:
+        raise ValueError("No variables provided.")
+      converted_grads_and_vars = []
+      for g, v in tgrads_and_vars:
+        if g is not None:
+          try:
+            # Convert the grad to Tensor or IndexedSlices if necessary.
+            g = ops.convert_to_tensor_or_indexed_slices(g)
+          except TypeError:
+            raise TypeError(
+                "Gradient must be convertible to a Tensor"
+                " or IndexedSlices, or None: %s" % g)
+          if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
+            raise TypeError(
+                "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
+        p = _get_processor(v)
+        converted_grads_and_vars.append((g, v, p))
 
-    converted_grads_and_vars = tuple(converted_grads_and_vars)
-    var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
-    if not var_list:
-      raise ValueError("No gradients provided for any variable: %s." %
-                       ([str(v) for _, v, _ in converted_grads_and_vars],))
-    with ops.init_scope():
-      self._create_slots(var_list)
-    update_ops = []
-    with ops.name_scope(name, self._name) as name:
-      self._prepare()
-      for grad, var, processor in converted_grads_and_vars:
-        if grad is None:
-          continue
-        # We colocate all ops created in _apply_dense or _apply_sparse
-        # on the same device as the variable.
-        # TODO(apassos): figure out how to get the variable name here.
-        if context.executing_eagerly() or isinstance(
-            var,
-            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
-          scope_name = ""
+      converted_grads_and_vars = tuple(converted_grads_and_vars)
+      var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
+      if not var_list:
+        raise ValueError("No gradients provided for any variable: %s." %
+                         ([str(v) for _, v, _ in converted_grads_and_vars],))
+      with ops.init_scope():
+        self._create_slots(var_list)
+      update_ops = []
+      with ops.name_scope(name, self._name) as sname:
+        self._prepare()
+        for grad, var, processor in converted_grads_and_vars:
+          if grad is None:
+            continue
+          # We colocate all ops created in _apply_dense or _apply_sparse
+          # on the same device as the variable.
+          # TODO(apassos): figure out how to get the variable name here.
+          if context.executing_eagerly() or isinstance(
+              var,
+              resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
+            scope_name = ""
+          else:
+            scope_name = var.op.name
+          with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
+            update_ops.append(processor.update_op(self, grad))
+        if global_step is None:
+          apply_updates = self._finish(update_ops, sname+'-apply')
         else:
-          scope_name = var.op.name
-        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
-          update_ops.append(processor.update_op(self, grad))
-      if global_step is None:
-        apply_updates = self._finish(update_ops, name)
-      else:
-        with ops.control_dependencies([self._finish(update_ops, "update")]):
-          with ops.colocate_with(global_step):
-            if isinstance(global_step, resource_variable_ops.ResourceVariable):
-              # TODO(apassos): the implicit read in assign_add is slow; consider
-              # making it less so.
-              apply_updates = resource_variable_ops.assign_add_variable_op(
-                  global_step.handle,
-                  ops.convert_to_tensor(1, dtype=global_step.dtype),
-                  name=name)
-            else:
-              apply_updates = state_ops.assign_add(global_step, 1, name=name)
+          with ops.control_dependencies([self._finish(update_ops, "update")]):
+            with ops.colocate_with(global_step):
+              if isinstance(global_step, resource_variable_ops.ResourceVariable):
+                # TODO(apassos): the implicit read in assign_add is slow; consider
+                # making it less so.
+                apply_updates = resource_variable_ops.assign_add_variable_op(
+                    global_step.handle,
+                    ops.convert_to_tensor(1, dtype=global_step.dtype),
+                    name=sname+'-apply')
+              else:
+                apply_updates = state_ops.assign_add(global_step, 1, name=sname+'-apply')
 
-      if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
-          apply_updates = apply_updates.op
-        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-        if apply_updates not in train_op:
-          train_op.append(apply_updates)
+        if not context.executing_eagerly():
+          if isinstance(apply_updates, ops.Tensor):
+            apply_updates = apply_updates.op
+          train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+          if apply_updates not in train_op:
+            train_op.append(apply_updates)
 
-      return apply_updates
+        if not isinstance(apply_updates, ops.Operation) or apply_updates.type != 'NoOp':
+          apply_updates = control_flow_ops.group([apply_updates])
+        return apply_updates
+
+    if self.doing_loss_scaling():
+      grads = [g for g, _ in grads_and_vars]
+      loss_scale_update_op, should_apply_grads = (self._loss_scale.update(grads))
+      maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                             control_flow_ops.no_op)
+      return control_flow_ops.group(
+          maybe_apply_op, loss_scale_update_op, name=name)
+    else:
+      return apply_fn()
 
   def _distributed_apply(self,
                          distribution,
@@ -663,75 +716,89 @@ class OptimizerBase(
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    reduced_grads = distribution.extended.batch_reduce_to(
-        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
-    var_list = [v for _, v in grads_and_vars]
-    grads_and_vars = zip(reduced_grads, var_list)
+    name = name if name is not None else self.get_name()
+    def apply_fn():
+      reduced_grads = distribution.extended.batch_reduce_to(
+          ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+      var_list = [v for _, v in grads_and_vars]
+      rgrads_and_vars = zip(reduced_grads, var_list)
 
-    # Note that this is called in a cross-replica context.
-    with ops.init_scope():
-      self._create_slots(var_list)
+      # Note that this is called in a cross-replica context.
+      with ops.init_scope():
+        self._create_slots(var_list)
 
-    def update(v, g):
-      """Apply gradients to a replica variable."""
-      assert v is not None
+      def update(v, g):
+        """Apply gradients to a replica variable."""
+        assert v is not None
 
-      try:
-        # Convert the grad to Tensor or IndexedSlices if necessary.
-        g = ops.convert_to_tensor_or_indexed_slices(g)
-      except TypeError:
-        raise TypeError("Gradient must be convertible to a Tensor"
-                        " or IndexedSlices, or None: %s" % g)
-      if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
-        raise TypeError(
-            "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
-      p = _get_processor(v)
+        try:
+          # Convert the grad to Tensor or IndexedSlices if necessary.
+          g = ops.convert_to_tensor_or_indexed_slices(g)
+        except TypeError:
+          raise TypeError("Gradient must be convertible to a Tensor"
+                          " or IndexedSlices, or None: %s" % g)
+        if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
+          raise TypeError(
+              "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
+        p = _get_processor(v)
 
-      if context.executing_eagerly() or (
-          resource_variable_ops.is_resource_variable(v) and
-          not v._in_graph_mode):  # pylint: disable=protected-access
-        scope_name = v.name.split(":")[0]
-      else:
-        scope_name = v.op.name
+        if context.executing_eagerly() or (
+            resource_variable_ops.is_resource_variable(v) and
+            not v._in_graph_mode):  # pylint: disable=protected-access
+          scope_name = v.name.split(":")[0]
+        else:
+          scope_name = v.op.name
 
-      # device_policy is set because non-mirrored tensors will be read in
-      # `update_op`. `_resource_apply_dense`, `lr_t`, `beta1_t` and `beta2_t`
-      # is an example.
-      with ops.name_scope("update_" + scope_name):
-        return p.update_op(self, g)
+        # device_policy is set because non-mirrored tensors will be read in
+        # `update_op`. `_resource_apply_dense`, `lr_t`, `beta1_t` and `beta2_t`
+        # is an example.
+        with ops.name_scope("update_" + scope_name):
+          return p.update_op(self, g)
 
-    with ops.name_scope(name, self._name) as name:
-      self._prepare()
+      with ops.name_scope(name, self._name) as sname:
+        self._prepare()
 
-      update_ops = [
-          op
-          for grad, var in grads_and_vars
-          for op in distribution.extended.update(
-              var, update, args=(grad,), group=False)
-      ]
+        update_ops = [
+            op
+            for grad, var in rgrads_and_vars
+            for op in distribution.extended.update(
+                var, update, args=(grad,), group=False)
+        ]
 
-      def finish(self, update_ops):
-        return self._finish(update_ops, "update")
+        def finish(self, update_ops):
+          return self._finish(update_ops, "update")
 
-      non_slot_devices = distribution.extended.non_slot_devices(var_list)
-      finish_updates = distribution.extended.update_non_slot(
-          non_slot_devices, finish, args=(self, update_ops), group=False)
-      if global_step is None:
-        apply_updates = distribution.group(finish_updates, name=name)
-      else:
-        with ops.control_dependencies(finish_updates):
-          apply_updates = distribution.extended.update(
-              global_step, state_ops.assign_add, args=(1,),
-              kwargs={"name": name})
+        non_slot_devices = distribution.extended.non_slot_devices(var_list)
+        finish_updates = distribution.extended.update_non_slot(
+            non_slot_devices, finish, args=(self, update_ops), group=False)
+        if global_step is None:
+          apply_updates = distribution.group(finish_updates, name=sname+'-apply')
+        else:
+          with ops.control_dependencies(finish_updates):
+            apply_updates = distribution.extended.update(
+                global_step, state_ops.assign_add, args=(1,),
+                kwargs={"name": sname+'-apply'})
 
-      if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
-          apply_updates = apply_updates.op
-        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-        if apply_updates not in train_op:
-          train_op.append(apply_updates)
+        if not context.executing_eagerly():
+          if isinstance(apply_updates, ops.Tensor):
+            apply_updates = apply_updates.op
+          train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+          if apply_updates not in train_op:
+            train_op.append(apply_updates)
 
-      return apply_updates
+        if not isinstance(apply_updates, ops.Operation) or apply_updates.type != 'NoOp':
+          apply_updates = control_flow_ops.group([apply_updates])
+        return apply_updates
+
+    if self.doing_loss_scaling():
+      grads = [g for g, _ in grads_and_vars]
+      loss_scale_update_op, should_apply_grads = (self._loss_scale.update(grads))
+      maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                             control_flow_ops.no_op)
+      return control_flow_ops.group(
+          maybe_apply_op, loss_scale_update_op, name=name)
+    else:
+      return apply_fn()
 
   def get_slot(self, var, name):
     """Return a slot named `name` created for `var` by the Optimizer.
@@ -853,12 +920,12 @@ class OptimizerBase(
         current_graph_non_slot_variables.append(
             trackable.TrackableReference(
                 name=name, ref=variable_object))
-    return (super(OptimizerBase, self)._checkpoint_dependencies
+    return (super(Optimizer, self)._checkpoint_dependencies
             + current_graph_non_slot_variables)
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a non-slot variable in the current graph."""
-    unconditional = super(OptimizerBase, self)._lookup_dependency(name)
+    unconditional = super(Optimizer, self)._lookup_dependency(name)
     if unconditional is not None:
       return unconditional
     graph = None if context.executing_eagerly() else ops.get_default_graph()
@@ -1243,207 +1310,3 @@ class OptimizerBase(
     """Call the function if param is callable."""
     return param() if callable(param) else param
 
-
-@tf_export(v1=["train.Optimizer"])
-class Optimizer(OptimizerBase):
-  """An optimizer that applies loss scaling.
-
-  Loss scaling is a process that multiplies the loss by a multiplier called the
-  loss scale, and divides each gradient by the same multiplier. The pseudocode
-  for this process is:
-
-  ```
-  loss = ...
-  loss *= loss_scale
-  grads = gradients(loss, vars)
-  grads /= loss_scale
-  ```
-
-  Mathematically, loss scaling has no effect, but can help avoid numerical
-  underflow in intermediate gradients when float16 tensors are used for mixed
-  precision training. By multiplying the loss, each intermediate gradient will
-  have the same multiplier applied.
-
-  The loss scale can either be a fixed constant, chosen by the user, or be
-  dynamically determined. Dynamically determining the loss scale is convenient
-  as a loss scale does not have to be explicitly chosen. However it reduces
-  performance.
-
-  This optimizer wraps another optimizer and applies loss scaling to it via a
-  `LossScale`. Loss scaling is applied whenever gradients are
-  computed, such as through `minimize()`.
-  """
-
-  def __init__(self, use_locking, name):
-    super(Optimizer, self).__init__(use_locking, name)
-    self._loss_scale = None
-    if 'TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING' in os.environ:
-      if os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING'] == "1":
-        self._loss_scale = loss_scale_module.DynamicLossScale()
-        self._track_trackable(self._loss_scale, 'loss_scale')
-    elif os.environ.get('TF_ENABLE_AUTO_MIXED_PRECISION') == "1":
-      self._loss_scale = loss_scale_module.DynamicLossScale()
-      self._track_trackable(self._loss_scale, 'loss_scale')
-
-
-  def doing_loss_scaling(self):
-    """Check if `_loss_scale` optimizer is performing loss scaling."""
-    return self._loss_scale is not None
-
-
-  def compute_gradients(self,
-                        loss,
-                        var_list=None,
-                        gate_gradients=OptimizerBase.GATE_OP,
-                        aggregation_method=None,
-                        colocate_gradients_with_ops=False,
-                        grad_loss=None):
-    """Compute gradients of `loss` for the variables in `var_list`.
-
-    May adjust the dynamic range of the gradient evaluation by scaling up the
-    `loss` value. The gradient values are then scaled back down by the
-    recipricol of the loss scale. This is useful in reduced precision training
-    where small gradient values would otherwise underflow the representable
-    range.
-
-    Args:
-      loss: A Tensor containing the value to minimize or a callable taking no
-        arguments which returns the value to minimize. When eager execution is
-        enabled it must be a callable.
-      var_list: Optional list or tuple of `tf.Variable` to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph under
-        the key `GraphKeys.TRAINABLE_VARIABLES`.
-      gate_gradients: How to gate the computation of gradients.  Can be
-        `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
-      aggregation_method: Specifies the method used to combine gradient terms.
-        Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
-      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
-
-    Returns:
-      A list of (gradient, variable) pairs. Variable is always present, but
-      gradient can be `None`.
-    """
-    if self.doing_loss_scaling():
-      loss_scale = self._loss_scale()
-      if callable(loss):
-        loss = lambda: loss() * loss_scale
-      else:
-        loss = loss * loss_scale
-    grads_and_vars = super(Optimizer, self).compute_gradients(
-        loss=loss,
-        var_list=var_list,
-        gate_gradients=gate_gradients,
-        aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
-        grad_loss=grad_loss)
-
-    if not self.doing_loss_scaling():
-      return grads_and_vars
-    else:
-      grads = [g for g, _ in grads_and_vars]
-      variables = [v for _, v in grads_and_vars]
-      unscaled_grads = self._unscale_grads(grads)
-      return list(zip(unscaled_grads, variables))
-
-  def _unscale_grads(self, grads):
-    loss_scale = self._loss_scale()
-    loss_scale_reciprical = 1 / loss_scale
-    return [
-        None if g is None else self._scale_grad(g, loss_scale_reciprical)
-        for g in grads
-    ]
-
-  def _scale_grad(self, grad, loss_scale_reciprical):
-    if isinstance(grad, ops.IndexedSlices):
-      grad_vals = grad.values * loss_scale_reciprical
-      return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
-    return grad * loss_scale_reciprical
-
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-    """Apply gradients to variables.
-
-    This is the second part of `minimize()`. It returns an `Operation` that
-    conditionally applies gradients if all gradient values are finite.
-    Otherwise no update is performed (nor is `global_step` incremented).
-
-    Args:
-      grads_and_vars: List of (gradient, variable) pairs as returned by
-        `compute_gradients()`.
-      global_step: Optional `Variable` to increment by one after the variables
-        have been updated.
-      name: Optional name for the returned operation.  Default to the name
-        passed to the `Optimizer` constructor.
-
-    Returns:
-      An `Operation` that conditionally applies the specified gradients. If
-      `global_step` was not None, that operation also increments `global_step`.
-
-    Raises:
-      RuntimeError: If you should use `_distributed_apply()` instead.
-    """
-    if not self.doing_loss_scaling():
-      return super(Optimizer, self).apply_gradients(grads_and_vars,
-                                                    global_step, name)
-
-    if distribute_ctx.in_cross_replica_context():
-      raise ValueError('apply_gradients() must be called in a replica context.')
-
-    replica_context = distribute_ctx.get_replica_context()
-    grads_and_vars = tuple(grads_and_vars)
-
-    # TODO(nluehr) cleanup GraphKeys.TRAIN_OP
-    return replica_context.merge_call(
-        self._distributed_apply, args=(grads_and_vars, global_step, name))
-
-  def _distributed_apply(self,
-                         distribution,
-                         grads_and_vars,
-                         global_step=None,
-                         name=None):
-    """A version of `apply_gradients` for cross replica context.
-
-    When users are in a cross replica strategy, they must call this rather than
-    `apply_gradients()`.
-
-    Args:
-      distribution: a `DistributionStrategy` object.
-      grads_and_vars: List of (gradient, variable) pairs as returned by
-        `compute_gradients()` and then aggregated across replicas.
-      global_step: Optional (mirrored) `Variable` to increment by one after the
-        variables have been updated.
-      name: Optional name for the returned operation. Default to the name passed
-        to the `Optimizer` constructor.
-
-    Returns:
-      An `Operation` that applies the specified gradients across all
-      replicas. If `global_step` was not None, that operation also
-      increments `global_step`
-    """
-    if not self.doing_loss_scaling():
-      return super(Optimizer, self)._distributed_apply(self,
-                                                       distribution,
-                                                       grads_and_vars,
-                                                       global_step,
-                                                       name)
-
-    name = name if name is not None else self.get_name()
-    grads = [g for g, _ in grads_and_vars]
-    loss_scale_update_op, should_apply_grads = (self._loss_scale.update(grads))
-
-    def apply_fn():
-      return self._apply_gradients(distribution, grads_and_vars, global_step,
-                                   name + '-wrapped')
-
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
-                                           control_flow_ops.no_op)
-    return control_flow_ops.group(
-        maybe_apply_op, loss_scale_update_op, name=name)
-
-  def _apply_gradients(self, distribution, grads_and_vars, global_step, name):
-    """Unconditionally apply gradients in cross replica context."""
-    update_ops = distribution.extended.call_for_each_replica(
-        super(Optimizer, self).apply_gradients,
-        args=(grads_and_vars, global_step, name))
-    return distribution.group(update_ops)

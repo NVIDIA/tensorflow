@@ -7,8 +7,7 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library", "if_nccl")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -356,7 +355,7 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_cuda([
+    ] + if_nccl([
         "@local_config_nccl//:nccl",
     ]),
 )

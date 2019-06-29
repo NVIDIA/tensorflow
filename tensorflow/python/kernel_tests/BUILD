@@ -1640,19 +1640,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "bias_op_deterministic_test",
+    name = "bias_op_test",
     size = "small",
-    srcs = ["bias_op_deterministic_test.py"],
+    srcs = ["bias_op_test.py"],
     additional_deps = [
-        "//tensorflow/python:kernel_tests",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
     ],
     xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
-    name = "bias_op_test",
+    name = "bias_op_deterministic_test",
     size = "small",
-    srcs = ["bias_op_test.py"],
+    srcs = ["bias_op_deterministic_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",

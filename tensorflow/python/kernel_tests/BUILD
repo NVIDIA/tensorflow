@@ -1641,7 +1641,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "bias_op_deterministic_test",
-    size = "medium",
+    size = "small",
     srcs = ["bias_op_deterministic_test.py"],
     additional_deps = [
         "//tensorflow/python/kernel_tests:bias_op_test",
@@ -1651,7 +1651,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "bias_op_test",
-    size = "medium",
+    size = "small",
     srcs = ["bias_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

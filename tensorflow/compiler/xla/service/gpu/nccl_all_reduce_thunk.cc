@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_NCCL
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "third_party/nccl/nccl.h"
@@ -30,14 +30,14 @@ namespace xla {
 namespace gpu {
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-#if GOOGLE_CUDA
+#if GOOGLE_NCCL
   return true;
 #else
   return false;
 #endif
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_NCCL
 namespace {
 
 // GPU-replica-driving host threads (i.e. the threads that call
@@ -516,7 +516,7 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
   return {};
 }
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_NCCL
 
 NcclAllReduceThunk::NcclAllReduceThunk(
     int64 replica_count, int64 element_count,

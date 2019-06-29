@@ -1644,7 +1644,7 @@ cuda_py_test(
     size = "small",
     srcs = ["bias_op_deterministic_test.py"],
     additional_deps = [
-        "//tensorflow/python/kernel_tests:bias_op_test",
+        "//tensorflow/python:kernel_tests",
     ],
     xla_enable_strict_auto_jit = True,
 )

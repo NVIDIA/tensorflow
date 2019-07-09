@@ -276,7 +276,8 @@ class IrEmitterUnnested : public IrEmitter,
   // ensure there is no overlap.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
-                     const llvm_ir::ElementGenerator& updates_gen);
+                     const llvm_ir::ElementGenerator& updates_gen,
+                     bool unique_indices);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.

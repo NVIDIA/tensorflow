@@ -63,4 +63,8 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 
 bool GPUcudaMallocAllocator::TracksAllocationSizes() const { return false; }
 
+absl::optional<AllocatorStats> GPUcudaMallocAllocator::GetStats() {
+  return base_allocator_->GetStats();
+}
+
 }  // namespace tensorflow

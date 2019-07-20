@@ -944,6 +944,7 @@ class FusedBatchNormGradOpBase : public OpKernel {
     }
 
     const Tensor* reserve_space_data = nullptr;
+    functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(context);
     functor::CudnnBatchNormAllocatorInTemp<uint8>* workspace_allocator_ptr =
         nullptr;
 
@@ -951,8 +952,6 @@ class FusedBatchNormGradOpBase : public OpKernel {
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
       reserve_space_data = &reserve_space;
-      functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(
-          context);
       workspace_allocator_ptr = &workspace_allocator;
     }
 #endif  // CUDNN_VERSION >= 7402

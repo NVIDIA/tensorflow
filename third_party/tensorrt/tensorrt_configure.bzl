@@ -26,10 +26,12 @@ _TF_TENSORRT_HEADERS_V6 = [
     "NvInfer.h",
     "NvUtils.h",
     "NvInferPlugin.h",
-    "NvInferVersion.h",
-    "NvInferRTSafe.h",
-    "NvInferRTExt.h",
     "NvInferPluginUtils.h",
+    "NvInferRuntimeCommon.h",
+    "NvInferRuntime.h",
+    "NvInferRuntimeSelect.h",
+    "NvInferSafeRuntime.h",
+    "NvInferVersion.h",
 ]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"

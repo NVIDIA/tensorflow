@@ -427,7 +427,7 @@ class AutoMixedPrecisionTest(test.TestCase):
         self.assertEqual(num_to_fp16,
                          3)  # Before Conv3D:0, Conv3D:1, Conv3D_1:1
         self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
-        self.assertAllClose(output_val_ref, output_val, atol=1e-2, rtol=1e-2)
+        self.assertAllClose(output_val_ref, output_val, atol=2e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
   def test_conv3d(self):
@@ -451,7 +451,6 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map,
                                'gradients/Conv3D_grad/Conv3DBackpropFilterV2')
 
-      output_val_ref, output_val, cost_graph = self._run(output)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1

@@ -67,13 +67,11 @@ class AutoMixedPrecisionLists {
 #endif
           "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
           "Conv2DBackpropInput",
-          // TODO(benbarsdell): Enable these when Tensor Core kernels are
-          // available for 3D convolutions.
-          // "Conv3D",
-          // "Conv3DBackpropFilter",
-          // "Conv3DBackpropFilterV2",
-          // "Conv3DBackpropInput",
-          // "Conv3DBackpropInputV2",
+          "Conv3D",
+          "Conv3DBackpropFilter",
+          "Conv3DBackpropFilterV2",
+          "Conv3DBackpropInput",
+          "Conv3DBackpropInputV2",
           "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
           "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3", "GRUBlockCell",
           "GRUBlockCellGrad", "LSTMBlockCell", "LSTMBlockCellGrad",

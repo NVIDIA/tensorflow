@@ -99,6 +99,8 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
         for data_type in (dtypes.float16, dtypes.float32, dtypes.float64):
           self._testGradientsCase(channels_position, data_rank, data_type)
 
+  # TODO(duncanriach): Re-enable the following three tests for the error checks
+  #   after deterministic functionality is implemented at the CUDA kernel level.
   def testInputDims(self):
     pass
 
@@ -110,6 +112,9 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
 
 
 if __name__ == "__main__":
-  np.set_printoptions(precision=20, floatmode='fixed')
-  os.environ["TF_DETERMINISTIC_OPS"] = "1"
+  # Note that the effect of setting the following environment variable to
+  # 'true' is not tested. Unless we can find a simpler pattern for testing these
+  # environment variables, it would require this file to be made into a base
+  # and then two more test files to be created.
+  os.environ['TF_DETERMINISTIC_OPS'] = '1'
   test.main()

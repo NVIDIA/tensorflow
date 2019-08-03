@@ -2688,11 +2688,10 @@ def bias_add(value, bias, data_format=None, name=None):
                                               dtype=dtypes.int32)
         broadcast_shape = array_ops.concat(
             [broadcast_shape_head, broadcast_shape_tail], 0)
-        value = math_ops.add(
+        return math_ops.add(
             value, array_ops.reshape(bias, broadcast_shape), name=name)
       else: # data_format == 'NHWC' or data_format == None
-        value = math_ops.add(value, bias, name=name)
-      return value
+        return math_ops.add(value, bias, name=name)
     else:
       return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
 

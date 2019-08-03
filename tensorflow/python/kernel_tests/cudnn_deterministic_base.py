@@ -47,11 +47,6 @@ FilterShape = collections.namedtuple(
 
 class ConvolutionTest(test.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(ConvolutionTest, cls).setUpClass()
-    # os.environ['TF_CUDNN_DETERMINISTIC'] = 'true'  
-
   def _random_data_op(self, shape):
     # np.random.random_sample can properly interpret either tf.TensorShape or
     # namedtuple as a list.

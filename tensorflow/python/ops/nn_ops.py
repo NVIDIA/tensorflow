@@ -2628,6 +2628,8 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
 def _tf_deterministic_ops():
   if _tf_deterministic_ops.value is None:
     tf_deterministic_ops = os.environ.get('TF_DETERMINISTIC_OPS')
+    if tf_deterministic_ops is not None:
+      tf_deterministic_ops = tf_deterministic_ops.lower()
     _tf_deterministic_ops.value = (
         tf_deterministic_ops == 'true' or
         tf_deterministic_ops == '1')

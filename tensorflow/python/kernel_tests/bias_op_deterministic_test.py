@@ -33,23 +33,23 @@ from tensorflow.python.platform import test
 class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
 
   def _make_shape_tuple(self, batch_size, channel_count, data_rank, data_dim,
-                        channels_position):
+                        data_layout):
     data_dims = data_rank * (data_dim,)
-    if channels_position == 'first':
+    if data_layout == 'channels_first':
       shape = (batch_size,) + (channel_count,) + data_dims
-    elif channels_position == 'last':
+    elif data_layout == 'channels_last':
       shape = (batch_size,) + data_dims + (channel_count,)
     else:
       raise ValueError("Unknown data format")
     return shape
 
-  def _data_format_from_channels_position(self, channels_position=None):
-    if channels_position == 'first':
+  def _data_format_from_data_layout(self, data_layout=None):
+    if data_layout == 'channels_first':
       return 'NCHW'
-    elif channels_position == 'last':
+    elif data_layout == 'channels_last':
       return 'NHWC'
     else:
-      raise ValueError("Unknown channels_position")
+      raise ValueError("Unknown data_layout")
 
   def _random_data_op(self, shape, data_type):
     return constant_op.constant(
@@ -64,18 +64,21 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
       result_b = operation[0].eval(feed_dict=feed_dict)
       self.assertAllEqual(result_a, result_b)
 
-  def _testGradientsCase(self, channels_position, data_rank, data_type):
-    np.random.seed(3)
+  def _testGradientsCase(self, data_layout, data_rank, data_type):
+    seed = (hash(data_layout) % 256 +
+            hash(data_rank) % 256 +
+            hash(data_type) % 256)
+    np.random.seed(seed)
     batch_size = 10
     channel_count = 8
     data_dim = 14
     in_shape = self._make_shape_tuple(batch_size, channel_count, data_rank,
-                                      data_dim, channels_position)
+                                      data_dim, data_layout)
     bias_shape = (channel_count,)
     out_shape = in_shape
     in_op = self._random_data_op(in_shape, data_type)
     bias_op = self._random_data_op(bias_shape, data_type)
-    data_format = self._data_format_from_channels_position(channels_position)
+    data_format = self._data_format_from_data_layout(data_layout)
     bias_add_op = nn_ops.bias_add(in_op, bias_op, data_format=data_format)
     upstream_gradients = array_ops.placeholder(data_type, shape=out_shape,
                                                name='upstream_gradients')
@@ -94,10 +97,10 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
 
   @test_util.run_cuda_only
   def testGradients(self):
-    for channels_position in ('first', 'last'):
+    for data_layout in ('channels_first', 'channels_last'):
       for data_rank in (1, 2, 3):
         for data_type in (dtypes.float16, dtypes.float32, dtypes.float64):
-          self._testGradientsCase(channels_position, data_rank, data_type)
+          self._testGradientsCase(data_layout, data_rank, data_type)
 
   # TODO(duncanriach): Re-enable the following three tests for the error checks
   #   after deterministic functionality is implemented at the CUDA kernel level.

@@ -25,6 +25,7 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -36,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+
 
 TfTrtIntegrationTestParams = namedtuple(
     "TfTrtIntegrationTestParams",
@@ -56,7 +58,11 @@ RunParams = namedtuple("RunParams", [
     "use_calibration"
 ])
 
-PRECISION_MODES = ["FP32", "FP16", "INT8"]
+TRT_VERSION = get_linked_tensorrt_version()
+if TRT_VERSION >= (5, 0, 0):
+  PRECISION_MODES = ["FP32", "FP16", "INT8"]
+else:
+  PRECISION_MODES = ["FP32", "FP16"]
 
 
 def IsQuantizationMode(mode):
@@ -104,13 +110,16 @@ def OptimizerDisabledRewriterConfig():
 class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration."""
 
+  TRT_VERSION = get_linked_tensorrt_version()
   @property
   def trt_incompatible_op(self):
     return math_ops.erf
 
   @property
   def precision_modes(self):
-    return ["FP32", "FP16", "INT8"]
+    if TRT_VERSION >= (5, 0, 0):
+      return ["FP32", "FP16", "INT8"]
+    return ["FP32", "FP16"]
 
   # str is bytes in py2, but unicode in py3.
   def _ToUnicode(self, s):
@@ -554,7 +563,10 @@ def _AddTests(test_class):
 
   use_optimizer_options = [False, True]
   dynamic_engine_options = [False, True]
-  use_calibration_options = [False, True]
+  if TRT_VERSION >= (5, 0, 0):
+    use_calibration_options = [False, True]
+  else:
+    use_calibration_options = [False]
   opts = itertools.product(use_optimizer_options, PRECISION_MODES,
                            dynamic_engine_options, use_calibration_options)
   for (use_optimizer, precision_mode, dynamic_engine, use_calibration) in opts:

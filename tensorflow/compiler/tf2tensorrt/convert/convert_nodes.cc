@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#endif
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
@@ -1034,7 +1036,9 @@ Status TrtNodeValidator::ValidateNode(
     const grappler::GraphProperties& graph_properties) {
   const string& op = node_def.op();
   // It doesn't support validation of plugins.
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) return Status::OK();
+#endif
 
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
@@ -1085,6 +1089,7 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
 static void InitializeTrtPlugins() {
   static mutex plugin_mutex(LINKER_INITIALIZED);
   static bool plugin_initialized = false;
@@ -1117,13 +1122,16 @@ static void InitializeTrtPlugins() {
     }
   }
 }
+#endif
 
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
                      TrtPrecisionMode precision_mode, bool use_calibration)
     : trt_network_(trt_network),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   InitializeTrtPlugins();
+#endif
   this->RegisterOpConverters();
 }
 
@@ -1134,6 +1142,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   OpConverterParams params(this, node_def, inputs, &outputs,
                            /*arg_validation_only=*/false, &weight_store_);
   const string& op = node_def.op();
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
     TF_RETURN_IF_ERROR(plugin_converter_(&params));
   } else {
@@ -1143,6 +1152,13 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     OpConverter op_converter = op_registry_.at(op);
     TF_RETURN_IF_ERROR(op_converter(&params));
   }
+#else
+  if (!op_registry_.count(op)) {
+    return errors::Unimplemented("No converter registered for op: ", op);
+  }
+  OpConverter op_converter = op_registry_.at(op);
+  TF_RETURN_IF_ERROR(op_converter(&params));
+#endif
 
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
@@ -2130,6 +2146,7 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   return Status::OK();
 }
 
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
 Status ConvertPlugin(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2168,6 +2185,7 @@ Status ConvertPlugin(OpConverterParams* params) {
   }
   return Status::OK();
 }
+#endif
 
 Status ConvertTranspose(OpConverterParams* params) {
   const auto& inputs = params->inputs;
@@ -4205,6 +4223,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
       input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
   // If int8 is specified, FC must be used, as MM does not support int8 at this
   // time.
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   if (should_use_fc ||
       params->converter->precision_mode() == TrtPrecisionMode::INT8) {
     return ConvertFullyConnectedHelper(
@@ -4253,6 +4272,10 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
+#else
+  return ConvertFullyConnectedHelper(
+      params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
+#endif
 }
 
 // inputs are both two dimensional (ops::MatMul)
@@ -4909,7 +4932,9 @@ void TrtNodeValidator::RegisterOpValidators() {
 
 void Converter::RegisterOpConverters() {
   RegisterValidatableOpConverters(&op_registry_);
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   plugin_converter_ = ConvertPlugin;
+#endif
 }
 
 Status ConvertGraphDefToEngine(

@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#endif
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor.h"

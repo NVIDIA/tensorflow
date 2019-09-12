@@ -713,6 +713,7 @@ tf_cc_test(
     deps = [
         ":cudnn_conv_rewriter",
         ":ir_emission_utils",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo",
@@ -945,11 +946,12 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_pad_for_tensor_cores",
-    srcs = ["cudnn_conv_pad_for_tensor_cores.cc"],
-    hdrs = ["cudnn_conv_pad_for_tensor_cores.h"],
+    name = "cudnn_pad_for_convolutions",
+    srcs = ["cudnn_pad_for_convolutions.cc"],
+    hdrs = ["cudnn_pad_for_convolutions.h"],
     deps = [
         ":ir_emission_utils",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -959,10 +961,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cudnn_conv_pad_for_tensor_cores_test",
-    srcs = ["cudnn_conv_pad_for_tensor_cores_test.cc"],
+    name = "cudnn_pad_for_convolutions_test",
+    srcs = ["cudnn_pad_for_convolutions_test.cc"],
     deps = [
-        ":cudnn_conv_pad_for_tensor_cores",
+        ":cudnn_pad_for_convolutions",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1018,6 +1020,7 @@ cc_library(
         ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
+        ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gpu_constants",
         ":gpu_copy_insertion",
@@ -1119,10 +1122,10 @@ cc_library(
     ],
     deps = [
         ":cudnn_conv_algorithm_picker",
-        ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
+        ":cudnn_pad_for_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
@@ -1472,9 +1475,15 @@ cc_library(
 tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = [
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
     deps = [
+        ":cudnn_fused_conv_rewriter",
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",

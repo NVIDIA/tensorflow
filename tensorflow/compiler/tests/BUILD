@@ -764,7 +764,7 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

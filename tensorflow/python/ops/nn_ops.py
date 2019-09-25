@@ -2695,7 +2695,8 @@ def bias_add(value, bias, data_format=None, name=None):
       else: # data_format == 'NHWC' or data_format == None
         return math_ops.add(value, bias, name=name)
     else:
-      return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
+      return gen_nn_ops.bias_add(value, bias, data_format=data_format,
+                                 name=name)
 
 
 def bias_add_v1(value, bias, name=None):

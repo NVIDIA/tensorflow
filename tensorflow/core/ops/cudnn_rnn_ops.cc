@@ -83,7 +83,6 @@ REGISTER_OP("CudnnRNN")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
-      auto input_c_shape = c->input(2);
       auto seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
@@ -97,7 +96,7 @@ REGISTER_OP("CudnnRNN")
       auto output_shape = c->MakeShape({seq_length, batch_size, output_size});
       auto output_h_shape = input_h_shape;
       auto output_c_shape TF_ATTRIBUTE_UNUSED =
-          (rnn_mode == "lstm") ? input_c_shape : c->MakeShape({});
+          (rnn_mode == "lstm") ? output_h_shape : c->MakeShape({});
       c->set_output(0, output_shape);
       c->set_output(1, output_h_shape);
       c->set_output(2, output_c_shape);
@@ -127,7 +126,6 @@ REGISTER_OP("CudnnRNNV2")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
-      auto input_c_shape = c->input(2);
       auto seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
@@ -141,7 +139,7 @@ REGISTER_OP("CudnnRNNV2")
       auto output_shape = c->MakeShape({seq_length, batch_size, output_size});
       auto output_h_shape = input_h_shape;
       auto output_c_shape TF_ATTRIBUTE_UNUSED =
-          (rnn_mode == "lstm") ? input_c_shape : c->MakeShape({});
+          (rnn_mode == "lstm") ? output_h_shape : c->MakeShape({});
       c->set_output(0, output_shape);
       c->set_output(1, output_h_shape);
       c->set_output(2, output_c_shape);

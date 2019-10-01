@@ -18,23 +18,49 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.platform import test
 
 
 class ErrorMetadataBaseTest(test.TestCase):
 
+  def test_create_exception_default_constructor(self):
+
+    class CustomError(Exception):
+      pass
+
+    em = errors.ErrorMetadataBase(
+        callsite_tb=(),
+        cause_metadata=None,
+        cause_message='test message',
+        source_map={})
+    exc = em.create_exception(CustomError())
+    self.assertIsInstance(exc, CustomError)
+    self.assertIn('test message', str(exc))
+
+  def test_create_exception_custom_constructor(self):
+
+    class CustomError(Exception):
+
+      def __init__(self):
+        super(CustomError, self).__init__('test_message')
+
+    em = errors.ErrorMetadataBase(
+        callsite_tb=(),
+        cause_metadata=None,
+        cause_message='test message',
+        source_map={})
+    exc = em.create_exception(CustomError())
+    self.assertIsNone(exc)
+
   def test_get_message_when_frame_info_code_is_none(self):
     callsite_tb = [
-        ('/usr/local/python/foo.py',
-         96,
-         'fake_function_name',
-         None),
-        ('/usr/local/python/two.py',
-         1874,
-         'another_function_name',
-         'raise ValueError(str(e))')]
-    cause_message = 'ValueError: Just a test.'
+        ('/path/one.py', 11, 'test_fn_1', None),
+        ('/path/two.py', 171, 'test_fn_2', 'test code'),
+    ]
+    cause_message = 'Test message'
     em = errors.ErrorMetadataBase(
         callsite_tb=callsite_tb,
         cause_metadata=None,
@@ -42,7 +68,7 @@ class ErrorMetadataBaseTest(test.TestCase):
         source_map={})
     self.assertRegex(
         em.get_message(),
-        r'fake_function(.|\n)*another_function(.|\n)*Just a test')
+        re.compile('test_fn_1.*test_fn_2.*Test message', re.DOTALL))
 
 
 if __name__ == '__main__':

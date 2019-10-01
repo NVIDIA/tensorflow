@@ -133,8 +133,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       self._AssertInputOpsAre(conv_quant, expected_inputs)
 
       output_op_name = (
-          conv_scope + delim + 'conv_quant/delayed_quant/Switch_1'
-          if delay else scope + 'Add')
+          conv_scope + delim +
+          'conv_quant/delayed_quant/Switch_1' if delay else scope + 'AddV2')
       self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
 
     act_quant = graph.get_operation_by_name(scope + 'act_quant/' +
@@ -197,7 +197,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=conv_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -247,7 +247,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=fc_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -298,7 +298,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=conv_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -349,7 +349,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=conv_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -457,8 +457,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (
-          conv_scope + delim + 'conv_quant/delayed_quant/Switch_1'
-          if delay else scope + 'Add')
+          conv_scope + delim +
+          'conv_quant/delayed_quant/Switch_1' if delay else scope + 'AddV2')
       self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
 
     act_quant = graph.get_operation_by_name(scope + 'act_quant/' +
@@ -485,7 +485,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self._AssertIdempotent(graph)
 
   def testQuantize_Conv2dWithBatchNorm(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       self._RunBatchNormTestOverParameters(
           self._TestQuantize_Conv2dWithBatchNorm)
 
@@ -528,7 +528,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -544,7 +544,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           use_resource)
 
   def testQuantize_FCWithBatchNorm(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       self._RunBatchNormTestOverParameters(self._TestQuantize_FCWithBatchNorm)
 
   def _TestQuantize_FCWithBatchNorm(self, activation, activation_op_name,
@@ -583,7 +583,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -600,7 +600,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         use_resource)
 
   def testQuantize_DepthwiseConv2dWithBatchNorm(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       self._RunBatchNormTestOverParameters(
           self._TestQuantize_DepthwiseConv2dWithBatchNorm)
 
@@ -643,7 +643,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -659,7 +659,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           with_bypass, delay, use_resource)
 
   def testQuantize_AtrousConvWithBatchNorm(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       self._RunBatchNormTestOverParameters(
           self._TestQuantize_AtrousConvWithBatchNorm)
 
@@ -703,7 +703,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -729,7 +729,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(graph_def_before, graph_def_after)
 
   def testBatchNormForcedUpdates(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       parameter_list = [
           # (activation, activation_op_name, fused_batch_norm)
           (nn_ops.relu6, 'Relu6', False),

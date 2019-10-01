@@ -18,6 +18,7 @@ limitations under the License.
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
@@ -25,11 +26,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "double-conversion/double-conversion.h"
-
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -225,7 +225,7 @@ bool safe_strto64(StringPiece str, int64* value) {
 
   int64 vlimit = kint64max;
   int sign = 1;
-  if (str_util::ConsumePrefix(&str, "-")) {
+  if (absl::ConsumePrefix(&str, "-")) {
     sign = -1;
     // Different limit for positive and negative integers.
     vlimit = kint64min;
@@ -287,7 +287,7 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   int64 vmax = kint32max;
   int sign = 1;
-  if (str_util::ConsumePrefix(&str, "-")) {
+  if (absl::ConsumePrefix(&str, "-")) {
     sign = -1;
     // Different max for positive and negative integers.
     ++vmax;

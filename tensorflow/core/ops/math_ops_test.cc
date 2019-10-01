@@ -110,28 +110,17 @@ TEST(MathOpsTest, Segment_ShapeFn) {
 }
 
 TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
-  for (const auto* op_name : {"Add",        "Complex",
-                              "Div",        "Equal",
-                              "Greater",    "GreaterEqual",
-                              "Igamma",     "Igammac",
-                              "Zeta",       "Polygamma",
-                              "Less",       "LessEqual",
-                              "LogicalAnd", "LogicalOr",
-                              "Maximum",    "Minimum",
-                              "Mod",        "Mul",
-                              "NotEqual",   "Pow",
-                              "Sub",        "SquaredDifference",
-                              "DivNoNan"}) {
-    ShapeInferenceTestOp op(op_name);
+  auto test_shapes = [&](ShapeInferenceTestOp& op,
+                         bool incompatible_shape_error) {
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[1,2];?", "?");
     INFER_OK(op, "?;[1,2]", "?");
 
     INFER_OK(op, "[?];[1]", "[d0_0]");
     INFER_OK(op, "[1];[?]", "[d1_0]");
-    INFER_OK(op, "[?];[2]", "[d1_0]");
-    INFER_OK(op, "[2];[?]", "[d0_0]");
-    INFER_OK(op, "[?];[?]", "[?]");
+    INFER_OK(op, "[?];[2]", incompatible_shape_error ? "[d1_0]" : "?");
+    INFER_OK(op, "[2];[?]", incompatible_shape_error ? "[d0_0]" : "?");
+    INFER_OK(op, "[?];[?]", incompatible_shape_error ? "[?]" : "?");
     INFER_OK(op, "[];[?]", "[d1_0]");
     INFER_OK(op, "[?];[]", "[d0_0]");
 
@@ -144,7 +133,7 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[1];[2]", "[d1_0]");
     INFER_OK(op, "[2];[1]", "[d0_0]");
     INFER_OK(op, "[2];[]", "[d0_0]");
-    INFER_OK(op, "[2];[?]", "[d0_0]");
+    INFER_OK(op, "[2];[?]", incompatible_shape_error ? "[d0_0]" : "?");
 
     INFER_OK(op, "[0];[0]", "[d0_0|d1_0]");
     INFER_OK(op, "[];[0]", "[d1_0]");
@@ -152,14 +141,46 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[0];[1]", "[d0_0]");
     INFER_OK(op, "[0];[]", "[d0_0]");
 
-    INFER_OK(op, "[2];[?,?]", "[d1_0,d0_0]");
-    INFER_OK(op, "[2,2];[?,?,?]", "[d1_0,d0_0,d0_1]");
+    INFER_OK(op, "[2];[?,?]", incompatible_shape_error ? "[d1_0,d0_0]" : "?");
+    INFER_OK(op, "[2,2];[?,?,?]",
+             incompatible_shape_error ? "[d1_0,d0_0,d0_1]" : "?");
 
     // Multiple dimension cases (same test cases, switching x and y).
     INFER_OK(op, "[?,1,2,3,4,5];[3,1,?]",
-             "[d0_0,d0_1,d0_2,d0_3|d1_0,d0_4,d0_5]");
+             incompatible_shape_error ? "[d0_0,d0_1,d0_2,d0_3|d1_0,d0_4,d0_5]"
+                                      : "?");
     INFER_OK(op, "[3,1,?];[?,1,2,3,4,5]",
-             "[d1_0,d1_1,d1_2,d1_3|d0_0,d1_4,d1_5]");
+             incompatible_shape_error ? "[d1_0,d1_1,d1_2,d1_3|d0_0,d1_4,d1_5]"
+                                      : "?");
+
+    if (incompatible_shape_error) {
+      INFER_ERROR("Dimensions must be equal", op, "[2];[3]");
+    } else {
+      INFER_OK(op, "[2];[3]", "[]");
+    }
+  };
+
+  for (string op_name : {"Add",        "Complex",
+                         "Div",        "Equal",
+                         "Greater",    "GreaterEqual",
+                         "Igamma",     "Igammac",
+                         "Zeta",       "Polygamma",
+                         "Less",       "LessEqual",
+                         "LogicalAnd", "LogicalOr",
+                         "Maximum",    "Minimum",
+                         "Mod",        "Mul",
+                         "NotEqual",   "Pow",
+                         "Sub",        "SquaredDifference",
+                         "DivNoNan"}) {
+    ShapeInferenceTestOp op(op_name);
+    AddNodeAttr("incompatible_shape_error", true, &op.node_def);
+    test_shapes(op, true);
+
+    if ((op_name == "Equal") || (op_name == "NotEqual")) {
+      ShapeInferenceTestOp op(op_name);
+      AddNodeAttr("incompatible_shape_error", false, &op.node_def);
+      test_shapes(op, false);
+    }
   }
 }
 
@@ -244,21 +265,20 @@ TEST(MathOpsTest, Select_ShapeFn) {
 
   // Expect an error when the shapes can't be merged.
   handle_data[2]->at(0).first = shape_proto({2, 2});
-  EXPECT_TRUE(str_util::StrContains(run_inference_for_handles().error_message(),
-                                    "must be equal, but are 1 and 2"));
+  EXPECT_TRUE(absl::StrContains(run_inference_for_handles().error_message(),
+                                "must be equal, but are 1 and 2"));
   handle_data[2]->at(0).first = i1;  // restore to valid
 
   // Expect an error when the types can't be merged.
   handle_data[2]->at(1).second = DT_INT64;
-  EXPECT_TRUE(str_util::StrContains(run_inference_for_handles().error_message(),
-                                    "pointing to different dtypes"));
+  EXPECT_TRUE(absl::StrContains(run_inference_for_handles().error_message(),
+                                "pointing to different dtypes"));
   handle_data[2]->at(1).second = DT_INT32;  // restore to valid
 
   // Expect an error when different numbers of tensors are merged.
   handle_data[2]->push_back({i1, DT_FLOAT});
-  EXPECT_TRUE(
-      str_util::StrContains(run_inference_for_handles().error_message(),
-                            "pointing to different numbers of tensors"));
+  EXPECT_TRUE(absl::StrContains(run_inference_for_handles().error_message(),
+                                "pointing to different numbers of tensors"));
   handle_data[2]->pop_back();  // restore to valid.
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -57,7 +58,7 @@ class ValidateOpDefTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
     if (!status.ok()) {
       LOG(INFO) << "message: " << status;
-      EXPECT_TRUE(str_util::StrContains(status.ToString(), message))
+      EXPECT_TRUE(absl::StrContains(status.ToString(), message))
           << "Actual: " << status << "\nExpected to contain: " << message;
     }
   }

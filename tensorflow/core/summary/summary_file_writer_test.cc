@@ -60,7 +60,7 @@ class SummaryFileWriterTest : public ::testing::Test {
     TF_CHECK_OK(env_.GetChildren(testing::TmpDir(), &files));
     bool found = false;
     for (const string& f : files) {
-      if (str_util::StrContains(f, test_name)) {
+      if (absl::StrContains(f, test_name)) {
         if (found) {
           return errors::Unknown("Found more than one file for ", test_name);
         }
@@ -109,7 +109,7 @@ TEST_F(SummaryFileWriterTest, WriteTensor) {
       "string_tensor_test",
       [](SummaryWriterInterface* writer) {
         Tensor hello(DT_STRING, TensorShape({}));
-        hello.scalar<string>()() = "hello";
+        hello.scalar<tstring>()() = "hello";
         TF_RETURN_IF_ERROR(writer->WriteTensor(
             2, hello, "name", SummaryMetadata().SerializeAsString()));
         TF_RETURN_IF_ERROR(writer->Flush());

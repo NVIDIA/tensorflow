@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LIB_STRINGS_SCANNER_H_
 
 #include <string>
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace strings {
@@ -59,6 +60,7 @@ class Scanner {
     NON_ZERO_DIGIT,
     SPACE,
     UPPERLETTER,
+    RANGLE,
   };
 
   explicit Scanner(StringPiece source) : cur_(source) { RestartCapture(); }
@@ -222,6 +224,8 @@ class Scanner {
         return IsSpace(ch);
       case UPPERLETTER:
         return ch >= 'A' && ch <= 'Z';
+      case RANGLE:
+        return ch == '>';
     }
     return false;
   }

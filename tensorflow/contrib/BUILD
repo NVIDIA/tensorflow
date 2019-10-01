@@ -1,13 +1,13 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
 load("//third_party/mpi:mpi.bzl", "if_mpi")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "contrib_py",
@@ -42,7 +42,6 @@ py_library(
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hadoop",

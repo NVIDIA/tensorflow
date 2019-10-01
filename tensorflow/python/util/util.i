@@ -34,6 +34,12 @@ limitations under the License.
 %unignore tensorflow::swig::IsTensor;
 %noexception tensorflow::swig::IsTensor;
 
+%unignore tensorflow::swig::IsResourceVariable;
+%noexception tensorflow::swig::IsResourceVariable;
+
+%unignore tensorflow::swig::IsVariable;
+%noexception tensorflow::swig::IsVariable;
+
 %feature("docstring") tensorflow::swig::IsSequence
 """Returns true if its input is a collections.Sequence (except strings).
 
@@ -55,7 +61,7 @@ Args:
 
 Returns:
   True if the sequence is a not a string and is a collections.Sequence or a
-  dict or a CompositeTensor.
+  dict or a CompositeTensor or a TypeSpec (except string and TensorSpec).
 """
 %unignore tensorflow::swig::IsSequenceOrComposite;
 %noexception tensorflow::swig::IsSequenceOrComposite;
@@ -72,6 +78,18 @@ Returns:
 %unignore tensorflow::swig::IsCompositeTensor;
 %noexception tensorflow::swig::IsCompositeTensor;
 
+%feature("docstring") tensorflow::swig::IsTypeSpec
+"""Returns true if its input is a `TypeSpec`, but is not a `TensorSpec`.
+
+Args:
+  seq: an input sequence.
+
+Returns:
+  True if the sequence is a `TypeSpec`, but is not a `TensorSpec`.
+"""
+%unignore tensorflow::swig::IsTypeSpec;
+%noexception tensorflow::swig::IsTypeSpec;
+
 %unignore tensorflow::swig::IsNamedtuple;
 %noexception tensorflow::swig::IsNamedtuple;
 
@@ -86,6 +104,18 @@ Returns:
 """
 %unignore tensorflow::swig::IsMapping;
 %noexception tensorflow::swig::IsMapping;
+
+%feature("docstring") tensorflow::swig::IsMappingView
+"""Returns True iff `instance` is a `collections.MappingView`.
+
+Args:
+  instance: An instance of a Python object.
+
+Returns:
+  True if `instance` is a `collections.MappingView`.
+"""
+%unignore tensorflow::swig::IsMappingView;
+%noexception tensorflow::swig::IsMappingView;
 
 %feature("docstring") tensorflow::swig::IsAttrs
 """Returns True iff `instance` is an instance of an `attr.s` decorated class.

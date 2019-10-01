@@ -19,8 +19,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_USE_CUDNN_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
@@ -41,7 +39,6 @@ FP16ConvMode CudnnConvComputeMode();
 bool DebugCudnnRnn();
 bool DebugCudnnRnnUseTensorOps();
 int64 DebugCudnnRnnAlgo();
-bool CanUseNHWC(TensorFormat data_format, DataType type, size_t cudnn_ver);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_USE_CUDNN_H_

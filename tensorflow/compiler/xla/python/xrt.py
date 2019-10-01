@@ -61,11 +61,20 @@ class XrtBackend(xla_client.Backend):
   def device_count(self):
     return self.context.DeviceCount()
 
+  def local_device_count(self):
+    raise NotImplementedError()
+
+  def devices(self):
+    raise NotImplementedError()
+
+  def host_id(self):
+    raise NotImplementedError()
+
   def buffer_from_pyval(self, pyval, device=0):
     return _xla.xrt.XrtBuffer.from_literal(self.context, device, pyval)
 
   def make_tuple(self, buffers, device_ordinal):
-    return _xla.xrt.XrtBuffer.make_tuple(self.context, buffers)
+    return _xla.xrt.XrtBuffer.make_tuple(self.context, buffers, device_ordinal)
 
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access

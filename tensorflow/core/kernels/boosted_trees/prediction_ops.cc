@@ -51,12 +51,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    BoostedTreesEnsembleResource* resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> resource;
     // Get the resource.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(resource);
 
     // Get the inputs.
     OpInputList bucketized_features_list;
@@ -198,12 +196,10 @@ class BoostedTreesPredictOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    BoostedTreesEnsembleResource* resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> resource;
     // Get the resource.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(resource);
 
     // Get the inputs.
     OpInputList bucketized_features_list;
@@ -302,12 +298,10 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    BoostedTreesEnsembleResource* resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> resource;
     // Get the resource.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(resource);
 
     // Get the inputs.
     OpInputList bucketized_features_list;
@@ -330,7 +324,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
         context, context->allocate_output("examples_debug_outputs_serialized",
                                           {batch_size}, &output_debug_info_t));
     // Will contain serialized protos, per example.
-    auto output_debug_info = output_debug_info_t->flat<string>();
+    auto output_debug_info = output_debug_info_t->flat<tstring>();
     const int32 last_tree = resource->num_trees() - 1;
 
     // For each given example, traverse through all trees keeping track of the

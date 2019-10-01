@@ -35,12 +35,20 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
 namespace {
 using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
+
+const char kPossibleNonVariableResourceHintMessage[] =
+    "If the error is similar to `Trying to access resource using the wrong "
+    "type`, this is likely because XLA only accepts Resource Variables as "
+    "inputs by snapshotting their values. Other TensorFlow resource types like "
+    "TensorList/TensorArray/Stack are not supported. Try removing non-variable "
+    "resource inputs to XLA.";
 }  // anonymous namespace
 
 VariableInfo::VariableInfo(int index, Var* var) : index_(index), var_(var) {}
@@ -86,8 +94,13 @@ static Status GetVariableInfosFromCtxInputs(
       variable_indices, std::back_inserter(resource_handles),
       [&](int variable_idx) { return &HandleFromInput(ctx, variable_idx); });
 
-  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables;
-  TF_RETURN_IF_ERROR(LookupResources(ctx, resource_handles, &variables));
+  std::vector<core::RefCountPtr<Var>> variables;
+
+  Status s = LookupResources(ctx, resource_handles, &variables);
+  if (!s.ok()) {
+    errors::AppendToMessage(&s, kPossibleNonVariableResourceHintMessage);
+    return s;
+  }
 
   result->clear();
   result->reserve(variable_indices.size());
@@ -164,32 +177,6 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
       (*result)[variable_indices[i]] = OptionalTensor();
     }
   }
-  return Status::OK();
-}
-
-XlaAllocator::XlaAllocator(const se::Platform* platform, Allocator* wrapped)
-    : se::DeviceMemoryAllocator(platform), wrapped_(wrapped) {}
-
-XlaAllocator::~XlaAllocator() {}
-
-xla::StatusOr<se::OwningDeviceMemory> XlaAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
-  AllocationAttributes attrs;
-  attrs.no_retry_on_failure = !retry_on_failure;
-  void* data = nullptr;
-  if (size != 0) {
-    data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
-    if (data == nullptr) {
-      return errors::ResourceExhausted(
-          "Out of memory while trying to allocate ", size, " bytes.");
-    }
-  }
-  return se::OwningDeviceMemory(se::DeviceMemoryBase(data, size),
-                                device_ordinal, this);
-}
-
-Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
-  wrapped_->DeallocateRaw(mem.opaque());
   return Status::OK();
 }
 

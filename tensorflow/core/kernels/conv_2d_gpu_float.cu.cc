@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -46,7 +46,6 @@ template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, float2,
 // For 2d ops.
 template struct TransformFilter<Eigen::GpuDevice, float, int, 4>;
 template struct ReverseTransformFilter<Eigen::GpuDevice, float, 4>;
-template struct ReverseTransformFilterV2<Eigen::GpuDevice, float, 4>;
 template struct NHWCToNCHW<Eigen::GpuDevice, float, 4>;
 template struct NCHWToNHWC<Eigen::GpuDevice, float, 4>;
 template struct PadInput<Eigen::GpuDevice, float, int, 4>;
@@ -54,7 +53,6 @@ template struct PadInput<Eigen::GpuDevice, float, int, 4>;
 // For 3d ops.
 template struct TransformFilter<Eigen::GpuDevice, float, int, 5>;
 template struct ReverseTransformFilter<Eigen::GpuDevice, float, 5>;
-template struct ReverseTransformFilterV2<Eigen::GpuDevice, float, 5>;
 template struct NHWCToNCHW<Eigen::GpuDevice, float, 5>;
 template struct NCHWToNHWC<Eigen::GpuDevice, float, 5>;
 template struct PadInput<Eigen::GpuDevice, float, int, 5>;
@@ -62,4 +60,4 @@ template struct PadInput<Eigen::GpuDevice, float, int, 5>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -202,7 +203,6 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
-  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [
@@ -213,8 +213,9 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesWithPredicateMatch(
-            ValueError, lambda e: "Dimensions must" in str(e)):
+        with self.assertRaisesRegexp(
+            (ValueError, errors.InvalidArgumentError),
+            "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))
 
 
@@ -1005,6 +1006,16 @@ class ComplexMakeRealImagTest(test.TestCase):
       self._compareMake(real, 12.0, use_gpu)
       self._compareMake(23.0, imag, use_gpu)
 
+  def testRealImagNumericType(self):
+    for use_gpu in [True, False]:
+      for value in [1., 1j, 1. + 1j]:
+        np_real, np_imag = np.real(value), np.imag(value)
+        with test_util.device(use_gpu=use_gpu):
+          tf_real = math_ops.real(value)
+          tf_imag = math_ops.imag(value)
+          self.assertAllEqual(np_real, self.evaluate(tf_real))
+          self.assertAllEqual(np_imag, self.evaluate(tf_imag))
+
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
     np_zeros = np_real * 0
@@ -1268,7 +1279,7 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 11, 14):
+    if not compat.forward_compatible(2019, 9, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

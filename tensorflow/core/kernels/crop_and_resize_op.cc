@@ -36,13 +36,18 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+using stream_executor::rocm::ScopedActivateExecutorContext;
+#endif
 
 namespace tensorflow {
 namespace {
@@ -762,7 +767,7 @@ TF_CALL_double(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declaration of the CheckValidBoxIndexHelper specialization for GPU.
 namespace functor {
@@ -872,6 +877,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

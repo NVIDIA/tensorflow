@@ -276,7 +276,7 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       self.assertEqual(graph_def_before, graph_def_after)
 
   def testIdentityNode(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       self._RunTestOverAllRewrites(self._TestIdentityNode)
 
   def _TestIdentityNode(self, rewrite_fn):
@@ -298,7 +298,7 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
                                 ['test/BatchNorm/FusedBatchNormV3'])
 
   def testActivationQuantization(self):
-    with compat.forward_compatibility_horizon(2019, 11, 11):
+    with compat.forward_compatibility_horizon(2019, 6, 7):
       self._RunTestOverAllRewrites(self._TestActivationQuantization)
 
   def _TestActivationQuantization(self, rewrite_fn):
@@ -318,9 +318,14 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
         mul_op, graph,
         ['test/Mul_1/activation_Mul_quant/FakeQuantWithMinMaxVars'])
     add_op = graph.get_operation_by_name('test/add')
-    self._AssertOutputGoesToOps(
-        add_op, graph,
-        ['test/add/activation_Add_quant/FakeQuantWithMinMaxVars'])
+    if compat.forward_compatible(2019, 6, 21):
+      self._AssertOutputGoesToOps(
+          add_op, graph,
+          ['test/add/activation_AddV2_quant/FakeQuantWithMinMaxVars'])
+    else:
+      self._AssertOutputGoesToOps(
+          add_op, graph,
+          ['test/add/activation_Add_quant/FakeQuantWithMinMaxVars'])
 
   def testRewriteWithScope(self):
     self._RunTestOverExperimentalRewritesWithScope(

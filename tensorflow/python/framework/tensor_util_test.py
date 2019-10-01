@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import sys
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -34,6 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TensorUtilTest(test.TestCase):
 
   def testFloat(self):
@@ -755,24 +757,6 @@ class TensorUtilTest(test.TestCase):
     self.assertFalse(tensor_util.ShapeEquals(t, [1, 4]))
     self.assertFalse(tensor_util.ShapeEquals(t, [4]))
 
-  @test_util.run_deprecated_v1
-  def testMockArray(self):
-
-    class MockArray(object):
-
-      def __init__(self, array):
-        self.array = array
-
-      def __array__(self, dtype=None):
-        return np.asarray(self.array, dtype)
-
-    with self.cached_session() as sess:
-      ma = MockArray(np.array([10, 20, 30]))
-      t = ops.convert_to_tensor(ma)
-      a = self.evaluate(t)
-      self.assertEquals(np.int64, a.dtype)
-      self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
-
 
 class IsTensorTest(test.TestCase):
 
@@ -1096,6 +1080,62 @@ class ConstantValueAsShapeTest(test.TestCase):
     with self.assertRaises(ValueError):
       tf_val = constant_op.constant([[10], [20], [30]])[:, 0:]
       c_val = tensor_util.constant_value_as_shape(tf_val)
+
+
+class MaybeSetStaticShapeTest(test.TestCase):
+
+  @contextlib.contextmanager
+  def disableSetStaticShape(self):
+    flag_old = tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE
+    tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = False
+    try:
+      yield
+    finally:
+      tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
+
+  @test_util.run_deprecated_v1
+  def testMaybeSetStaticShape(self):
+    shape = constant_op.constant([2, 5], dtype=dtypes.int32)
+
+    def reshape():
+      v = array_ops.zeros([10])
+      return array_ops.reshape(v, shape)
+
+    with self.disableSetStaticShape():
+      graph_without_shape_propagation = func_graph.func_graph_from_py_func(
+          "without_shape_propagation", reshape, [], {})
+    graph_with_shape_propagation = func_graph.func_graph_from_py_func(
+        "with_shape_propagation", reshape, [], {})
+    self.assertCountEqual(
+        [op.type for op in graph_without_shape_propagation.get_operations()],
+        [op.type for op in graph_with_shape_propagation.get_operations()])
+
+  @test_util.run_deprecated_v1
+  def testMaybeSetStaticShapeScalarShape(self):
+
+    def reshape():
+      v = array_ops.placeholder(dtypes.float32)
+      t = array_ops.reshape(v, [-1])
+      return t
+
+    with self.disableSetStaticShape():
+      graph_without_shape_propagation = func_graph.func_graph_from_py_func(
+          "without_shape_propagation", reshape, [], {})
+    graph_with_shape_propagation = func_graph.func_graph_from_py_func(
+        "with_shape_propagation", reshape, [], {})
+    self.assertCountEqual(
+        [op.type for op in graph_without_shape_propagation.get_operations()],
+        [op.type for op in graph_with_shape_propagation.get_operations()])
+
+
+class ShapeTensorTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConversion(self):
+    """Make sure fully known TensorShape objects convert to Tensors."""
+    shape = tensor_shape.TensorShape([1, tensor_shape.Dimension(2)])
+    shape_tensor = tensor_util.shape_tensor(shape)
+    self.assertAllEqual((1, 2), shape_tensor)
 
 
 if __name__ == "__main__":

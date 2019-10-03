@@ -1811,6 +1811,39 @@ port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
   }
   return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
+
+port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
+    Stream* stream, const CudnnHandle& cudnn,
+    const CudnnCtcLossDescriptor& ctc_loss_desc,
+    const CudnnRnnStateTensorDescriptor& probs_desc,
+    const CudnnRnnStateTensorDescriptor& grads_desc,
+    const absl::Span<const int32>& labels_data,
+    const absl::Span<const int32>& labels_lengths_data,
+    const absl::Span<const int32>& input_lengths_data,
+    ScratchAllocator* workspace_allocator) {
+  // Query the workspace size.
+  size_t workspace_size_in_bytes = 0;
+#if CUDNN_VERSION >= 7604
+  RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
+      /*handle=*/cudnn.handle(), /*probsDesc=*/probs_desc.handle(),
+      /*gradientsDesc=*/grads_desc.handle(),
+      /*labels=*/labels_data.data(),
+      /*labelLengths=*/labels_lengths_data.data(),
+      /*inputLengths=*/input_lengths_data.data(),
+      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*ctcLossDesc=*/ctc_loss_desc.handle(),
+      /*sizeInBytes=*/&workspace_size_in_bytes));
+#else
+      return port::Status(port::error::INVALID_ARGUMENT,
+                          "No supported cudnnGetCTCLossWorkspaceSize when "
+                          "CUDNN_VERSION < 7.6.3");
+#endif
+  // Allocate the workspace.
+  if (workspace_size_in_bytes == 0) {
+    return DeviceMemory<uint8>();
+  }
+  return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
+}
 #endif
 
 }  // namespace

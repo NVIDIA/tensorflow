@@ -319,6 +319,29 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "astunparse_archive",
+        build_file = clean_dep("//third_party:astunparse.BUILD"),
+        sha256 = "5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872",
+        strip_prefix = "astunparse-1.6.3/lib",
+        system_build_file = clean_dep("//third_party/systemlibs:astunparse.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/files.pythonhosted.org/packages/f3/af/4182184d3c338792894f34a62672919db7ca008c89abee9b564dd34d8029/astunparse-1.6.3.tar.gz",
+            "https://files.pythonhosted.org/packages/f3/af/4182184d3c338792894f34a62672919db7ca008c89abee9b564dd34d8029/astunparse-1.6.3.tar.gz",
+        ],
+    )
+
+    filegroup_external(
+        name = "astunparse_license",
+        licenses = ["notice"],  # PSFL
+        sha256_urls = {
+            "92fc0e4f4fa9460558eedf3412b988d433a2dcbb3a9c45402a145a4fab8a6ac6": [
+                "http://mirror.tensorflow.org/raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
+                "https://raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
+            ],
+        },
+    )
+
+    tf_http_archive(
         name = "functools32_archive",
         build_file = clean_dep("//third_party:functools32.BUILD"),
         sha256 = "f6253dfbe0538ad2e387bd8fdfd9293c925d63553f5813c4e587745416501e6d",
@@ -332,12 +355,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "gast_archive",
         build_file = clean_dep("//third_party:gast.BUILD"),
-        sha256 = "fe939df4583692f0512161ec1c880e0a10e71e6a232da045ab8edd3756fbadf0",
-        strip_prefix = "gast-0.2.2",
+        sha256 = "b881ef288a49aa81440d2c5eb8aeefd4c2bb8993d5f50edae7413a85bfdb3b57",
+        strip_prefix = "gast-0.3.3",
         system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/4e/35/11749bf99b2d4e3cceb4d55ca22590b0d7c2c62b9de38ac4a4a7f4687421/gast-0.2.2.tar.gz",
-            "https://files.pythonhosted.org/packages/4e/35/11749bf99b2d4e3cceb4d55ca22590b0d7c2c62b9de38ac4a4a7f4687421/gast-0.2.2.tar.gz",
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
+            "https://files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
         ],
     )
 
@@ -367,8 +390,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "3d0f39e0920379ff1393de04b573bca3484d82a5f8b939e9e83b20b6106c9bbe",
-        strip_prefix = "abseil-py-pypi-v0.7.1",
+        sha256 = "603febc9b95a8f2979a7bdb77d2f5e4d9b30d4e0d59579f88eba67d4e4cc5462",
+        strip_prefix = "abseil-py-pypi-v0.9.0",
         system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
@@ -376,8 +399,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.7.1.tar.gz",
-            "https://github.com/abseil/abseil-py/archive/pypi-v0.7.1.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.9.0.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.9.0.tar.gz",
         ],
     )
 

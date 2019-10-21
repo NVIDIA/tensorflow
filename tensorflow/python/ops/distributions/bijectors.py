@@ -12,20 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Core module for TensorFlow distribution bijectors."""
+"""Module with basic entity definitions for testing."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import with_statement  # An extra future import for testing.
 
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import,unused-import
-from tensorflow.python.ops.distributions.bijector import Bijector
-from tensorflow.python.ops.distributions.identity_bijector import Identity
+def simple_function(x):
+  """Docstring."""
+  return x  # comment
 
-# pylint: enable=wildcard-import,unused-import
-from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ["Bijector", "Identity"]
+def nested_functions(x):
+  """Docstring."""
 
-remove_undocumented(__name__, _allowed_symbols)
+  def inner_fn(y):
+    return y
+
+  return inner_fn(x)
+
+
+def function_with_print():
+  print('foo')
+
+
+simple_lambda = lambda: None
+
+
+class SimpleClass(object):
+
+  def simple_method(self):
+    return self
+
+  def method_with_print(self):
+    print('foo')
+
+
+def function_with_multiline_call(x):
+  """Docstring."""
+  return range(
+      x,
+      x + 1,
+  )
+
+
+def basic_decorator(f):
+  return f
+
+
+@basic_decorator
+@basic_decorator
+def decorated_function(x):
+  if x > 0:
+    return 1
+  return 2

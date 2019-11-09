@@ -57,6 +57,20 @@ string CanonicalPlatformName(const string& name) {
   return platform_str;
 }
 
+StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
+  return se::MultiPlatformManager::PlatformsWithFilter(
+      [](const se::Platform* platform) {
+        auto compiler_status = Compiler::GetForPlatform(platform);
+        bool supported = compiler_status.ok();
+        if (!supported) {
+          LOG(INFO) << "platform " << platform->Name() << " present but no "
+                    << "XLA compiler available: "
+                    << compiler_status.status().error_message();
+        }
+        return supported;
+      });
+}
+
 }  // namespace
 
 /* static */ StatusOr<std::vector<se::Platform*>>

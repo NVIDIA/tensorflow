@@ -83,7 +83,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     double cpu_freq = 0.0;
     int retval = 0;
     double freq_factor = 2.0;
-#if (defined(__powerpc__) ||                                             \
+#if (defined(__powerpc__) || \
      defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
     retval = sscanf(line.c_str(), "clock              : %lfMHz", &cpu_freq);
     freq_factor = 1.0;
@@ -102,8 +102,9 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
       return freq_n;
     }
   }
-  LOG(WARNING) << "Failed to find bogomips or clock in /proc/cpuinfo; cannot determine "
-                  "CPU frequency";
+  LOG(WARNING)
+      << "Failed to find bogomips or clock in /proc/cpuinfo; cannot determine "
+         "CPU frequency";
   return INVALID_FREQUENCY;
 #elif defined(__APPLE__)
   int64 freq_hz;

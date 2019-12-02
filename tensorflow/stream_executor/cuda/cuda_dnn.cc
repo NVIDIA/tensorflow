@@ -126,18 +126,7 @@ string ToString(cudnnStatus_t status) {
                           ">");
   }
 }
-#if CUDNN_VERSION >= 7402
-cudnnBatchNormOps_t GetBNOps(bool side_input,
-                             dnn::ActivationMode activation_mode) {
-  if (!side_input) {
-    return activation_mode == dnn::ActivationMode::kNone
-               ? CUDNN_BATCHNORM_OPS_BN
-               : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
-  } else {
-    return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
-  }
-}
-#endif
+
 // RAII wrapper for all calls to cuDNN with a cuDNN handle argument.
 //
 // See CudnnAccess::GetHandle() for details.
@@ -718,7 +707,7 @@ class CudnnConvolutionDescriptor {
     this->set_use_tensor_op_math(true);
 
 #if CUDNN_MAJOR >= 7
-    VLOG(3) << "Requesting grouped convolution: "
+    VLOG(2) << "Requesting grouped convolution: "
             << convolution_descriptor.group_count();
     CHECK_CUDNN_OK(cudnnSetConvolutionGroupCount(
         handle_.get(), convolution_descriptor.group_count()));
@@ -1017,8 +1006,12 @@ class CudnnRnnParamsDescriptor {
 
   cudnnFilterDescriptor_t handle() const { return handle_.get(); }
   int64 params_size_in_bytes() const { return params_size_in_bytes_; }
-  ParamsRegions params_weights() const { return weights_; }
-  ParamsRegions params_biases() const { return biases_; }
+  ParamsRegions params_weights() const {
+    return weights_;
+  }
+  ParamsRegions params_biases() const {
+    return biases_;
+  }
 
  private:
   FilterDescriptor handle_;
@@ -1516,7 +1509,9 @@ class CudnnRnnSequenceTensorDescriptor
 #endif
   }
 
-  const cudnnTensorDescriptor_t* handles() const { return handles_.data(); }
+  const cudnnTensorDescriptor_t* handles() const {
+    return handles_.data();
+  }
 #if CUDNN_VERSION >= 7201
   const cudnnRNNDataDescriptor_t data_handle() const {
     return rnn_data_handle_.get();
@@ -1689,26 +1684,13 @@ port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
 }
 
 #if CUDNN_VERSION >= 7402
-port::StatusOr<size_t> GetBatchNormalizationReserveSpaceSizeInternal(
-    const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
-    const cudnnBatchNormOps_t& bn_ops,
-    const cudnnActivationDescriptor_t& activation_desc,
-    const CudnnTensorDescriptor& x_descriptor) {
-  size_t reserve_space_size_in_bytes = 0;
-  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
-      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-      /*activationDesc=*/activation_desc,
-      /*xDesc=*/x_descriptor.handle(),
-      /*sizeInBytes=*/&reserve_space_size_in_bytes));
-  return reserve_space_size_in_bytes;
-}
-
-port::StatusOr<size_t> GetBatchNormForwardWorkspaceSizeInternal(
-    const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
+    Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
     const cudnnActivationDescriptor_t& activation_desc,
     const CudnnTensorDescriptor& x_descriptor,
-    const CudnnTensorDescriptor& scale_offset_descriptor) {
+    const CudnnTensorDescriptor& scale_offset_descriptor,
+    ScratchAllocator* workspace_allocator) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
   RETURN_IF_CUDNN_ERROR(
@@ -1719,40 +1701,6 @@ port::StatusOr<size_t> GetBatchNormForwardWorkspaceSizeInternal(
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
           /*activationDesc=*/activation_desc,
           /*sizeInBytes=*/&workspace_size_in_bytes));
-  return workspace_size_in_bytes;
-}
-
-port::StatusOr<size_t> GetBatchNormBackwardWorkspaceSizeInternal(
-    const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
-    const cudnnBatchNormOps_t& bn_ops,
-    const CudnnTensorDescriptor& x_descriptor,
-    const CudnnTensorDescriptor& scale_offset_descriptor) {
-  // Query the workspace size.
-  size_t workspace_size_in_bytes = 0;
-  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationBackwardExWorkspaceSize(
-      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-      /*xDesc=*/x_descriptor.handle(),
-      /*yDesc=*/x_descriptor.handle(),
-      /*dyDesc=*/x_descriptor.handle(),
-      /*dzDesc=*/nullptr,
-      /*dxDesc=*/x_descriptor.handle(),
-      /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
-      /*activationDesc=*/nullptr, /*sizeInBytes=*/&workspace_size_in_bytes));
-  return workspace_size_in_bytes;
-}
-
-port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
-    Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
-    const cudnnBatchNormOps_t& bn_ops,
-    const cudnnActivationDescriptor_t& activation_desc,
-    const CudnnTensorDescriptor& x_descriptor,
-    const CudnnTensorDescriptor& scale_offset_descriptor,
-    ScratchAllocator* workspace_allocator) {
-  size_t workspace_size_in_bytes;
-  SE_ASSIGN_OR_RETURN(workspace_size_in_bytes,
-                      GetBatchNormForwardWorkspaceSizeInternal(
-                          cudnn, mode, bn_ops, activation_desc, x_descriptor,
-                          scale_offset_descriptor));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -1768,43 +1716,15 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
     ScratchAllocator* workspace_allocator) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
-  SE_ASSIGN_OR_RETURN(
-      workspace_size_in_bytes,
-      GetBatchNormBackwardWorkspaceSizeInternal(
-          cudnn, mode, bn_ops, x_descriptor, scale_offset_descriptor));
-  // Allocate the workspace.
-  if (workspace_size_in_bytes == 0) {
-    return DeviceMemory<uint8>();
-  }
-  return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-}
-
-port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
-    Stream* stream, const CudnnHandle& cudnn,
-    const CudnnCtcLossDescriptor& ctc_loss_desc,
-    const CudnnRnnStateTensorDescriptor& probs_desc,
-    const CudnnRnnStateTensorDescriptor& grads_desc,
-    const absl::Span<const int32>& labels_data,
-    const absl::Span<const int32>& labels_lengths_data,
-    const absl::Span<const int32>& input_lengths_data,
-    ScratchAllocator* workspace_allocator) {
-  // Query the workspace size.
-  size_t workspace_size_in_bytes = 0;
-#if CUDNN_VERSION >= 7604
-  RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
-      /*handle=*/cudnn.handle(), /*probsDesc=*/probs_desc.handle(),
-      /*gradientsDesc=*/grads_desc.handle(),
-      /*labels=*/labels_data.data(),
-      /*labelLengths=*/labels_lengths_data.data(),
-      /*inputLengths=*/input_lengths_data.data(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
-      /*ctcLossDesc=*/ctc_loss_desc.handle(),
-      /*sizeInBytes=*/&workspace_size_in_bytes));
-#else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnGetCTCLossWorkspaceSize when "
-                          "CUDNN_VERSION < 7.6.3");
-#endif
+  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationBackwardExWorkspaceSize(
+      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+      /*xDesc=*/x_descriptor.handle(),
+      /*yDesc=*/x_descriptor.handle(),
+      /*dyDesc=*/x_descriptor.handle(),
+      /*dzDesc=*/nullptr,
+      /*dxDesc=*/x_descriptor.handle(),
+      /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
+      /*activationDesc=*/nullptr, /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -2559,29 +2479,6 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
     const CudnnFilterDescriptor& filter, const CudnnConvolutionDescriptor& conv,
     const CudnnTensorDescriptor& output_nd, bool specify_workspace_limit,
     size_t memory_limit_bytes) {
-#if CUDNN_VERSION >= 8000
-  const int num_requested_algos = 5;
-  int num_returned_algos = 0;
-  cudnnConvolutionFwdAlgoPerf_t perf_results[num_requested_algos];
-
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
-      cudnn.handle(), input_nd.handle(), filter.handle(), conv.handle(),
-      output_nd.handle(), num_requested_algos, &num_returned_algos,
-      perf_results));
-
-  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
-  for (int r=0; r<num_returned_algos; r++) {
-    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
-        perf_results[r].algo != CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-        perf_results[r].memory <= mem_limit) {
-      return perf_results[r].algo;
-    }
-  }
-  return port::Status(
-      port::error::INTERNAL,
-      "cudnnGetConvolutionForwardAlgorithm_v7 returned "
-      "no suitable algorithms. This could be a cudnn bug.");
-#else
   cudnnConvolutionFwdPreference_t preference =
       specify_workspace_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
                               : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
@@ -2590,7 +2487,6 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
       cudnn.handle(), input_nd.handle(), filter.handle(), conv.handle(),
       output_nd.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
-#endif
 }
 
 port::StatusOr<cudnnConvolutionBwdDataAlgo_t>
@@ -2601,29 +2497,6 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
                                     const CudnnTensorDescriptor& output_nd,
                                     bool specify_workspace_limit,
                                     size_t memory_limit_bytes) {
-#if CUDNN_VERSION >= 8000
-  const int num_requested_algos = 5;
-  int num_returned_algos = 0;
-  cudnnConvolutionBwdDataAlgoPerf_t perf_results[num_requested_algos];
-  
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(
-      cudnn.handle(), filter.handle(), output_nd.handle(), conv.handle(),
-      input_nd.handle(), num_requested_algos, &num_returned_algos,
-      perf_results));
-
-  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
-  for (int r=0; r<num_returned_algos; r++) {
-    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
-        perf_results[r].algo != CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED &&
-        perf_results[r].memory <= mem_limit) {
-      return perf_results[r].algo;
-    }
-  }
-  return port::Status(
-      port::error::INTERNAL,
-      "cudnnGetConvolutionBackwardDataAlgorithm_v7 returned "
-      "no suitable algorithms. This could be a cudnn bug.");
-#else
   cudnnConvolutionBwdDataPreference_t preference =
       specify_workspace_limit
           ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
@@ -2633,7 +2506,6 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
       cudnn.handle(), filter.handle(), output_nd.handle(), conv.handle(),
       input_nd.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
-#endif
 }
 
 port::StatusOr<cudnnConvolutionBwdFilterAlgo_t>
@@ -2644,28 +2516,6 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
                                       const CudnnTensorDescriptor& output_nd,
                                       bool specify_workspace_limit,
                                       size_t memory_limit_bytes) {
-#if CUDNN_VERSION >= 8000
-  const int num_requested_algos = 5;
-  int num_returned_algos = 0;
-  cudnnConvolutionBwdFilterAlgoPerf_t perf_results[num_requested_algos];
-
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(
-      cudnn.handle(), input_nd.handle(), output_nd.handle(), conv.handle(),
-      filter.handle(), num_requested_algos, &num_returned_algos, perf_results));
-
-  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
-  for (int r=0; r<num_returned_algos; r++) {
-    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
-        perf_results[r].algo != CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED &&
-        perf_results[r].memory <= mem_limit) {
-      return perf_results[r].algo;
-    }
-  }
-  return port::Status(
-      port::error::INTERNAL,
-      "cudnnGetConvolutionBackwardFilterAlgorithm_v7 returned "
-      "no suitable algorithms. This could be a cudnn bug.");
-#else
   cudnnConvolutionBwdFilterPreference_t preference =
       specify_workspace_limit
           ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
@@ -2675,7 +2525,6 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
       cudnn.handle(), input_nd.handle(), output_nd.handle(), conv.handle(),
       filter.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
-#endif
 }
 
 port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
@@ -3558,14 +3407,14 @@ bool CudnnSupport::GetConvolveAlgorithms(
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-      // clang-format off
+    // clang-format off
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT,
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
-      // clang-format on
+    // clang-format on
   };
   if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
@@ -3676,149 +3525,6 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   return true;
 }
 
-// This function used to query reserve space size in bytes. This function can be
-// called via stream executor during compilation. Note one use case for this is
-// when the reserve space gets queried by the tf2xla bridge.
-bool CudnnSupport::GetBatchNormalizationReserveSpaceSize(
-    Stream* stream, dnn::DataType input_data_type,
-    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
-    dnn::ActivationMode mode, bool apply_side_input) {
-  return IsStatusOk(GetBatchNormalizationReserveSpaceSizeImpl(
-                        stream, input_data_type, x_desc, reserve_size_in_bytes,
-                        mode, apply_side_input),
-                    /*report error*/ true);
-}
-
-port::Status CudnnSupport::GetBatchNormalizationReserveSpaceSizeImpl(
-    Stream* stream, dnn::DataType input_data_type,
-    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
-    dnn::ActivationMode activation_mode, bool apply_side_input) {
-  cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
-#if CUDNN_VERSION >= 7000
-  if (BatchnormSpatialPersistentEnabled()) {
-    mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
-  }
-#endif
-#if CUDNN_VERSION >= 7402
-  CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  const cudnnBatchNormOps_t bn_ops =
-      GetBNOps(apply_side_input, activation_mode);
-  CudnnActivationDescriptor activation_desc(
-      activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
-  SE_ASSIGN_OR_RETURN(
-      *reserve_size_in_bytes,
-      GetBatchNormalizationReserveSpaceSizeInternal(
-          cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor));
-#endif
-  return port::Status::OK();
-}
-
-// This function used to query workspace (scratch space) size in bytes. One of
-// the use of this function during the compilation process is when it gets
-// called via the stream executor from cudnn_conv_rewriter.
-bool CudnnSupport::GetBatchNormalizationWorkspaceSize(
-    Stream* stream, dnn::DataType input_data_type,
-    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
-    const dnn::BatchDescriptor& scale_offset_desc,
-    size_t* workspace_size_in_bytes,
-    stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
-    bool apply_side_input) {
-  return IsStatusOk(
-      GetBatchNormalizationWorkspaceSizeImpl(
-          stream, input_data_type, scale_data_type, x_desc, scale_offset_desc,
-          workspace_size_in_bytes, kind, mode, apply_side_input),
-      /*report error*/ true);
-}
-
-port::Status CudnnSupport::GetBatchNormalizationWorkspaceSizeImpl(
-    Stream* stream, dnn::DataType input_data_type,
-    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
-    const dnn::BatchDescriptor& scale_offset_desc,
-    size_t* workspace_size_in_bytes,
-    stream_executor::BatchNormalizationKind kind,
-    dnn::ActivationMode activation_mode, bool apply_side_input) {
-  cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
-#if CUDNN_VERSION >= 7000
-  if (BatchnormSpatialPersistentEnabled()) {
-    mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
-  }
-#endif
-#if CUDNN_VERSION >= 7402
-  CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
-  CudnnTensorDescriptor scale_offset_descriptor(
-      scale_offset_desc, ToCudnnDataType(scale_data_type));
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  const cudnnBatchNormOps_t bn_ops =
-      GetBNOps(apply_side_input, activation_mode);
-  CudnnActivationDescriptor activation_desc(
-      activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
-  switch (kind) {
-    case stream_executor::BatchNormalizationKind::kBatchnormForward: {
-      SE_ASSIGN_OR_RETURN(*workspace_size_in_bytes,
-                          GetBatchNormForwardWorkspaceSizeInternal(
-                              cudnn, mode, bn_ops, activation_desc.handle(),
-                              x_descriptor, scale_offset_descriptor));
-      break;
-    }
-    case stream_executor::BatchNormalizationKind::kBatchnormBackward: {
-      SE_ASSIGN_OR_RETURN(
-          *workspace_size_in_bytes,
-          GetBatchNormBackwardWorkspaceSizeInternal(
-              cudnn, mode, bn_ops, x_descriptor, scale_offset_descriptor));
-      break;
-    }
-    default:
-      return port::InternalError(
-          absl::StrCat("Unexpected batchnorm kind ", static_cast<int>(kind)));
-  }
-#endif
-  return port::Status::OK();
-}
-
-bool CudnnSupport::DoSoftmax(
-    Stream* stream, const DeviceMemory<float>& x,
-    const dnn::BatchDescriptor& x_desc, bool log,
-    DeviceMemory<float>* y)
-{
-  return IsStatusOk(
-      DoSoftmaxImpl<float>(
-          stream, dnn::DataType::kFloat, x, x_desc, log, y),
-      /*report_error=*/true);
-}
-
-bool CudnnSupport::DoSoftmax(
-    Stream* stream, const DeviceMemory<Eigen::half>& x,
-    const dnn::BatchDescriptor& x_desc, bool log,
-    DeviceMemory<Eigen::half>* y)
-{
-  return IsStatusOk(
-      DoSoftmaxImpl<Eigen::half>(
-          stream, dnn::DataType::kHalf, x, x_desc, log, y),
-      /*report_error=*/true);
-}
-
-template <class T>
-port::Status CudnnSupport::DoSoftmaxImpl(
-    Stream* stream, dnn::DataType input_data_type,
-    const DeviceMemory<T>& x, const dnn::BatchDescriptor& x_desc,
-    bool log, DeviceMemory<T>* y)
-{
-  CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
-  cudnnSoftmaxMode_t mode = CUDNN_SOFTMAX_MODE_CHANNEL;
-  cudnnSoftmaxAlgorithm_t algo = log ? CUDNN_SOFTMAX_LOG : CUDNN_SOFTMAX_ACCURATE;
-  float one = 1.0;
-  float zero = 0.0;
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  RETURN_IF_CUDNN_ERROR(cudnnSoftmaxForward(
-      cudnn.handle(), algo, mode, &one, x_descriptor.handle(), x.opaque(),
-      &zero, x_descriptor.handle(), y->opaque()));
-  return port::Status::OK();
-}
-
 bool CudnnSupport::DoBatchNormalizationForward(
     Stream* stream, const DeviceMemory<float>& x,
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
@@ -3826,19 +3532,21 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& estimated_variance,
     const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    std::function<const DeviceMemory<float>&()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<float, float>(
           stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale,
           offset, estimated_mean, estimated_variance, side_input, x_desc,
-          scale_offset_desc, epsilon, exponential_average_factor,
-          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator),
+          scale_offset_desc, epsilon, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3849,19 +3557,21 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& estimated_variance,
     const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    std::function<const DeviceMemory<float>&()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<Eigen::half, float>(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
           estimated_mean, estimated_variance, side_input, x_desc,
-          scale_offset_desc, epsilon, exponential_average_factor,
-          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator),
+          scale_offset_desc, epsilon, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3874,12 +3584,13 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& estimated_variance,
     const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    std::function<const DeviceMemory<U>&()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
   CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
   CudnnTensorDescriptor scale_offset_descriptor(
       scale_offset_desc, ToCudnnDataType(scale_data_type));
@@ -3897,29 +3608,39 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   DeviceMemory<uint8> reserve_space;
 
 #if CUDNN_VERSION >= 7402
-  const cudnnBatchNormOps_t bn_ops =
-      GetBNOps(!side_input.is_null(), activation_mode);
+  const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
+    if (side_input.is_null()) {
+      return activation_mode == dnn::ActivationMode::kNone
+                 ? CUDNN_BATCHNORM_OPS_BN
+                 : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
+    } else {
+      return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+    }
+  };
+  const cudnnBatchNormOps_t bn_ops = get_bn_ops();
+
   // We use Nan propagation to be consistent with CudnnSupport::DoActivate(...).
   CudnnActivationDescriptor activation_desc(
       activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
-  if (workspace_allocator != nullptr) {
+
+  if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(
         workspace,
         CreateBatchNormForwardWorkspace(
             stream, cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor,
-            scale_offset_descriptor, workspace_allocator));
+            scale_offset_descriptor, workspace_allocator))
+    if (is_training) {
+      size_t reserve_space_size_in_bytes = 0;
+      RETURN_IF_CUDNN_ERROR(
+          cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
+              /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+              /*activationDesc=*/activation_desc.handle(),
+              /*xDesc=*/x_descriptor.handle(),
+              /*sizeInBytes=*/&reserve_space_size_in_bytes));
+      SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
+                                             reserve_space_size_in_bytes));
+    }
   }
-  if (reserve_space_allocator != nullptr && is_training) {
-    size_t reserve_space_size_in_bytes = 0;
-    RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
-        /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-        /*activationDesc=*/activation_desc.handle(),
-        /*xDesc=*/x_descriptor.handle(),
-        /*sizeInBytes=*/&reserve_space_size_in_bytes));
-    SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
-                                           reserve_space_size_in_bytes));
-  }
-
 #endif
 
   auto check_no_side_input_or_activation = [&]() -> port::Status {
@@ -3953,15 +3674,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 
     bool called = false;
 #if CUDNN_VERSION >= 7402
-    if (reserve_space_allocator != nullptr || workspace_allocator != nullptr) {
+    if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
       called = true;
-      VLOG(2) << "Batchnorm Forward workspace ptr: " << workspace.opaque()
-              << " Size: " << workspace.size();
-      if (is_training) {
-        VLOG(2) << "Batchnorm Forward training reserve space ptr: "
-                << reserve_space.opaque() << " Size: " << reserve_space.size() << "\n";
-      }
-
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTrainingEx(
           /*handle=*/cudnn.handle(),
           /*mode=*/mode,
@@ -3977,7 +3691,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
           /*bnScale=*/scale.opaque(),
           /*bnBias=*/offset.opaque(),
-          /*exponentialAverageFactor=*/exponential_average_factor,
+          /*exponentialAverageFactor=*/1.0,
           /*resultRunningMean=*/batch_mean_opaque,
           /*resultRunningVariance=*/batch_var_opaque,
           /*epsilon=*/epsilon,
@@ -3995,8 +3709,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
           cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
           x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
-          scale.opaque(), offset.opaque(), exponential_average_factor,
-          batch_mean_opaque, batch_var_opaque, epsilon, saved_mean->opaque(),
+          scale.opaque(), offset.opaque(), 1.0, batch_mean_opaque,
+          batch_var_opaque, epsilon, saved_mean->opaque(),
           saved_inv_var->opaque()));
     }
   } else {
@@ -4074,23 +3788,13 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 
   bool called = false;
 #if CUDNN_VERSION >= 7402
-  if (reserve_space_data != nullptr || workspace_allocator != nullptr) {
+  if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
     called = true;
     const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
-    DeviceMemory<uint8> workspace;
-    if (workspace_allocator != nullptr) {
-      SE_ASSIGN_OR_RETURN(workspace,
-                          CreateBatchNormBackwardWorkspace(
-                              stream, cudnn, mode, bn_ops, x_descriptor,
-                              scale_offset_descriptor, workspace_allocator))
-    }
-
-    VLOG(2) << "Batchnorm Backward workspace ptr: " << workspace.opaque()
-            << " Size: " << workspace.size();
-    VLOG(2) << "Batchnorm Backward reserve space ptr: "
-            << reserve_space_data->opaque()
-            << " Size: " << reserve_space_data->size();
-
+    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
+                        CreateBatchNormBackwardWorkspace(
+                            stream, cudnn, mode, bn_ops, x_descriptor,
+                            scale_offset_descriptor, workspace_allocator))
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackwardEx(
         /*handle=*/cudnn.handle(),
         /*mode=*/mode,

@@ -32,7 +32,8 @@ def _create_graph(input_graph=None,
                   symmetric=False,
                   quant_delay=None,
                   freeze_bn_delay=None,
-                  scope=None):
+                  scope=None,
+                  use_qdq=False):
   """Rewrites an input_graph in place for simulated quantization.
 
   The graph has fake quantization ops inserted to simulate the error
@@ -56,6 +57,8 @@ def _create_graph(input_graph=None,
       to the number of steps when training has almost converged
     scope: The scope to be transformed. If it's not None, only the ops which
       are in this scope will be transformed.
+    use_qdq: Use tf.quantize_and_dequantize_v3 op instead of fake_quant_with_min_max_vars
+      for quantization. The qdq op is used for scaling with no zero point.
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
@@ -82,10 +85,11 @@ def _create_graph(input_graph=None,
         weight_bits=weight_bits,
         activation_bits=activation_bits,
         symmetric=symmetric,
-        scope=scope)
+        scope=scope, 
+        use_qdq=use_qdq)
 
 
-def create_training_graph(input_graph=None, quant_delay=0, per_channel_wt=False, per_channel_act=False):
+def create_training_graph(input_graph=None, quant_delay=0, per_channel_wt=False, per_channel_act=False, use_qdq=False):
   """Rewrites a training input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -125,10 +129,11 @@ def create_training_graph(input_graph=None, quant_delay=0, per_channel_wt=False,
       per_channel_wt=per_channel_wt,
       per_channel_act=per_channel_act,
       quant_delay=quant_delay,
-      freeze_bn_delay=freeze_bn_delay)
+      freeze_bn_delay=freeze_bn_delay,
+      use_qdq=use_qdq)
 
 
-def create_eval_graph(input_graph=None, per_channel_wt=False, per_channel_act=False):
+def create_eval_graph(input_graph=None, per_channel_wt=False, per_channel_act=False, use_qdq=False):
   """Rewrites an eval input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -146,7 +151,7 @@ def create_eval_graph(input_graph=None, per_channel_wt=False, per_channel_act=Fa
     ValueError: If elements contains an element that isn't a tf.Tensor or
       tf.Operation.
   """
-  _create_graph(input_graph=input_graph, is_training=False, per_channel_wt=per_channel_wt, per_channel_act=per_channel_act)
+  _create_graph(input_graph=input_graph, is_training=False, per_channel_wt=per_channel_wt, per_channel_act=per_channel_act, use_qdq=use_qdq)
 
 
 def experimental_create_training_graph(input_graph=None,
@@ -157,7 +162,8 @@ def experimental_create_training_graph(input_graph=None,
                                        symmetric=False,
                                        quant_delay=0,
                                        freeze_bn_delay=None,
-                                       scope=None):
+                                       scope=None,
+                                       use_qdq=False):
   """Rewrites a training input_graph in place for simulated quantization.
 
   This function must be invoked prior to insertion of gradient ops in a graph
@@ -212,7 +218,8 @@ def experimental_create_training_graph(input_graph=None,
       symmetric=symmetric,
       quant_delay=quant_delay,
       freeze_bn_delay=freeze_bn_delay,
-      scope=scope)
+      scope=scope,
+      use_qdq=use_qdq)
 
 
 def experimental_create_eval_graph(input_graph=None,
@@ -222,7 +229,8 @@ def experimental_create_eval_graph(input_graph=None,
                                    activation_bits=8,
                                    symmetric=False,
                                    quant_delay=None,
-                                   scope=None):
+                                   scope=None,
+                                   use_qdq=False):
   """Rewrites an eval input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -260,7 +268,8 @@ def experimental_create_eval_graph(input_graph=None,
       activation_bits=activation_bits,
       symmetric=symmetric,
       quant_delay=quant_delay,
-      scope=scope)
+      scope=scope,
+      use_qdq=use_qdq)
 
 
 def _check_for_training_ops(g):

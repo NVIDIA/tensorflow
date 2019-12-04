@@ -25,6 +25,8 @@ from tensorflow.python.framework import ops
 
 def _create_graph(input_graph=None,
                   is_training=True,
+                  per_channel_wt=False,
+                  per_channel_act=False,
                   weight_bits=8,
                   activation_bits=8,
                   symmetric=False,
@@ -74,6 +76,8 @@ def _create_graph(input_graph=None,
     quantize.Quantize(
         input_graph,
         is_training,
+        per_channel_wt=per_channel_wt,
+        per_channel_act=per_channel_act,
         quant_delay=quant_delay,
         weight_bits=weight_bits,
         activation_bits=activation_bits,
@@ -81,7 +85,7 @@ def _create_graph(input_graph=None,
         scope=scope)
 
 
-def create_training_graph(input_graph=None, quant_delay=0):
+def create_training_graph(input_graph=None, quant_delay=0, per_channel_wt=False, per_channel_act=False):
   """Rewrites a training input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -118,11 +122,13 @@ def create_training_graph(input_graph=None, quant_delay=0):
   _create_graph(
       input_graph=input_graph,
       is_training=True,
+      per_channel_wt=per_channel_wt,
+      per_channel_act=per_channel_act,
       quant_delay=quant_delay,
       freeze_bn_delay=freeze_bn_delay)
 
 
-def create_eval_graph(input_graph=None):
+def create_eval_graph(input_graph=None, per_channel_wt=False, per_channel_act=False):
   """Rewrites an eval input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
@@ -140,10 +146,12 @@ def create_eval_graph(input_graph=None):
     ValueError: If elements contains an element that isn't a tf.Tensor or
       tf.Operation.
   """
-  _create_graph(input_graph=input_graph, is_training=False)
+  _create_graph(input_graph=input_graph, is_training=False, per_channel_wt=per_channel_wt, per_channel_act=per_channel_act)
 
 
 def experimental_create_training_graph(input_graph=None,
+                                       per_channel_wt=False,
+                                       per_channel_act=False,
                                        weight_bits=8,
                                        activation_bits=8,
                                        symmetric=False,
@@ -197,6 +205,8 @@ def experimental_create_training_graph(input_graph=None,
   _create_graph(
       input_graph=input_graph,
       is_training=True,
+      per_channel_wt=per_channel_wt,
+      per_channel_act=per_channel_act,
       weight_bits=weight_bits,
       activation_bits=activation_bits,
       symmetric=symmetric,
@@ -206,6 +216,8 @@ def experimental_create_training_graph(input_graph=None,
 
 
 def experimental_create_eval_graph(input_graph=None,
+                                   per_channel_wt=False,
+                                   per_channel_act=False,
                                    weight_bits=8,
                                    activation_bits=8,
                                    symmetric=False,
@@ -242,6 +254,8 @@ def experimental_create_eval_graph(input_graph=None,
   _create_graph(
       input_graph=input_graph,
       is_training=False,
+      per_channel_wt=per_channel_wt,
+      per_channel_act=per_channel_act,
       weight_bits=weight_bits,
       activation_bits=activation_bits,
       symmetric=symmetric,

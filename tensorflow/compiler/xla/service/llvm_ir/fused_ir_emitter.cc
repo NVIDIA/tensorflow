@@ -149,24 +149,60 @@ Status FusedIrEmitter::HandleGetTupleElement(
 }
 
 Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
+  std::unordered_map<llvm::Value*, std::vector<llvm::Value*> > buffer;
   indexed_generators_[parameter] =
-      [=](const IrArray::Index& index) -> llvm::Value* {
+      [=](const IrArray::Index& index) mutable -> llvm::Value* {
     int64 param_num = parameter->parameter_number();
-    if (param_shmem_buffers_.size() > param_num) {
-      if (llvm::Value* param_tile_buffer = param_shmem_buffers_[param_num]) {
-        // TODO(jlebar): Add AA metadata to this load.  Tile buffers are global
-        // variables, so LLVM's points-to analysis doesn't help us much.  And we
-        // want the AA info to be present before address spaces are inferred
-        // (which is pretty late in the pipeline), so even if we had
-        // address-space-based AA in LLVM, it wouldn't help us much here.
-        return b_->CreateLoad(
-            b_->CreateGEP(param_tile_buffer, {index.GetConstantWithIndexType(0),
-                                              thread_id_x_, thread_id_y_}),
-            "tiled_buffer");
+    if (vector_size_.count(parameter) == 0) {
+      CHECK_EQ(buffer.size(), 0);
+      if (param_shmem_buffers_.size() > param_num) {
+        if (llvm::Value* param_tile_buffer = param_shmem_buffers_[param_num]) {
+          // TODO(jlebar): Add AA metadata to this load.  Tile buffers are
+          // global variables, so LLVM's points-to analysis doesn't help us
+          // much.  And we want the AA info to be present before address spaces
+          // are inferred (which is pretty late in the pipeline), so even if we
+          // had address-space-based AA in LLVM, it wouldn't help us much here.
+          return b_->CreateLoad(
+              b_->CreateGEP(param_tile_buffer,
+                            {index.GetConstantWithIndexType(0), thread_id_x_,
+                             thread_id_y_}),
+              "tiled_buffer");
+        }
       }
+      return GetIrArrayForFusedParameter(param_num).EmitReadArrayElement(index,
+                                                                         b_);
+    } else {
+      CHECK(index.size() > 0);
+      CHECK(param_shmem_buffers_.size() <= param_num ||
+            !param_shmem_buffers_[param_num]);
+      // We match the pattern `add llvm::Value, cst`.  The first time
+      // the object x is found, cst must be 0.  That time, we load
+      // vector_size data in one instruction.  Then when `add
+      // llvm::Value, cst` is called again with the same object, we
+      // take the corresponding `cst` element in the vector.
+
+      auto* key_inst = llvm::dyn_cast<llvm::BinaryOperator>(
+          index.multidim()[index.size() - 1]);
+      CHECK(key_inst);
+      CHECK(key_inst->getOpcode() == llvm::Instruction::Add);
+
+      llvm::Value* index_base = key_inst->getOperand(0);
+      // Must be a constant AND is the index in the vector.
+      llvm::ConstantInt* index_vec = llvm::dyn_cast<llvm::ConstantInt>(
+          key_inst->getOperand(1));
+      CHECK(index_vec);
+      int vec_ind = index_vec->getZExtValue();
+      if (buffer.count(index_base) == 0) {
+        // The following check is probably not needed, but it isn't
+        // tested, so do not enable it for now.
+        CHECK_EQ(vec_ind, 0);
+        buffer[index_base] = GetIrArrayForFusedParameter(param_num)
+            .EmitReadConsecutiveArrayElement(index, b_, "", true,
+                                             vector_size_[parameter],
+                                             gen_vector_inst_);
+      }
+      return buffer[index_base][vec_ind];
     }
-    return GetIrArrayForFusedParameter(param_num).EmitReadArrayElement(index,
-                                                                       b_);
   };
   return Status::OK();
 }

@@ -580,6 +580,9 @@ class XlaBuilder {
   XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                         const Shape& shape);
 
+  XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                        const Shape& shape);
+
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
 

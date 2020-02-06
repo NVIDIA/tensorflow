@@ -142,7 +142,11 @@ cc_library(
 
 cc_library(
     name = "mutex",
-    textual_hdrs = ["mutex.h"],
+    textual_hdrs = [
+        "mutex.h",
+	"default/mutex.h",
+	"default/mutex_data.h",
+    ],
     deps = [
 #        ":mutex_impl",
     ],
@@ -523,4 +527,71 @@ exports_files(
             "stacktrace.h",
         ],
     ),
+)
+
+#############################
+# TF2/TF1 internal API Bridge
+#############################
+
+cc_library(
+    name = "blocking_counter",
+    hdrs = [
+        "blocking_counter.h",
+    ],
+    deps = [
+        ":logging",
+        ":mutex",
+	":thread_annotations",
+	"//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "dynamic_annotations",
+    hdrs = [
+        "dynamic_annotations.h",
+        "default/dynamic_annotations.h"
+    ],
+    deps = [
+        ":platform",
+    ], # + tf_platform_deps("dynamic_annotations"),
+)
+
+cc_library(
+    name = "numbers",
+    deps = [
+        "//tensorflow/core/lib/strings:string_utils",
+    ],
+)
+
+cc_library(
+    name = "platform_port",
+    deps = [
+        "//tensorflow/core:platform_port",
+    ]
+)
+
+cc_library(
+    name = "status",
+)
+
+cc_library(
+    name = "strcat",
+    hdrs = ["strcat.h"],
+    srcs = [
+         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
+         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "resource_loader"
+)
+
+cc_library(
+    name = "test",
+    testonly = True,
 )

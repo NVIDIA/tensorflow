@@ -66,3 +66,12 @@ filegroup(
     srcs = glob(["*"]),
     visibility = ["//visibility:public"],
 )
+
+#############################
+# TF2/TF1 internal API Bridge
+#############################
+
+cc_library(
+    name = "scoped_annotation_header",
+    hdrs = ["scoped_annotation.h"]
+)

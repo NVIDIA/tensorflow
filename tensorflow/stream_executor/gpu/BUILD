@@ -194,3 +194,36 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
+
+#############################
+# TF2/TF1 internal API Bridge
+#############################
+
+cc_library(
+    name = "asm_compiler",
+    visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+	"//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
+    ],
+    hdrs = if_gpu_is_configured(["asm_compiler.h"]),
+    deps = [
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ],
+)
+
+cc_library(
+    name = "gpu_asm_opts",
+    hdrs = if_gpu_is_configured(["gpu_asm_opts.h"]),
+    deps = [
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ],
+)
+
+cc_library(
+    name = "redzone_allocator",
+    hdrs = ["redzone_allocator.h"],
+    deps = [
+        "//tensorflow/stream_executor/cuda:redzone_allocator",
+    ],
+)

@@ -42,8 +42,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
-  // Set cudnn batchnorm off by default; it does not provide a performance win
-  // on average.
+  // Set cudnn batchnorm off by default.
   opts.set_xla_gpu_use_cudnn_batchnorm(false);
 
   // Run all GPU work on one stream by default.  Using multiple streams

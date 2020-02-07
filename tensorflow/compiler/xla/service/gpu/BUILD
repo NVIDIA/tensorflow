@@ -733,6 +733,28 @@ cc_library(
 )
 
 cc_library(
+    name = "cudnn_batchnorm_runner",
+    srcs = ["cudnn_batchnorm_runner.cc"],
+    hdrs = ["cudnn_batchnorm_runner.h"],
+    deps = [
+        ":backend_configs",
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "cudnn_conv_rewriter",
     srcs = ["cudnn_conv_rewriter.cc"],
     hdrs = ["cudnn_conv_rewriter.h"],

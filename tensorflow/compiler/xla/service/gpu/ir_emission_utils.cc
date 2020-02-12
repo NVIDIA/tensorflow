@@ -225,6 +225,31 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   return dims_in_elem[1] >= kWarpSize;
 }
 
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides) {
+  if (!unnested_hlo.IsInputFusion()) {
+    return false;
+  }
+
+  auto is_non_strided = [](const std::vector<int64>& strides) -> bool {
+    return absl::c_all_of(strides, [](int stride) { return stride == 1; });
+  };
+
+  const HloInstruction* root = unnested_hlo.fused_expression_root();
+  if (root->opcode() == HloOpcode::kSlice) {
+    return !verify_no_strides || is_non_strided(root->slice_strides());
+  }
+
+  if (root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kSlice &&
+           (!verify_no_strides || is_non_strided(instr->slice_strides()));
+  });
+}
+
 std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
   DimensionVector dims_to_keep;

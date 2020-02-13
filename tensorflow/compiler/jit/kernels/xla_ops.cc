@@ -608,6 +608,16 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
           /*missing_ctx_input_prefix=*/closure.num_constant_args()));
 }
 
+XlaMergeOp::XlaMergeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+void XlaMergeOp::Compute(OpKernelContext* ctx) {
+  VLOG(3) << "XlaMergeOp " << def().name();
+  int i = 0;
+  if (ctx->has_input(i) || ctx->has_input(++i)) {
+    ctx->set_output(0, ctx->input(i));
+  }
+}
+
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
@@ -626,6 +636,10 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                         XlaCompileOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
-REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU), XlaRunOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
+                        XlaRunOp);
+
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
 
 }  // namespace tensorflow

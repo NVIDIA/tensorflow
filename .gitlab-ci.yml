@@ -18,7 +18,7 @@ stages:
         if [[ "${EXACT_MATCH_BUILDER}" -ne 0 ]]; then
           REF="${CI_COMMIT_REF_NAME}";
         else
-          REF="master-tf1"
+          REF="master-tf1";
         fi;
       fi
     - echo "Selected builder branch $REF"

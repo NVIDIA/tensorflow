@@ -35,6 +35,8 @@ namespace tensorflow {
 namespace io {
 namespace internal {
 
+const char kPathSep[] = "/";
+
 string JoinPathImpl(std::initializer_list<StringPiece> paths) {
   string result;
 
@@ -46,18 +48,12 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
       continue;
     }
 
-    if (result[result.size() - 1] == '/') {
-      if (IsAbsolutePath(path)) {
-        strings::StrAppend(&result, path.substr(1));
-      } else {
-        strings::StrAppend(&result, path);
-      }
+    if (IsAbsolutePath(path)) path = path.substr(1);
+
+    if (result[result.size() - 1] == kPathSep[0]) {
+      strings::StrAppend(&result, path);
     } else {
-      if (IsAbsolutePath(path)) {
-        strings::StrAppend(&result, path);
-      } else {
-        strings::StrAppend(&result, "/", path);
-      }
+      strings::StrAppend(&result, kPathSep, path);
     }
   }
 
@@ -126,6 +122,7 @@ bool FixBazelEnvPath(const char* path, string* out) {
 
   return true;
 }
+
 }  // namespace internal
 
 bool IsAbsolutePath(StringPiece path) {

@@ -366,7 +366,8 @@ class Iterator(trackable.Trackable):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
                           (self.output_shapes, dataset_output_shapes))
-    with ops.colocate_with(self._iterator_resource):
+
+    with ops.colocate_with(dataset._variant_tensor):
       return gen_dataset_ops.make_iterator(
           dataset._variant_tensor, self._iterator_resource, name=name)  # pylint: disable=protected-access
 
@@ -418,13 +419,14 @@ class Iterator(trackable.Trackable):
     if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
 
-    # pylint: disable=protected-access
-    flat_ret = gen_dataset_ops.iterator_get_next(
+    with ops.colocate_with(self._iterator_resource):
+      # pylint: disable=protected-access
+      flat_ret = gen_dataset_ops.iterator_get_next(
         self._iterator_resource,
         output_types=self._flat_tensor_types,
         output_shapes=self._flat_tensor_shapes,
         name=name)
-    return structure.from_tensor_list(self._element_spec, flat_ret)
+      return structure.from_tensor_list(self._element_spec, flat_ret)
 
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.

@@ -213,6 +213,7 @@ cc_library(
         "ir_emitter_context.h",
         "ir_emitter_nested.h",
         "ir_emitter_unnested.h",
+        "kernel_mapping_scheme.h",
         "thunk_emitter.h",
     ],
     deps = [
@@ -252,7 +253,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
-        "//tensorflow/compiler/xla/service/llvm_ir:kernel_tiling",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
@@ -377,6 +377,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla:refcounting_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -650,8 +651,8 @@ cc_library(
 
 cc_library(
     name = "cudnn_conv_runner",
-    srcs = ["cudnn_conv_runner.cc"],
-    hdrs = ["cudnn_conv_runner.h"],
+    srcs = ["gpu_conv_runner.cc"],
+    hdrs = ["gpu_conv_runner.h"],
     deps = [
         ":backend_configs",
         ":ir_emission_utils",

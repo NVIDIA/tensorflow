@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_TILING_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_TILING_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
 namespace xla {
-namespace llvm_ir {
-
-// About 0-2-1 transpose:
-//
-// If a shape can be viewed as three logical components 0-1-2 in the order of
-// major to minor, a 0-2-1-transpose changes the order of such logical
-// components to 0-2-1. We call the shape being transposed the input shape and
-// the transposed shape the output shape. The logical view of the input/output
-// shapes for the transpose are called the 0-1-2/0-2-1 shapes or the normalized
-// shapes. The original input/output shapes are called unnormalized shapes.
-//
-// If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-// normalized shape of `b` or the 0-2-1 shape.
-absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
-                                                     const Shape& b);
+namespace gpu {
 
 // A tile is a spatial subdivision of a tensor. We group tensor elements into
 // tiles so that we can launch kernels to process the tensor elements in blocks
@@ -88,123 +76,137 @@ absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-
- public:
-  KernelMappingScheme() {}
-  // dims_in_elems: the normalized tensor dimensions.
-  // req_block_sizes: the requested block size in number of tiles for each
-  //   dimension. The actual block size is set to min(req_block_size,
-  //   dims_in_number_of_blocks).
-  KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
-                      int64 tile_size_x,
-                      absl::Span<const int64> req_block_sizes,
-                      int64 num_threads_y, int64 num_threads_x,
-                      llvm::IRBuilder<>* b);
-
-  absl::Span<const int64> GetDimensionsInElements() const {
-    return dims_in_elems_;
-  }
-  absl::Span<const int64> GetDimensionsInTiles() const {
-    return dims_in_tiles_;
-  }
-  absl::Span<const int64> GetDimensionsInBlocks() const {
-    return dims_in_blocks_;
-  }
-
-  int64 GetNumberOfTilesInTotal() const {
-    return absl::c_accumulate(dims_in_tiles_, 1LL, std::multiplies<int64>());
-  }
-  int64 GetNumberOfTilesInOneBlock() const {
-    return absl::c_accumulate(block_sizes_, 1, std::multiplies<int64>());
-  }
-  int64 GetNumberOfTilesInOneBlockForDimension(int d) const {
-    DCHECK(d >= DimZ && d <= DimX);
-    return block_sizes_[d];
-  }
-  int64 GetNumberOfBlocks() const {
-    return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
-  }
-
-  int64 GetTileSizeForDimension(int d) const { return tile_sizes_.at(d); }
-  int64 GetTileSizeForDimensionX() const {
-    return GetTileSizeForDimension(DimX);
-  }
-  int64 GetTileSizeForDimensionY() const {
-    return GetTileSizeForDimension(DimY);
-  }
-
-  absl::Span<const int64> GetBlockSizes() const { return block_sizes_; }
-  int64 GetTileBlockSizeForDimension(int d) const {
-    return dims_in_blocks_.at(d);
-  }
-
-  int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
-  int64 GetNumberOfThreadsForDimensionY() const { return num_threads_y_; }
-
-  int64 GetThreadsPerBlock() const {
-    return GetNumberOfThreadsForDimensionX() *
-           GetNumberOfThreadsForDimensionY();
-  }
-
-  bool DilatedX() const { return dilated_x_; }
-  void SetDilatedX(bool v) {
-    dilated_x_ = v;
+  KernelMappingScheme(absl::Span<const int64> dims_in_elems,
+                      absl::Span<const int64> tile_sizes, int64 num_threads_y,
+                      int64 num_threads_x, bool is_dilated_x)
+      : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
+        tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
+        num_threads_x_(num_threads_x),
+        num_threads_y_(num_threads_y),
+        dilated_x_(is_dilated_x) {
+    CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
+    CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
+    VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
     if (!dilated_x_) {
       // dilated_x_=false is for the purpose of vectorization, which requires
-      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+      // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
+      CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
     }
   }
 
-  IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
-  // Returns the index for the first tile in the block with the given block
-  // index.
-  IrArray::Index GetTileIndexForBlockOrigin(const IrArray::Index& block_index);
-  // Returns the index for the first element in the tile with the given tile
-  // index.
-  IrArray::Index GetElementIndexForTileOrigin(const IrArray::Index& tile_index);
+  // Number of elements in each dimension (Z/Y/X respectively).
+  absl::Span<const int64> GetDimsInElems() const {
+    return dims_in_elems_;
+  }
 
-  std::tuple<llvm::Value*, llvm::Value*> EmitThreadYXCoordinate(
-      llvm::Type* index_ty);
+  int64 GetNumberOfBlocks() const {
+    return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
+           CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
+           CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
+  }
 
-  IrArray::Index GetUnnormalizedIndex(
-      const IrArray::Index& normalized_shape_index,
-      const Shape& unnormalized_shape);
+  // Tile size for a given dimensions. Tiles are assigned per thread block,
+  // and are processed by all threads in the block.
+  int64 GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
-  llvm::GlobalVariable* GetSharedMemoryBufferForElementType(
-      llvm::Type* elem_ty, absl::string_view buffer_name);
+  int64 GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
+  int64 GetTileSizeX() const { return GetTileSizeFor(DimX); }
+  int64 GetTileSizeY() const { return GetTileSizeFor(DimY); }
+
+  int64 GetNumThreadsX() const { return num_threads_x_; }
+  int64 GetNumThreadsY() const { return num_threads_y_; }
+
+  int64 GetThreadsPerBlock() const {
+    return GetNumThreadsX() * GetNumThreadsY();
+  }
+
+  bool DilatedX() const { return dilated_x_; }
 
  private:
-  llvm::IRBuilder<>* b_;
   // The number of elements in each dimension.
-  std::array<int64, 3> dims_in_elems_;
+  const std::array<int64, 3> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  std::array<int64, 3> tile_sizes_;
-  // The number of tiles in each dimension. It is computed from dims_in_elem_
-  // and tile_sizes_.
-  std::array<int64, 3> dims_in_tiles_;
-
-  // The number of tiles for each dimension of a tile block.
-  std::array<int64, 3> block_sizes_;
-  // The number of blocks in each dimension of a tile block. It is computed from
-  // dims_in_tile_ and block_sizes_.
-  std::array<int64, 3> dims_in_blocks_;
+  const std::array<int64, 3> tile_sizes_;
 
   // Number of threads used to process elements in the X direction of a tile.
-  int64 num_threads_x_;
+  const int64 num_threads_x_;
+
   // Number of threads used to process elements in the Y direction of a tile.
-  int64 num_threads_y_;
+  const int64 num_threads_y_;
 
   // When num_threads_x threads process a total of tile_size_x elements in the
   // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
   // elements. When dilated_x=false, the n elements processed by a thread are
   // contiguous. On the other hand, when dilated_x=true the n elements are
   // dilated by a factor of num_threads_x.
-  bool dilated_x_;
+  const bool dilated_x_;
 };
 
-}  // namespace llvm_ir
-}  // namespace xla
+// Information to support the code generation for a tiled reduction kernel.
+using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
+class ReductionCodegenInfo {
+ public:
+  explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
+                                bool is_row_reduction)
+      : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_TILING_H_
+  const KernelMappingScheme& GetKernelMappingScheme() const {
+    return mapping_scheme_;
+  }
+
+  // Gets writeable pointer to the address (or addresses) used to store
+  // reduction accumulators.
+  AddressVector* GetMutablePartialResultAddresses() {
+    return &partial_result_addresses_;
+  }
+
+  // Returns the address (addresses) of the reduction accumulators.
+  absl::Span<llvm::AllocaInst* const> GetPartialResultAddresses() const {
+    return partial_result_addresses_;
+  }
+
+  // Mutable pointer to the address of the input element to perform the
+  // reduction with.
+  AddressVector* GetMutableReductionInputAddresses() {
+    return &reduction_input_addresses_;
+  }
+
+  std::vector<llvm::Value*>* GetMutableInitialValues() {
+    return &initial_values_;
+  }
+
+  absl::Span<llvm::Value* const> GetInitialValues() const {
+    return initial_values_;
+  }
+
+  // Returns the address of the input element to perform the reduction with.
+  absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
+    return reduction_input_addresses_;
+  }
+
+  bool IsRowReduction() const { return is_row_reduction_; }
+
+  // Gets a pointer to a mutable shared cache used by reduction.
+  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
+    return &shared_cache_;
+  }
+
+  // Shared cache used for reduction.
+  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
+    return shared_cache_;
+  }
+
+ private:
+  std::vector<llvm::GlobalVariable*> shared_cache_;
+  std::vector<llvm::Value*> initial_values_;
+  const KernelMappingScheme mapping_scheme_;
+  AddressVector partial_result_addresses_;
+  AddressVector reduction_input_addresses_;
+  bool is_row_reduction_;
+};
+
+}  // end namespace gpu
+}  // end namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_

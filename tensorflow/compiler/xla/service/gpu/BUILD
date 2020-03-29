@@ -1214,6 +1214,7 @@ cc_library(
     hdrs = ["cudnn_batchnorm_rewriter.h"],
     deps = [
         ":ir_emission_utils",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo",

@@ -3587,6 +3587,7 @@ port::Status CudnnSupport::GetBatchNormalizationReserveSpaceSizeImpl(
   if (BatchnormSpatialPersistentEnabled()) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
     VLOG(1) << "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT";
+    std::cout << "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT" << std::endl;
   }
 #endif
 #if CUDNN_VERSION >= 7402
@@ -3631,6 +3632,8 @@ port::Status CudnnSupport::GetBatchNormalizationWorkspaceSizeImpl(
   if (BatchnormSpatialPersistentEnabled()) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
     VLOG(1) << "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT";
+    std::cout << "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT" << std::endl;
+
   }
 #endif
 #if CUDNN_VERSION >= 7402
@@ -3741,6 +3744,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   if (BatchnormSpatialPersistentEnabled() && is_training) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
     VLOG(1)<< "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT";
+    std::cout << "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT" << std::endl;
+
   }
 #endif
   float one = 1.0;
@@ -3913,6 +3918,8 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 #if CUDNN_VERSION >= 7000
   if (BatchnormSpatialPersistentEnabled()) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
+    std::cout << "Mode set to CUDNN_BATCHNORM_SPATIAL_PERSISTENT" << std::endl;
+
   }
 #endif
   float one = 1.0;

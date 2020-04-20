@@ -20,6 +20,7 @@ limitations under the License.
 #endif
 
 namespace xla {
+namespace exhaustive_op_test {
 namespace {
 
 template <PrimitiveType T>
@@ -154,11 +155,11 @@ XLA_TEST_16BIT(Min,
 
 // TODO(bixia): Pow fails with bfloat16 on CPU.
 XLA_TEST_16BIT(DISABLED_ON_CPU(Pow),
-               { Run(AddEmptyBroadcastDimension(Pow), std::powf); })
+               { Run(AddEmptyBroadcastDimension(Pow), std::pow); })
 
 // TODO(bixia): Atan2 fails with bfloat16 on CPU.
 XLA_TEST_16BIT(DISABLED_ON_CPU(Atan2),
-               { Run(AddEmptyBroadcastDimension(Atan2), std::atan2f); })
+               { Run(AddEmptyBroadcastDimension(Atan2), std::atan2); })
 
 #if defined(BINARY_TEST_TARGET_F16)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
@@ -389,4 +390,5 @@ INSTANTIATE_TEST_SUITE_P(
 
 #endif
 }  // namespace
+}  // namespace exhaustive_op_test
 }  // namespace xla

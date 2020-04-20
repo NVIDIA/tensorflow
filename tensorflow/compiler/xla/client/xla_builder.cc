@@ -675,6 +675,19 @@ XlaOp XlaBuilder::AsyncOutSend(const XlaOp& operand,
   });
 }
 
+XlaOp XlaBuilder::AsyncOutSend(const XlaOp& operand,
+                               const Shape& shape_with_layout,
+                               const string& rendezvous_key) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeNil().ToProto();
+    *instr.mutable_async_out_send_shape() = shape_with_layout.ToProto();
+    instr.set_rendezvous_key(rendezvous_key);
+    return AddInstruction(std::move(instr), HloOpcode::kAsyncOutSend,
+                          {operand});
+  });
+}
+
 XlaOp XlaBuilder::Iota(const Shape& shape, int64 iota_dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;

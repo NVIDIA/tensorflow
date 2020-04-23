@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import re
+import os
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
@@ -32,7 +33,12 @@ from tensorflow.python.util import tf_stack
 
 
 # Allow deprecation warnings to be silenced temporarily with a context manager.
-_PRINT_DEPRECATION_WARNINGS = True
+if os.environ.get("TF_ENABLE_DEPRECATION_WARNINGS", "0") == "1":
+  _PRINT_DEPRECATION_WARNINGS = True
+else:
+  _PRINT_DEPRECATION_WARNINGS = False
+  logging.warning("Deprecation warnings have been disabled. "
+                  "Set TF_ENABLE_DEPRECATION_WARNINGS=1 to re-enable them.")
 
 # Remember which deprecation warnings have been printed already.
 _PRINTED_WARNING = {}

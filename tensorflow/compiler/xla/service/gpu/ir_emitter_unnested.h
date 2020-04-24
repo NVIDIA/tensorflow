@@ -75,7 +75,8 @@ class IrEmitterUnnested : public IrEmitter,
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num)>;
+      llvm::Value* x_loc, int64 x_iter_num, int vector_size,
+      bool gen_vector_inst)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64)>;
 
@@ -176,7 +177,7 @@ class IrEmitterUnnested : public IrEmitter,
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
       const HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
-      bool use_linear_index,
+      bool use_linear_index, int vector_size,
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
@@ -364,7 +365,8 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloInstruction* const> output_instructions,
       const llvm_ir::IrArray::Index& index,
       const ReductionCodegenInfo& reduction_info,
-      absl::Span<HloComputation* const> reducers, int64 x_iter_num);
+      absl::Span<HloComputation* const> reducers, int64 x_iter_num,
+      int vector_size, bool gen_vector_inst);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
   //

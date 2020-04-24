@@ -51,6 +51,19 @@ namespace xla {
 // created produces an LLVM struct with N elements, one for each element of the
 // arrays in the tuple.  It follows that the arrays in the tuple must have the
 // same length.
+//
+// The `vector_size` parameter can be used to have the inputs loads
+// vectorized. There is some restriction when this mode can used:
+//  - The innermost dimensions must be contiguous.
+//  - The IrArray::Index inner dimension index must be of this form `add llvm::Value*, cst`.
+//    The first time ptr is accessed, cst must be 0. At that time,
+//    `vector_size` elements will be loaded. Then each time the llvm::Value object is
+//    (re)used, we will return the previously loaded element at index cst.
+//
+// The `gen_vector_inst_` parameter cause vectorized load to be emited
+// by only 1 instruction instead of many consecutive instruction. This
+// request that the data is aligned, but doesn't rely on LLVM for the
+// vectorization.
 class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
  public:
   using IndexedGenerator = llvm_ir::ElementGenerator;
@@ -58,11 +71,13 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
   using GeneratorForOperandIrArrays =
       std::function<std::vector<llvm_ir::IrArray>()>;
 
-  FusedIrEmitter(GeneratorForOperandIrArrays operand_arrays_generator,
-                 ElementalIrEmitter* elemental_emitter,
-                 llvm::Value* thread_id_x = nullptr,
-                 llvm::Value* thread_id_y = nullptr,
-                 absl::Span<llvm::Value* const> param_shmem_buffers = {})
+  FusedIrEmitter(
+      GeneratorForOperandIrArrays operand_arrays_generator,
+      ElementalIrEmitter* elemental_emitter, llvm::Value* thread_id_x = nullptr,
+      llvm::Value* thread_id_y = nullptr,
+      absl::Span<llvm::Value* const> param_shmem_buffers = {},
+      std::unordered_map<const HloInstruction*, int> vector_size = {},
+      bool gen_vector_inst = false)
       : operand_arrays_(),
         operand_arrays_generator_(std::move(operand_arrays_generator)),
         thread_id_x_(thread_id_x),
@@ -71,7 +86,9 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
                              param_shmem_buffers.end()),
         elemental_emitter_(elemental_emitter),
         b_(elemental_emitter->b()),
-        module_(elemental_emitter->module()) {}
+        module_(elemental_emitter->module()),
+        vector_size_(vector_size),
+        gen_vector_inst_(gen_vector_inst) {}
 
   Status DefaultAction(const HloInstruction* hlo) override;
 
@@ -157,6 +174,9 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
       const HloInstruction*,
       absl::flat_hash_map<std::vector<llvm::Value*>, llvm::Value*>>
       generated_value_cache_;
+
+  std::unordered_map<const HloInstruction*, int> vector_size_;
+  bool gen_vector_inst_;
 };
 
 }  // namespace xla

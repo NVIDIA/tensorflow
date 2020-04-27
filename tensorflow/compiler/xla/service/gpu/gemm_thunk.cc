@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -265,8 +266,19 @@ Status RunGemm(const HloInstruction *gemm,
   complex128 alpha = {backend_config.alpha_real(), backend_config.alpha_imag()};
   double beta = backend_config.beta();
 
-  auto nvtx_range = tensorflow::nvtx::MaybeNvtxRangeStart(
-      gemm->NvtxNodeOpString(), gemm->NvtxNodeNameString());
+  string msg;
+  string op = gemm->NvtxNodeOpString();
+  if (tensorflow::nvtx::NvtxRangesEnabled() ||
+      tensorflow::nvtx::NvtxRangesDetailedEnabled()) {
+    string name = gemm->NvtxNodeNameString();
+    if (tensorflow::nvtx::NvtxRangesDetailedEnabled()) {
+      msg = absl::StrCat("{\"op\":\"", op, "\",\"name\":\"", name,
+                            "\",\"args\":[],\"attrs\":{}}");
+    } else {
+      msg = op + ": " + name;
+    }
+  }
+  auto nvtx_range = tensorflow::nvtx::MaybeNvtxDomainRangeStartMsg(msg, op);
 
   bool launch_ok = [&]() {
     switch (output_shape.element_type()) {
@@ -303,7 +315,7 @@ Status RunGemm(const HloInstruction *gemm,
     }
   }();
 
-  tensorflow::nvtx::MaybeNvtxRangeEnd(nvtx_range);
+  tensorflow::nvtx::MaybeNvtxDomainRangeEnd(nvtx_range);
 
   if (!launch_ok) {
     return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);

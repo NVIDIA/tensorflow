@@ -88,9 +88,9 @@ class HloBatchNormInferenceInstruction : public HloBatchNormInstruction {
 class HloBatchNormGradInstruction : public HloBatchNormInstruction {
  public:
   explicit HloBatchNormGradInstruction(
-      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
-      HloInstruction* mean, HloInstruction* variance,
-      HloInstruction* grad_output, float epsilon, int64 feature_index);
+      const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
+      absl::Span<HloInstruction* const> other_operands,
+      float epsilon, int64 feature_index);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.

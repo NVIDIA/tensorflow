@@ -172,6 +172,28 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     return Status::OK();
   }
 
+  auto get_batch_norm_operand_slices = [&](const HloInstruction* batch_norm) {
+    std::vector<BufferAllocation::Slice> operand_slices;
+    // The last 2 operands in the custom call are epsilon
+    // and feature_index, so no allocation slice.
+    auto num_inputs_slices = batch_norm->operand_count() - 2;
+    operand_slices.reserve(num_inputs_slices);
+    for (int id = 0; id < num_inputs_slices; id++) {
+      operand_slices.push_back(GetAllocationSlice(*batch_norm->operand(id)));
+    }
+    return operand_slices;
+  };
+
+  auto get_batch_norm_output_slices = [&](const HloInstruction* batch_norm) {
+    auto num_outputs = batch_norm->shape().tuple_shapes_size();
+    std::vector<BufferAllocation::Slice> output_slices;
+    output_slices.reserve(num_outputs);
+    for (int index = 0; index < num_outputs; index++) {
+      output_slices.push_back(GetAllocationSlice(*batch_norm, {index}));
+    }
+    return output_slices;
+  };
+
   if (custom_call->custom_call_target() ==
       kCudnnBatchNormForwardTrainingCallTarget) {
     const HloInstruction* epsilon = custom_call->operand(3);
@@ -182,51 +204,71 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     CHECK(feature_index->IsConstant());
     int64 feature_index_value = feature_index->literal().Get<int64>({});
 
-    // BatchNormTraining returns a tuple of three elements: data, calculated
-    // mean, and calculated 1/sqrt(variance + epsilon).
-    auto output_data = GetAllocationSlice(*custom_call, {0});
-    auto output_mean = GetAllocationSlice(*custom_call, {1});
-    auto output_inv_stddev = GetAllocationSlice(*custom_call, {2});
+    std::vector<BufferAllocation::Slice> operand_slices =
+        get_batch_norm_operand_slices(custom_call);
+    std::vector<BufferAllocation::Slice> output_slices =
+        get_batch_norm_output_slices(custom_call);
+    // If batchnorm does not have a reserve space and workspace, the number of
+    // outputs will be 3.
+    if (custom_call->shape().tuple_shapes_size() > 3) {
+      VLOG(1) << "BatchNorm forward reserve space buffer slice: "
+              << output_slices[3].ToString();
+    }
+
     AddThunkToThunkSequence(
         absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
-            /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
-            /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
-            /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
+            /*operands=*/std::move(operand_slices),
+            /*outputs=*/std::move(output_slices),
             /*epsilon=*/epsilon_value,
             /*feature_index=*/feature_index_value,
-            /*output_data=*/output_data,
-            /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev,
             /*output_tuple=*/GetAllocationSlice(*custom_call),
             /*hlo=*/custom_call));
     return Status::OK();
   }
 
   if (custom_call->custom_call_target() == kCudnnBatchNormBackwardCallTarget) {
-    const HloInstruction* epsilon = custom_call->operand(5);
+    bool use_reserve_space = custom_call->operand_count() == 8;
+    int epsilon_dim =  (use_reserve_space) ? 6 : 5;
+    int feature_index_dim = epsilon_dim+1;
+    const HloInstruction* epsilon = custom_call->operand(epsilon_dim);
     CHECK(epsilon->IsConstant());
     float epsilon_value = epsilon->literal().Get<float>({});
 
-    const HloInstruction* feature_index = custom_call->operand(6);
+    const HloInstruction* feature_index = custom_call->operand(feature_index_dim);
     CHECK(feature_index->IsConstant());
     int64 feature_index_value = feature_index->literal().Get<int64>({});
 
     // BatchNormGrad returns a tuple of three elements: grad_data, grad_scale,
     // grad_offset.
-    auto output_grad_data = GetAllocationSlice(*custom_call, {0});
-    auto output_grad_scale = GetAllocationSlice(*custom_call, {1});
-    auto output_grad_offset = GetAllocationSlice(*custom_call, {2});
+    std::vector<BufferAllocation::Slice> operand_slices =
+        get_batch_norm_operand_slices(custom_call);
+    std::vector<BufferAllocation::Slice> output_slices =
+        get_batch_norm_output_slices(custom_call);
+    // When BN-Grad is in a separate cluster, the argument for reserve space is
+    // converted to F32 at entry. This causes thunk_emitter to request for a
+    // slice 4 times bigger than what is required and allocated by BN-Forward
+    // (reserve space in bn-fwd is say U8{N} while the reserve space
+    // argument to bn-grad is F32{N} => num_bytes requested is 4N). Scaling down
+    // the number of bytes requested in BN-Grad by a factor of num_bytes in
+    // data-type (4 bytes for F32).
+    if (use_reserve_space) {
+      VLOG(2)
+          << "BatchNorm backward reserve space buffer slice before correction: "
+          << operand_slices[5].ToString();
+      auto bytes_size_reserve_space_type = ShapeUtil::ByteSizeOfPrimitiveType(
+          custom_call->operand(5)->shape().element_type());
+      auto actual_reserve_space_size =
+          operand_slices[5].size() / bytes_size_reserve_space_type;
+      operand_slices[5].set_size(actual_reserve_space_size);
+      VLOG(1) << "BatchNorm backward reserve space buffer slice: "
+              << operand_slices[5].ToString();
+    }
+
     AddThunkToThunkSequence(absl::make_unique<CudnnBatchNormBackwardThunk>(
-        /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
-        /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
-        /*mean=*/GetAllocationSlice(*custom_call->operand(2)),
-        /*inv_stddev=*/GetAllocationSlice(*custom_call->operand(3)),
-        /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
+        /*operands=*/std::move(operand_slices),
+        /*outputs=*/std::move(output_slices),
         /*epsilon=*/epsilon_value,
         /*feature_index=*/feature_index_value,
-        /*output_grad_data=*/output_grad_data,
-        /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset,
         /*output_tuple=*/GetAllocationSlice(*custom_call),
         /*hlo=*/custom_call));
     return Status::OK();

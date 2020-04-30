@@ -62,6 +62,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+	"//tensorflow/stream_executor:device_memory",
     ],
 )
 

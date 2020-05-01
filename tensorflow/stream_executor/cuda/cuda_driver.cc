@@ -1522,13 +1522,14 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   ScopedActivateContext activation(context);
   CUresult res = cuStreamBeginCapture(stream, mode);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "could not begin graph capture on stream: " << ToString(res);
+    LOG(ERROR) << "could not begin CUDA graph capture on stream: "
+               << ToString(res);
     return false;
   }
 
   return true;
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version "
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
                 "(BeginGraphCaptureOnStream)";
   return false;
 #endif
@@ -1546,11 +1547,11 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     return false;
   }
 
-  VLOG(2) << "successfully completed graph capture on stream " << stream
+  VLOG(1) << "successfully completed graph capture on stream " << stream
           << " for context " << context->context() << " on thread";
   return true;
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version "
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
                 "(EndGraphCaptureOnStream)";
   return false;
 #endif
@@ -1568,12 +1569,12 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     LOG(ERROR) << "failed to destroy CUDA graph for context "
                << context->context() << ": " << ToString(res);
   } else {
-    VLOG(2) << "successfully destroyed graph " << *graph << " for context "
+    VLOG(1) << "successfully destroyed graph " << *graph << " for context "
             << context->context();
     *graph = nullptr;
   }
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version (DestroyGraph)";
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version (DestroyGraph)";
 #endif
 }
 
@@ -1592,11 +1593,11 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     return false;
   }
 
-  VLOG(2) << "successfully instantiated executable graph for context "
+  VLOG(1) << "successfully instantiated executable graph for context "
           << context->context() << " on thread";
   return true;
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version "
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
                 "(InstantiateExecutableGraph)";
   return false;
 #endif
@@ -1618,11 +1619,11 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     return false;
   }
 
-  VLOG(2) << "successfully updated executable graph for context "
+  VLOG(1) << "successfully updated executable graph for context "
           << context->context() << " on thread";
   return true;
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version "
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
                 "(UpdateExecutableGraph)";
   return false;
 #endif
@@ -1639,10 +1640,10 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
                << context->context() << ": " << ToString(res);
     return false;
   }
-  VLOG(2) << "successfully launched graph";
+  VLOG(1) << "successfully launched graph on stream " << stream;
   return true;
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version "
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
                 "(LaunchExecutableGraph)";
   return false;
 #endif
@@ -1661,12 +1662,13 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
     LOG(ERROR) << "failed to destroy CUDA executable graph for context "
                << context->context() << ": " << ToString(res);
   } else {
-    VLOG(2) << "successfully destroyed executable graph " << *graph_exec
-            << " for context " << context->context();
+    VLOG(1) << "successfully destroyed executable graph " << *graph_exec
+            << " for GpuContext " << context << " and context "
+            << context->context();
     *graph_exec = nullptr;
   }
 #else
-  LOG(ERROR) << "Feature not supported on this CUDA version "
+  LOG(ERROR) << "CUDA Graph not supported on this CUDA version "
                 "(DestroyExecutableGraph)";
 #endif
 }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
+#include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -36,16 +37,84 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/annotation.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/platform.h"
+// TODO(benbarsdell): Plumb Graph APIs into stream_executor (and implement
+// wrapper classes for Graph/GraphExec) instead of using this directly.
+#include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 using tensorflow::tracing::ScopedAnnotation;
+
+// A helper function to decide whether to use GPU graph capture, which can
+// reduce GPU launch latency overheads in some cases.
+bool GpuGraphCaptureEnabled() {
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_XLA_ENABLE_GPU_GRAPH_CAPTURE",
+                                       /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+}
+
+bool IsThunkSafeForGpuGraphCapture(const Thunk* thunk) {
+  // Thunks that synchronize with the host (i.e., call BlockHostUntilDone)
+  // cannot be used with graph capture.
+  static const absl::flat_hash_set<Thunk::Kind> thunk_kinds_safe_for_capture = {
+      Thunk::kCholesky,
+      Thunk::kCollectivePermute,
+      Thunk::kConvolution,
+      Thunk::kCopy,
+      Thunk::kCudnnBatchNormBackward,
+      Thunk::kCudnnBatchNormForwardInference,
+      Thunk::kCudnnBatchNormForwardTraining,
+      Thunk::kFft,
+      Thunk::kGemm,
+      Thunk::kKernel,
+      Thunk::kMemset32BitValue,
+      Thunk::kMemzero,
+      Thunk::kNcclAllReduce,
+      Thunk::kReplicaId,
+      Thunk::kTriangularSolve,
+      Thunk::kTuple,
+  };
+  if (thunk->kind() == Thunk::kSequential) {
+    const auto* seq_thunk = static_cast<const SequentialThunk*>(thunk);
+    auto is_thunk_safe_for_gpu_graph_capture =
+        [&](const std::unique_ptr<Thunk>& sub_thunk) {
+          return IsThunkSafeForGpuGraphCapture(sub_thunk.get());
+        };
+    return absl::c_all_of(seq_thunk->thunks(),
+                          is_thunk_safe_for_gpu_graph_capture);
+  }
+  if (dynamic_cast<const HostToDeviceCopyThunk*>(thunk)) {
+    VLOG(1) << "HostToDeviceCopyThunk is not supported for a graph capture";
+    return false;
+  }
+
+  if (!thunk_kinds_safe_for_capture.count(thunk->kind())) {
+    VLOG(1) << ThunkKindToString(thunk->kind())
+            << " is not supported for graph capture";
+    return false;
+  }
+
+  return true;
+}
+
+bool GpuExecutableSafeForGraphCapture(const ThunkSchedule* thunk_schedule) {
+  return absl::c_all_of(thunk_schedule->TotalOrder(),
+                        IsThunkSafeForGpuGraphCapture);
+}
 
 }  // namespace
 
@@ -88,6 +157,65 @@ GpuExecutable::~GpuExecutable() {
       CHECK(pair.first->SynchronizeAllActivity());
     }
   }
+
+  if (GetCanUseGraphCaptureFlag() && VLOG_IS_ON(1)) {
+    VLOG(1) << "For gpu_executable " << this
+            << " Hits: " << graph_stats_.cache_hits.load()
+            << " Misses: " << graph_stats_.cache_miss.load()
+            << " called # " << graph_stats_.times_called.load();
+    VLOG(4) << "Temp buffer cache hits: "
+            << graph_stats_.temp_buffer_cache_hits.load();
+    VLOG(4) << "This executable " << this << " has encountered "
+            << temp_buffer_base_to_bufs_keys_map_.size()
+            << " different temporary buffer base ptrs during the allocation "
+               "process";
+    if (VLOG_IS_ON(4)) {
+      for (auto it : temp_buffer_base_to_bufs_keys_map_) {
+        LOG(INFO) << "Temp buffer with TempBufferKey hash of " << it.first
+                  << " is the same for " << it.second.size()
+                  << " unique buffer keys";
+      }
+    }
+    if (graph_stats_.times_called.load() > 0) {
+      VLOG(1) << "Mem cache hit rate of this executable " << this << " is "
+              << (graph_stats_.cache_hits.load() * 100) /
+                     graph_stats_.times_called.load()
+              << "%";
+    }
+    VLOG(4) << "Most recent enqueued hash hits: "
+            << graph_stats_.last_buf_key_hits.load();
+    if (graph_stats_.cache_hits.load() > 0 && VLOG_IS_ON(4)) {
+      VLOG(4) << " Most recent enqueued hash hit rate: "
+              << (graph_stats_.last_buf_key_hits.load() * 100) /
+                     graph_stats_.cache_hits.load();
+    }
+  }
+
+  while (!gpu_exec_graphs_cache_.empty()) {
+    auto* gpu_context = static_cast<stream_executor::gpu::GpuContext*>(
+        gpu_exec_graphs_cache_.begin()->first);
+    VLOG(1) << "Cache size for gpu_executable " << this << " and gpu_context "
+            << gpu_context << " is "
+            << gpu_exec_graphs_cache_[gpu_context].GetCurrentCacheSize();
+    auto& cache = gpu_exec_graphs_cache_.begin()->second;
+    auto& exec_graphs = cache.GetGpuExecGraphs();
+
+    while (!exec_graphs.empty()) {
+      GetExecutor()->DestroyExecutableGraph(
+          gpu_exec_graphs_cache_.begin()->first, exec_graphs.front());
+      exec_graphs.erase(exec_graphs.begin());
+    }
+    gpu_exec_graphs_cache_.erase(gpu_exec_graphs_cache_.begin());
+  }
+}
+
+bool GpuExecutable::CanUseGpuGraphCapture() {
+  if (!can_use_gpu_graph_capture_.first) {
+    can_use_gpu_graph_capture_.first = true;
+    SetCanUseGraphCaptureFlag(
+        GpuExecutableSafeForGraphCapture(thunk_schedule_.get()));
+  }
+  return GetCanUseGraphCaptureFlag();
 }
 
 void GpuExecutable::ComputeThunkAnnotations() {
@@ -146,6 +274,7 @@ Status GpuExecutable::ExecuteThunks(
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+  SetExecutor(executor->implementation());
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -161,6 +290,20 @@ Status GpuExecutable::ExecuteThunks(
                         run_options->BorrowStream(executor->device_ordinal()));
   }
 
+  se::Stream* capture_stream = main_stream;
+  StreamPool::Ptr private_capture_stream;
+  bool use_gpu_graph_capture =
+      GpuGraphCaptureEnabled() && CanUseGpuGraphCapture() &&
+      executor->platform_kind() == stream_executor::PlatformKind::kCuda &&
+      !is_graph_capture_costly_;
+  if (use_gpu_graph_capture) {
+    // We need a private stream for capturing to avoid interference from other
+    // threads.
+    TF_ASSIGN_OR_RETURN(private_capture_stream,
+                        run_options->BorrowStream(executor->device_ordinal()));
+    capture_stream = private_capture_stream.get();
+  }
+
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
                                 sub_streams, hlo_module_->entry_computation());
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
@@ -168,58 +311,144 @@ Status GpuExecutable::ExecuteThunks(
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(hlo_module_->name(), ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
-
-  std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
-  bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
   std::vector<std::function<void()>> deferred_host_callbacks;
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    // Annotate execution of this op if tracing was enabled when we started
-    // running this module.  If tracing is enabled *while* we're running the
-    // module, we won't get any data, but that's probably an OK trade-off.
-    absl::optional<ScopedAnnotation> op_annotation;
-    CHECK(thunk->hlo_instruction());
-    if (scoped_annotation_enabled) {
-      op_annotation.emplace(FindOrDie(thunk_annotations_, thunk));
-    }
+  if (!use_gpu_graph_capture) {
+    TF_RETURN_IF_ERROR(ExecuteThunkSequence(
+        run_options, buffer_allocations, profiler, main_stream, capture_stream,
+        sub_streams, deferred_host_callbacks));
+  } else {
+    auto bufs_key = buffer_allocations.Key();
+    auto temp_buf_key = buffer_allocations.TempBufferKey();
+    VLOG(3) << "For gpu executable " << this << " tmp buffer base: "
+            << buffer_allocations.GetTempBufferBase().opaque()
+            << " key hash: " << buffer_allocations.Key().hash();
 
-    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
-    int32 stream_no =
-        thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
-    se::Stream* stream =
-        (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
+    stream_executor::gpu::GpuContext* gpu_context =
+        static_cast<stream_executor::gpu::GpuExecutor*>(GetExecutor())
+            ->gpu_context();
+    tensorflow::mutex_lock lock(module_handle_mutex_);
+    auto& graph_exec_cache = gpu_exec_graphs_cache_[gpu_context];
 
-    for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
-      stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
-    }
+    // 'Initialize' sets the gpu_context and the max LRU cache size. This is
+    // only done once though. Once initialized, the subsequent calls are no-ops.
+    graph_exec_cache.Initialize(gpu_context);
+    auto exec_graph = graph_exec_cache.GetExecGraph(bufs_key);
 
-    VLOG(2) << "Executing the thunk for "
-            << thunk->hlo_instruction()->ToString() << " on stream "
-            << stream_no;
-    const GpuExecutableRunOptions* gpu_options =
-        run_options->run_options().gpu_executable_run_options();
-    Thunk::ExecuteParams thunk_params{
-        &buffer_allocations,
-        stream,
-        run_options->run_options().run_id(),
-        &profiler,
-        run_options->run_options().device_assignment(),
-        &deferred_host_callbacks,
-        gpu_options && gpu_options->gpu_global_device_ids()
-            ? &*gpu_options->gpu_global_device_ids()
-            : nullptr,
-        gpu_options && gpu_options->nccl_unique_id_callback()
-            ? &gpu_options->nccl_unique_id_callback()
-            : nullptr};
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
-    if (thunk_schedule_->Depended(thunk)) {
-      auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
-      finish_event->Init();
-      stream->ThenRecordEvent(finish_event.get());
-      thunk_to_finish_event[thunk] = std::move(finish_event);
-    }
+    // If there is a cache hit, simply launch the existing executable graph.
+    if (exec_graph) {
+      // The temp_buffer_base should match the temp_buff_base of the bufs_key
+      // that is cached.
+      auto buf_keys_set =
+          temp_buffer_base_to_bufs_keys_map_[temp_buf_key.hash()];
+      DCHECK(buf_keys_set.find(bufs_key) == buf_keys_set.end())
+          << " The temp_buffer_base should match the temp_buff_base of "
+             "the bufs_key that is cached.";
+      graph_stats_.cache_hits++;
+      graph_stats_.temp_buffer_cache_hits++;
+      graph_stats_.times_called++;
+      if (bufs_key.hash() == graph_stats_.last_buf_key_hash.load()) {
+        graph_stats_.last_buf_key_hits++;
+      }
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << "CACHE HIT -> Launching graph " << exec_graph << " blindly!"
+                << " Hits: " << graph_stats_.cache_hits.load()
+                << " Misses: " << graph_stats_.cache_miss.load() << " called # "
+                << graph_stats_.times_called.load()
+                << " Cache size: " << graph_exec_cache.GetCurrentCacheSize();
+        VLOG(4) << "Most recent enqueued hash: " << bufs_key.hash()
+                << "Most recent enqueued hash hits: "
+                << graph_stats_.last_buf_key_hits.load();
+      }
+
+      // Launch existing exec graph
+      main_stream->ThenLaunchGraph(exec_graph);
+    } else {
+      // In case of a cache miss, do the following:
+      // 1. Re-capture the thunk sequence in new template graph,
+      // 2. Instantiate the template graph (cuGraph) to construct a new
+      // executable (cuExecGraph)graph,
+      // 3. Cache the new executable graph with the buffer address key,
+      // 4. Launch new executable graph.
+      if (temp_buffer_base_to_bufs_keys_map_.find(temp_buf_key.hash()) !=
+          temp_buffer_base_to_bufs_keys_map_.end()) {
+        graph_stats_.temp_buffer_cache_hits++;
+        if (VLOG_IS_ON(3)) {
+          VLOG(3) << "CACHE MISS Temp Buffer cache HIT";
+          VLOG(3) << "Cache hits till this point: "
+                  << graph_stats_.cache_hits.load() << " and Temp Buffer hits: "
+                  << graph_stats_.temp_buffer_cache_hits.load();
+          VLOG(3)
+              << "Number of buf keys for this temp buffer of hash "
+              << temp_buf_key.hash() << " = "
+              << temp_buffer_base_to_bufs_keys_map_[temp_buf_key.hash()].size();
+        }
+      }
+      graph_stats_.cache_miss++;
+      graph_stats_.times_called++;
+      graph_stats_.last_buf_key_hash = bufs_key.hash();
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << "CACHE MISS"
+                << " Hits: " << graph_stats_.cache_hits.load()
+                << " Misses: " << graph_stats_.cache_miss.load() << " called # "
+                << graph_stats_.times_called
+                << " Cache size: " << graph_exec_cache.GetCurrentCacheSize();
+        VLOG(3) << "Temp buffer Hits: "
+                << graph_stats_.temp_buffer_cache_hits.load();
+        VLOG(4) << "Most recently enqueued hash: " << bufs_key.hash()
+                << "Most recent enqueued hash hits: "
+                << graph_stats_.last_buf_key_hits.load();
+      }
+
+      // Begin capture template graph
+      capture_stream->ThenBeginGraphCapture();
+
+      TF_RETURN_IF_ERROR(ExecuteThunkSequence(
+          run_options, buffer_allocations, profiler, main_stream,
+          capture_stream, sub_streams, deferred_host_callbacks));
+
+      void* graph = nullptr;
+
+      // End capture template graph
+      capture_stream->ThenEndGraphCapture(graph);
+
+      // Instantiate exec graph
+      StatusOr<void*> status =
+          GetExecutor()->InstantiateGraph(graph, exec_graph);
+      if (!status.ok()) {
+        return InternalError(
+            "Failed to instantiate GPU execution graph on stream %p: %s",
+            main_stream, status.status().error_message());
+      }
+      exec_graph = status.ValueOrDie();
+
+      // Add exec graph to Cache
+      bool has_reached_max_cache_size =
+          gpu_exec_graphs_cache_[gpu_context].AddToCache(bufs_key, exec_graph);
+
+      // Heuristic to check whether using graphs for this gpu_executable is
+      // proving to be expensive due to low hit rate. If the hit rate is less
+      // than equal 20% there is no point in using graphs for this executable.
+      if (has_reached_max_cache_size &&
+          graph_stats_.get_cache_hit_rate() <= 20) {
+        VLOG(1) << "The maximum LRU cache size has been reached but the "
+                   "cache hit rate is still "
+                << graph_stats_.get_cache_hit_rate()
+                << ". Hence aborting graph capture for executable " << this;
+        is_graph_capture_costly_ = true;
+        }
+
+        temp_buffer_base_to_bufs_keys_map_[temp_buf_key.hash()].insert(
+            bufs_key);
+
+        // Launch exec graph
+        main_stream->ThenLaunchGraph(exec_graph);
+
+        // Destroy template graph
+        GetExecutor()->DestroyGraph(gpu_context, graph);
+
+    }  // End of graph launch conditional.
   }
 
-  main_stream->ThenWaitFor(&sub_streams);
   if (!deferred_host_callbacks.empty()) {
     auto fn = [deferred_host_callbacks{std::move(deferred_host_callbacks)}]() {
       for (auto& callback : deferred_host_callbacks) {
@@ -233,6 +462,7 @@ Status GpuExecutable::ExecuteThunks(
       main_stream->ThenDoHostCallback(std::move(fn));
     }
   }
+
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
@@ -264,6 +494,83 @@ Status GpuExecutable::ExecuteThunks(
               *module().entry_computation()));
     }
   }
+
+  return Status::OK();
+}
+
+Status GpuExecutable::ExecuteThunkSequence(
+    const ServiceExecutableRunOptions* run_options,
+    const BufferAllocations& buffer_allocations, HloExecutionProfiler& profiler,
+    se::Stream* main_stream, se::Stream* capture_stream,
+    const std::vector<StreamPool::Ptr>& sub_streams,
+    std::vector<std::function<void()>>& deferred_host_callbacks) {
+  se::StreamExecutor* executor = main_stream->parent();
+  std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
+  bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
+  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    // Annotate execution of this op if tracing was enabled when we started
+    // running this module.  If tracing is enabled *while* we're running the
+    // module, we won't get any data, but that's probably an OK trade-off.
+    absl::optional<ScopedAnnotation> op_annotation;
+    CHECK(thunk->hlo_instruction());
+    if (scoped_annotation_enabled) {
+      op_annotation.emplace(FindOrDie(thunk_annotations_, thunk));
+    }
+
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
+    int32 stream_no =
+        thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
+    se::Stream* stream =
+        (stream_no == 0 ? capture_stream : sub_streams[stream_no - 1].get());
+
+    for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
+      if (VLOG_IS_ON(3)) {
+        VLOG(3) << ThunkKindToString(thunk->kind()) << " depends on "
+                << ThunkKindToString(dependency->kind());
+      }
+      stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
+    }
+
+    if (VLOG_IS_ON(3)) {
+      std::string copy_type = dynamic_cast<HostToDeviceCopyThunk*>(thunk)
+                                  ? "HostToDeviceCopyThunk"
+                                  : "";
+      VLOG(3) << "Executing thunk of kind " << ThunkKindToString(thunk->kind())
+              << copy_type;
+      VLOG(4) << "Executing the thunk for "
+              << thunk->hlo_instruction()->ToString() << " on stream "
+              << stream_no;
+    }
+    const GpuExecutableRunOptions* gpu_options =
+        run_options->run_options().gpu_executable_run_options();
+
+    Thunk::ExecuteParams thunk_params{
+        &buffer_allocations,
+        stream,
+        run_options->run_options().run_id(),
+        &profiler,
+        run_options->run_options().device_assignment(),
+        &deferred_host_callbacks,
+        gpu_options && gpu_options->gpu_global_device_ids()
+            ? &*gpu_options->gpu_global_device_ids()
+            : nullptr,
+        gpu_options && gpu_options->nccl_unique_id_callback()
+            ? &gpu_options->nccl_unique_id_callback()
+            : nullptr};
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
+    if (thunk_schedule_->Depended(thunk)) {
+      if (VLOG_IS_ON(3)) {
+        VLOG(3) << " " << ThunkKindToString(thunk->kind())
+                << " is depended by another thunk"
+                << ". Hence pushing finish_event.";
+      }
+      auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
+      finish_event->Init();
+      stream->ThenRecordEvent(finish_event.get());
+      thunk_to_finish_event[thunk] = std::move(finish_event);
+    }
+  }
+  capture_stream->ThenWaitFor(&sub_streams);
 
   return Status::OK();
 }
@@ -303,7 +610,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
           executor->GetUntypedSymbol(
               llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
               module_handle));
-      VLOG(3) << "Resolved global "
+      VLOG(4) << "Resolved global "
               << llvm_ir::ConstantBufferAllocationToGlobalName(allocation)
               << " to " << global.opaque();
       InsertOrDie(&globals, i, global);
@@ -312,7 +619,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
           llvm_ir::LiteralForConstantAllocation(allocation);
       CHECK(literal.shape().IsArray());
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
-        VLOG(3) << "H2D memcpy for constant with shape "
+        VLOG(4) << "H2D memcpy for constant with shape "
                 << ShapeUtil::HumanString(literal.shape());
         stream->ThenMemcpy(&global, literal.untyped_data(), allocation.size());
       }

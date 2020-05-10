@@ -25,21 +25,22 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/fft.h"
+#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace host {
 class HostBlas;
@@ -66,10 +67,8 @@ namespace dnn {
 class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
-class BatchDescriptor;
-class FilterDescriptor;
-class ConvolutionDescriptor;
 class ProfileResult;
+class ProfileExecutionPlanResult;
 class AlgorithmDesc;
 }  // namespace dnn
 
@@ -111,6 +110,17 @@ class Stream {
   // stream.
   bool ok() const { return !InErrorState(); }
 
+  // Retrieves execution status back into the stream from the underlying
+  // implementation without blocking the stream.
+  //
+  // Normally, Stream::BlockHostUntilDone is used to get execution status.
+  // However, some devices use out-of-band mechnanisms to ensure their streams
+  // have finished on-device work, without needing to block the streams. (These
+  // devices should also override AllowsSyncOnCompletion to return false.) For
+  // these devices, this method can be used after work is finished to retrieve
+  // execution status.
+  port::Status RefreshStatus() LOCKS_EXCLUDED(mu_);
+
   // Initialize the stream. This must be performed before entraining any other
   // operations.
   Stream &Init() LOCKS_EXCLUDED(mu_);
@@ -124,10 +134,14 @@ class Stream {
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
+  //
+  // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
-  // later.
+  // later. Sub-streams that are !ok() will not be reused.
+  //
+  // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
@@ -158,15 +172,23 @@ class Stream {
   Stream &ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                      const TypedKernel<Params...> &kernel, Args... args);
 
+  // Launch a task graph. For CUDA backend, launch a CUDA graph.
+  // See Documentation:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cuda-graphs
+  Stream &ThenLaunchGraph(void *exec_graph);
+
+  Stream &ThenBeginGraphCapture();
+
+  Stream &ThenEndGraphCapture(void *&graph);
+
   // Record a "start" event for the interval timer at this point in the
-  // stream's
-  // execution (relative to the previously and subsequently enqueued items in
-  // the stream's execution). Streams may be started/stopped multiple times.
+  // stream's execution (relative to the previously and subsequently enqueued
+  // items in the stream's execution). Streams may be started/stopped multiple
+  // times.
   Stream &ThenStartTimer(Timer *t);
 
   // Record a "stop" event for the interval timer at this point in the
-  // stream's
-  // execution. See also Stream::ThenStartTimer.
+  // stream's execution. See also Stream::ThenStartTimer.
   Stream &ThenStopTimer(Timer *t);
 
   // TODO(leary) If work is added to the stream that is being depended upon,
@@ -182,8 +204,7 @@ class Stream {
   //
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
-  // cyclic
-  // manner; in that case, behavior is undefined.
+  // cyclic manner; in that case, behavior is undefined.
   //
   // N.B. Base recursion case for the variadic ThenWaitFor.
   Stream &ThenWaitFor(Stream *other);
@@ -217,6 +238,56 @@ class Stream {
   // DNN support
   //
   // See DnnSupport::* for comments on the following methods.
+  Stream &ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+      int64 batch_size, int64 feature_count, int64 y_size,
+      const std::string &layout, dnn::DataType input_type,
+      size_t *reserve_space_size, dnn::ActivationMode activation_mode,
+      bool apply_side_input);
+
+  template <typename InElemT>
+  Stream &ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+      int64 batch_size, int64 feature_count, int64 y_size,
+      const std::string &layout, size_t *reserve_space_size, bool apply_relu,
+      bool apply_side_input) {
+    dnn::ActivationMode activation_mode = dnn::ActivationMode::kNone;
+    // Activation mode is only relevant in the absence of side_input. The cuDNN
+    // BN activation mode can be either CUDNN_BATCHNORM_OPS_BN or
+    // CUDNN_BATCHNORM_OPS_BN_ACTIVATION. When side_input is present, it is
+    // assumed that the activation is a relu and the cuDNN BN activation mode is
+    // always CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION.
+    if (apply_relu) {
+      activation_mode = dnn::ActivationMode::kRelu;
+    }
+    return ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+        batch_size, feature_count, y_size, layout,
+        dnn::ToDataType<InElemT>::value, reserve_space_size, activation_mode,
+        apply_side_input);
+  }
+
+  Stream &ThenFindBatchNormWorkspaceSize(
+      dnn::DataType input_data_type, dnn::DataType scale_data_type,
+      const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc,
+      size_t *workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind,
+      dnn::ActivationMode activation_mode, bool apply_side_input);
+
+  template <typename InElemT, typename ScaleElemT>
+  Stream &ThenFindBatchNormWorkspaceSize(
+      const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc,
+      size_t *workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind, bool apply_relu,
+      bool apply_side_input) {
+    dnn::ActivationMode activation_mode = dnn::ActivationMode::kNone;
+    if (apply_relu) {
+      activation_mode = dnn::ActivationMode::kRelu;
+    }
+    return ThenFindBatchNormWorkspaceSize(
+        dnn::ToDataType<InElemT>::value, dnn::ToDataType<ScaleElemT>::value,
+        x_desc, scale_offset_desc, workspace_size_in_bytes, kind,
+        activation_mode, apply_side_input);
+  }
 
   Stream &ThenSoftmax(
       const DeviceMemory<float> &x, const dnn::BatchDescriptor &x_desc,
@@ -231,13 +302,15 @@ class Stream {
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      DeviceMemory<float> *y, DeviceMemory<float> *batch_mean,
-      DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
-      DeviceMemory<float> *saved_inv_var, bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
+      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+      bool is_training,
+      ScratchAllocator *reserve_space_allocator,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
@@ -245,20 +318,24 @@ class Stream {
       const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop);
+      DeviceMemory<float> *offset_backprop,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationForward(
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
+      const DeviceMemory<Eigen::half> &side_input,
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      DeviceMemory<Eigen::half> *y, DeviceMemory<float> *batch_mean,
-      DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
-      DeviceMemory<float> *saved_inv_var, bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
+      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+      bool is_training, ScratchAllocator *reserve_space_allocator,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
@@ -267,21 +344,9 @@ class Stream {
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half> *x_backprop,
-      DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop);
-
-  // TODO(leary) add double-precision version of this interface.
-  Stream &ThenFusedConvolve(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<int8> *output);
+      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,
@@ -311,60 +376,16 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output_data);
 
-  Stream &ThenFusedConvolveWithScratch(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-      ScratchAllocator *scratch_allocator);
-
-  Stream &ThenFusedConvolveWithScratch(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<Eigen::half> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<Eigen::half> &biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
-
-  Stream &ThenFusedConvolveWithScratch(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<float> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveWithScratch(
+  Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
+      const DeviceMemory<double> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
+      const DeviceMemory<double> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveWithScratch(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -387,6 +408,83 @@ class Stream {
       DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
 
   Stream &ThenFusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
@@ -445,6 +543,20 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
+  Stream &ThenFusedConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &conv_input_descriptor,
+      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<float> &side_input_data, float side_input_scale,
+      const dnn::BatchDescriptor &bias_descriptor,
+      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<float> &input_data,
@@ -455,34 +567,17 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
 
-  Stream &ThenConvolveBackwardData(
+  Stream &ThenConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
+      const DeviceMemory<double> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
+      DeviceMemory<double> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<float> *backward_input_data);
-
-  Stream &ThenConvolveBackwardDataWithScratch(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<float> *backward_input_data,
-      ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveBackwardDataWithScratch(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<Eigen::half> *backward_input_data,
-      ScratchAllocator *scratch_allocator);
+      DeviceMemory<double> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
@@ -508,34 +603,53 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenConvolveBackwardFilter(
+  Stream &ThenConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
+      DeviceMemory<double> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<float> *backward_filter_data);
-
-  Stream &ThenConvolveBackwardFilterWithScratch(
       const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<float> *backward_filter_data,
-      ScratchAllocator *scratch_allocator);
+      DeviceMemory<float> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
 
-  Stream &ThenConvolveBackwardFilterWithScratch(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
+  Stream &ThenConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<Eigen::half> backward_output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<Eigen::half> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<Eigen::half> *backward_filter_data,
-      ScratchAllocator *scratch_allocator);
+      DeviceMemory<double> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -560,6 +674,42 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<double> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<float> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<Eigen::half> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
                                    const DeviceMemory<double> &input_data,
@@ -606,19 +756,29 @@ class Stream {
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<double> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<double> *output_data);
+                          DeviceMemory<double> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<float> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<float> *output_data);
+                          DeviceMemory<float> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<Eigen::half> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<Eigen::half> *output_data);
+                          DeviceMemory<Eigen::half> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
+
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<int8> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<int8> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -626,7 +786,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<double> &output_data,
                            const DeviceMemory<double> &input_diff_data,
-                           DeviceMemory<double> *output_diff_data);
+                           DeviceMemory<double> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -634,7 +795,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<float> &output_data,
                            const DeviceMemory<float> &input_diff_data,
-                           DeviceMemory<float> *output_diff_data);
+                           DeviceMemory<float> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -642,14 +804,9 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<Eigen::half> &output_data,
                            const DeviceMemory<Eigen::half> &input_diff_data,
-                           DeviceMemory<Eigen::half> *output_diff_data);
+                           DeviceMemory<Eigen::half> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
-  Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
-                        const DeviceMemory<float> &input_data,
-                        DeviceMemory<float> *output_data);
-
-  // Similar to ThenNormalize, but normalizes across feature maps and allows for
-  // specifying the dimensions of the tensor.
   Stream &ThenNormalizeWithDimensions(
       const dnn::NormalizeDescriptor &normalize_descriptor,
       const dnn::BatchDescriptor &dimensions,
@@ -661,7 +818,8 @@ class Stream {
       const DeviceMemory<float> &raw_data,
       const DeviceMemory<float> &normalized_data,
       const DeviceMemory<float> &normalized_variable_gradient,
-      DeviceMemory<float> *raw_variable_gradient);
+      DeviceMemory<float> *raw_variable_gradient,
+      ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenActivate(dnn::ActivationMode activation_mode,
                        const dnn::BatchDescriptor &dimensions,
@@ -1327,33 +1485,39 @@ class Stream {
                        DeviceMemory<std::complex<double>> *x, int incx);
 
   // See BlasSupport::DoBlasGemm.
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, float alpha,
-                       const DeviceMemory<Eigen::half> &a, int lda,
-                       const DeviceMemory<Eigen::half> &b, int ldb, float beta,
-                       DeviceMemory<Eigen::half> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &b, int ldb, float beta,
-                       DeviceMemory<float> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, double alpha,
-                       const DeviceMemory<double> &a, int lda,
-                       const DeviceMemory<double> &b, int ldb, double beta,
-                       DeviceMemory<double> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       const DeviceMemory<std::complex<float>> &b, int ldb,
-                       std::complex<float> beta,
-                       DeviceMemory<std::complex<float>> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       const DeviceMemory<std::complex<double>> &b, int ldb,
-                       std::complex<double> beta,
-                       DeviceMemory<std::complex<double>> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, float alpha,
+                                 const DeviceMemory<Eigen::half> &a, int lda,
+                                 const DeviceMemory<Eigen::half> &b, int ldb,
+                                 float beta, DeviceMemory<Eigen::half> *c,
+                                 int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, float alpha,
+                                 const DeviceMemory<float> &a, int lda,
+                                 const DeviceMemory<float> &b, int ldb,
+                                 float beta, DeviceMemory<float> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, double alpha,
+                                 const DeviceMemory<double> &a, int lda,
+                                 const DeviceMemory<double> &b, int ldb,
+                                 double beta, DeviceMemory<double> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k,
+                                 std::complex<float> alpha,
+                                 const DeviceMemory<std::complex<float>> &a,
+                                 int lda,
+                                 const DeviceMemory<std::complex<float>> &b,
+                                 int ldb, std::complex<float> beta,
+                                 DeviceMemory<std::complex<float>> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k,
+                                 std::complex<double> alpha,
+                                 const DeviceMemory<std::complex<double>> &a,
+                                 int lda,
+                                 const DeviceMemory<std::complex<double>> &b,
+                                 int ldb, std::complex<double> beta,
+                                 DeviceMemory<std::complex<double>> *c,
+                                 int ldc);
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,
@@ -1396,54 +1560,64 @@ class Stream {
   // See BlasSupport::DoBlasGemmWithAlgorithm.
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const Eigen::half &alpha, const DeviceMemory<Eigen::half> &a,
-      int lda, const DeviceMemory<Eigen::half> &b, int ldb,
-      const Eigen::half &beta, DeviceMemory<Eigen::half> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
-                                    blas::Transpose transb, uint64 m, uint64 n,
-                                    uint64 k, int alpha,
-                                    const DeviceMemory<int8> &a, int lda,
-                                    const DeviceMemory<int8> &b, int ldb,
-                                    int beta, DeviceMemory<int> *c, int ldc,
-                                    blas::ComputationType computation_type,
-                                    blas::AlgorithmType algorithm,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
-                                    blas::Transpose transb, uint64 m, uint64 n,
-                                    uint64 k, float alpha,
-                                    const DeviceMemory<float> &a, int lda,
-                                    const DeviceMemory<float> &b, int ldb,
-                                    float beta, DeviceMemory<float> *c, int ldc,
-                                    blas::ComputationType computation_type,
-                                    blas::AlgorithmType algorithm,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
-      const DeviceMemory<double> &b, int ldb, double beta,
-      DeviceMemory<double> *c, int ldc, blas::ComputationType computation_type,
+      uint64 k, const HostOrDeviceScalar<Eigen::half> &alpha,
+      const DeviceMemory<Eigen::half> &a, int lda,
+      const DeviceMemory<Eigen::half> &b, int ldb,
+      const HostOrDeviceScalar<Eigen::half> &beta, DeviceMemory<Eigen::half> *c,
+      int ldc, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, std::complex<float> alpha,
+      uint64 k, const HostOrDeviceScalar<int> &alpha,
+      const DeviceMemory<int8> &a, int lda, const DeviceMemory<int8> &b,
+      int ldb, const HostOrDeviceScalar<int> &beta, DeviceMemory<int> *c,
+      int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const HostOrDeviceScalar<float> &alpha,
+      const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
+      int ldb, const HostOrDeviceScalar<float> &beta, DeviceMemory<float> *c,
+      int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const HostOrDeviceScalar<double> &alpha,
+      const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
+      int ldb, const HostOrDeviceScalar<double> &beta, DeviceMemory<double> *c,
+      int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const HostOrDeviceScalar<std::complex<float>> &alpha,
       const DeviceMemory<std::complex<float>> &a, int lda,
       const DeviceMemory<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      const HostOrDeviceScalar<std::complex<float>> &beta,
+      DeviceMemory<std::complex<float>> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, std::complex<double> alpha,
+      uint64 k, const HostOrDeviceScalar<std::complex<double>> &alpha,
       const DeviceMemory<std::complex<double>> &a, int lda,
       const DeviceMemory<std::complex<double>> &b, int ldb,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      const HostOrDeviceScalar<std::complex<double>> &beta,
+      DeviceMemory<std::complex<double>> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
 
   // See BlasSupport::DoBlasGemmBatched.
+  Stream &ThenBlasGemmBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+      int ldc, int batch_count);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64 m, uint64 n, uint64 k, float alpha,
                               const port::ArraySlice<DeviceMemory<float> *> &a,
@@ -1478,6 +1652,13 @@ class Stream {
       int batch_count);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, float alpha, const port::ArraySlice<DeviceMemory<float> *> &a,
       int lda, const port::ArraySlice<DeviceMemory<float> *> &b, int ldb,
       float beta, const port::ArraySlice<DeviceMemory<float> *> &c, int ldc,
@@ -1504,6 +1685,38 @@ class Stream {
       std::complex<double> beta,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha, const DeviceMemory<Eigen::half> &a, int lda,
+      int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
+      int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
+      int64 stride_c, int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
+      int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
+      float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
+      int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+      int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
+      double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
+      int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<float> alpha,
+      const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,
+      const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
+      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      int64 stride_c, int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<double> alpha,
+      const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,
+      const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,
+      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      int64 stride_c, int batch_count);
 
   // See BlasSupport::DoBlasHemm.
   Stream &ThenBlasHemm(blas::Side side, blas::UpperLower uplo, uint64 m,
@@ -1775,7 +1988,8 @@ class Stream {
                          DeviceMemory<Eigen::half> *output_c_data,
                          bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1792,7 +2006,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<float> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1809,7 +2024,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<double> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   // Enqueue a backward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnBackward for more details.
@@ -1836,7 +2052,8 @@ class Stream {
       DeviceMemory<Eigen::half> *input_c_backprop_data,
       DeviceMemory<Eigen::half> *params_backprop_data,
       DeviceMemory<uint8> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
+      ScratchAllocator *workspace_allocator,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1860,7 +2077,8 @@ class Stream {
                           DeviceMemory<float> *input_c_backprop_data,
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1884,7 +2102,22 @@ class Stream {
                           DeviceMemory<double> *input_c_backprop_data,
                           DeviceMemory<double> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
+
+  // Enqueue a CTCLoss operation onto the stream.
+  // See DnnSupport::DoCtcLoss for more details.
+  Stream &ThenCtcLoss(
+      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const DeviceMemory<float> &probs_data,
+      const absl::Span<const int32> &labels_data,
+      const absl::Span<const int32> &labels_lengths_data,
+      const absl::Span<const int32> &input_lengths_data,
+      DeviceMemory<float> *costs_data,
+      const dnn::RnnStateTensorDescriptor &grads_desc,
+      DeviceMemory<float> *grads_data,
+      const dnn::CtcLossDescriptor &ctc_loss_desc,
+      ScratchAllocator *workspace_allocator);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
@@ -1939,17 +2172,33 @@ class Stream {
   internal::StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
+  // Behaves as ThenDoHostCallbackWithStatus below, but the callback should
+  // never fail or its failure is inconsequential.
+  //
+  // This is kept for backward compatibility. Future code should use
+  // ThenDoHostCallbackWithStatus and explicitly return a success status.
+  // TODO(b/112125301): Eventually remove this method.
+  Stream &ThenDoHostCallback(std::function<void()> callback);
+
+  // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
+  // Whether the callback return status affects the result of BlockHostUntilDone
+  // is platform-dependent.
+  //
   // Behavior is undefined when synchronizing using OpenCL user events.
   // Behavior is undefined if host callbacks call device routines or insert
   // them into any stream.
+  //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallback(std::function<void()> callback);
+  Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
 
-  // Identical to ThenDoHostCallback; only exposed for testing purposes.
-  Stream &ThenDoHostCallbackForTest(std::function<void()> callback);
+  // Runs the given callback after the next call to BlockHostUntilDone on this
+  // stream (or after the Stream does BlockHostUntilDone iin its destructor).
+  // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
+  // some use cases.
+  Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
@@ -1961,6 +2210,9 @@ class Stream {
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();
 
+  // Returns a debugging string "[stream=0x...,impl=0x...]".
+  string DebugStreamPointers() const;
+
  private:
   friend class host::HostBlas;  // for parent_.
   friend class host::HostFft;   // for parent_.
@@ -1970,7 +2222,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock{mu_};
+    absl::ReaderMutexLock lock(&mu_);
     return !ok_;
   }
 
@@ -1980,9 +2232,12 @@ class Stream {
     if (operation_retcode) {
       return;
     }
-    mutex_lock lock{mu_};
+    absl::MutexLock lock(&mu_);
     ok_ = false;
   }
+
+  // Checks the status and logs the error message, if any.
+  void CheckStatus(port::Status status) LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 
@@ -1991,6 +2246,10 @@ class Stream {
     LOG(WARNING) << "attempting to perform DNN operation using StreamExecutor "
                     "without DNN support";
   }
+
+  // Runs the set of callbacks that are intended to run after
+  // BlockHostUntilDone.
+  void RunAfterBlockHostUntilDoneCallbacks();
 
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
@@ -2001,7 +2260,7 @@ class Stream {
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.
@@ -2023,6 +2282,10 @@ class Stream {
   // notes when they can be reclaimed -- reclamation is attempted when
   // BlockHostUntilDone() is called.
   internal::TemporaryMemoryManager temporary_memory_manager_;
+
+  // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
+  std::vector<std::function<void()>> after_block_host_until_done_callbacks_
+      GUARDED_BY(mu_);
 
   // Implementation of ThenConvolveBackwardBias that is shared by all types.
   template <typename T>
@@ -2066,7 +2329,6 @@ struct Quantization<int32> {
       dnn::QuantizedActivationMode::k32Bit;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_H_

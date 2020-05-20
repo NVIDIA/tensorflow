@@ -20,7 +20,7 @@ Link to Tensorflow [README](https://github.com/tensorflow/tensorflow)
 
 ## Requirements
 * Ubuntu 16.04 or later (64-bit)
-* GPU support requires a CUDA®-enabled card 
+* GPU support requires a CUDA&reg;-enabled card 
 * For NVIDIA GPUs, the r450 driver must be installed
 
 For wheel installation:
@@ -54,7 +54,7 @@ The `nvidia-tensorflow` package includes CPU and GPU support for Linux.
 Please review the [Contribution Guidelines](CONTRIBUTING.md). 
 
 [GitHub issues](https://github.com/nvidia/tensorflow/issues) will be used for
-tracking requests and bugs, please see direct any question to 
+tracking requests and bugs, please direct any question to 
 [NVIDIA devtalk](https://forums.developer.nvidia.com/c/ai-deep-learning/deep-learning-framework/tensorflow/101)
 
 ## License

@@ -39,13 +39,13 @@ NVIDIA wheels are not hosted on PyPI.org.  To install the NVIDIA wheels for
 Tensorflow, install the NVIDIA wheel index:
 
 ```
-$ pip install nvidia-pyindex
+$ pip --user install nvidia-pyindex
 ```
 
 To install the current NVIDIA Tensorflow release:
 
 ```
-$ pip install nvidia-tensorflow
+$ pip --user install nvidia-tensorflow
 ```
 The `nvidia-tensorflow` package includes CPU and GPU support for Linux.
 

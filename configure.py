@@ -64,10 +64,7 @@ APPLE_BAZEL_FILES = [
 ]
 
 # List of files to move when building for iOS.
-IOS_FILES = [
-    'tensorflow/lite/experimental/objc/TensorFlowLiteObjC.podspec',
-    'tensorflow/lite/experimental/swift/TensorFlowLiteSwift.podspec',
-]
+IOS_FILES = []
 
 
 class UserInputError(Exception):

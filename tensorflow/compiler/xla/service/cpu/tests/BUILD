@@ -122,6 +122,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
@@ -202,8 +203,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
-	"//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -216,8 +217,8 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
-	"//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -230,8 +231,8 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
-	"//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

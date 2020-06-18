@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/cpu/test_target_triple_helper.h"
+#include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 
 namespace xla {
 namespace cpu {
@@ -47,7 +47,8 @@ CHECK: private unnamed_addr constant [48 x i8]
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
-      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost, /*features=*/"",
+      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+      /*features=*/"",
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
@@ -74,7 +75,8 @@ CHECK: Outfeed
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
-      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost, /*features=*/"",
+      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+      /*features=*/"",
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 

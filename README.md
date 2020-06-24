@@ -49,6 +49,17 @@ $ pip --user install --user nvidia-tensorflow[horovod]
 ```
 The `nvidia-tensorflow` package includes CPU and GPU support for Linux.
 
+## License information
+By using the software you agree to fully comply with the terms and
+conditions of the EULA (End User License Agreement) or SLA 
+(Software License Agreement) of the individual product:
+* CUDA – https://docs.nvidia.com/cuda/eula/index.html#abstract
+* cuDNN – https://docs.nvidia.com/deeplearning/sdk/cudnn-sla/index.html
+* TensorRT - https://docs.nvidia.com/deeplearning/tensorrt/sla/index.html
+
+If you do not agree to the terms and conditions of the EULA or SLA, 
+do not install or use the software.
+
 ## Contribution guidelines
 
 Please review the [Contribution Guidelines](CONTRIBUTING.md). 

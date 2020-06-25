@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -37,6 +39,11 @@ namespace xla {
 
 class LocalExecutable {
  public:
+  // Low-level constructor; LocalClient::Compile() is the usual way to create
+  // executables.
+  LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
+                  ExecutableBuildOptions build_options);
+
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<ScopedShapedBuffer> Run(
@@ -49,6 +56,13 @@ class LocalExecutable {
       const absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
+  // Similar to RunAsync(), but allows for donating argument buffers to the
+  // executable.
+  StatusOr<ExecutionOutput> RunAsync(
+      absl::Span<Shape const* const> argument_host_shapes,
+      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      ExecutableRunOptions run_options);
+
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
 
@@ -56,27 +70,19 @@ class LocalExecutable {
   Executable* executable() const { return executable_.get(); }
 
  private:
-  // Only a local client can construct these objects.
-  friend class LocalClient;
-
-  // Constructor invoked by LocalClient.
-  LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
-                  ExecutableBuildOptions build_options);
-
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //
   // The given ExecutableRunOptions override any values from TF_XLA_FLAGS
   // environment variable.
   Status ValidateExecutionOptions(
-      const absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 
   StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>> RunHelper(
-      const absl::Span<const ShapedBuffer* const> arguments,
+      const absl::Span<const Shape* const> argument_shapes,
       ExecutableRunOptions run_options);
 
   // The ordinal of the device which this executable was compiled for. The

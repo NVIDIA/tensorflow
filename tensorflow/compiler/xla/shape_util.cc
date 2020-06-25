@@ -238,7 +238,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   Shape new_shape = MakeShapeWithDescendingLayout(shape.element_type(), dims);
   // Since the physical layout is kept the same, the tiles and element size are
   // the same also.
-  *new_shape.mutable_layout()->mutable_tiles() = shape.layout().tiles();
+  new_shape.mutable_layout()->mutable_tiles()->assign(
+      shape.layout().tiles().begin(), shape.layout().tiles().end());
   new_shape.mutable_layout()->set_element_size_in_bits(
       shape.layout().element_size_in_bits());
   return new_shape;
@@ -285,6 +286,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                                 Shape* tuple_shape) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   *tuple_shape->add_tuple_shapes() = shape;
+}
+
+/* static */ void ShapeUtil::UpdateTupleShape(const Shape& shape, int64 index,
+                                              Shape* tuple_shape) {
+  CHECK(index < tuple_shape->tuple_shapes_size());
+  *tuple_shape->mutable_tuple_shapes(index) = shape;
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
@@ -1320,7 +1327,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       return absl::nullopt;
     }
 
-    auto layout = simple_output_shape->layout().minor_to_major();
+    std::vector<int64> layout =
+        SpanToVector(simple_output_shape->layout().minor_to_major());
     // For each one sized dimension in the output, increment the dimension
     // numbers in layout that are more minor than the one.
     absl::InlinedVector<int64, 8> dim_map;

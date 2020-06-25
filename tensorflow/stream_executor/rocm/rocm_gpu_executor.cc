@@ -425,8 +425,9 @@ void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
   // TODO(ROCm) implement this feature in HIP
 }
 
-void* GpuExecutor::Allocate(uint64 size) {
-  return GpuDriver::DeviceAllocate(context_, size);
+DeviceMemoryBase GpuExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
 }
 
 void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
@@ -457,7 +458,8 @@ bool GpuExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(context_);
 }
 
-bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
+port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -467,8 +469,8 @@ bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
                                            0x0, size);
 }
 
-bool GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                    uint64 size) {
+port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // hipMemset reinterprets "value" as a uint8.
@@ -501,8 +503,8 @@ port::Status GpuExecutor::SynchronousMemcpyDeviceToDevice(
                                          AsROCmDevicePtr(gpu_src), size);
 }
 
-bool GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                          uint64 size) {
+port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
+                                  uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return Memset32(stream, location, 0x0, size);
@@ -511,8 +513,8 @@ bool GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
   }
 }
 
-bool GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                         uint8 pattern, uint64 size) {
+port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
+                                 uint8 pattern, uint64 size) {
   VLOG(2) << "enqueueing memset8 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -521,8 +523,8 @@ bool GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                             AsGpuStreamValue(stream));
 }
 
-bool GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                           uint32 pattern, uint64 size) {
+port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
+                                   uint32 pattern, uint64 size) {
   VLOG(2) << "enqueueing memset32 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;

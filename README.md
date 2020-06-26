@@ -51,13 +51,10 @@ The `nvidia-tensorflow` package includes CPU and GPU support for Linux.
 
 ## License information
 By using the software you agree to fully comply with the terms and
-conditions of the EULA (End User License Agreement) or SLA 
-(Software License Agreement) of the individual product:
+conditions of the SLA  (Software License Agreement):
 * CUDA – https://docs.nvidia.com/cuda/eula/index.html#abstract
-* cuDNN – https://docs.nvidia.com/deeplearning/sdk/cudnn-sla/index.html
-* TensorRT - https://docs.nvidia.com/deeplearning/tensorrt/sla/index.html
 
-If you do not agree to the terms and conditions of the EULA or SLA, 
+If you do not agree to the terms and conditions of the SLA, 
 do not install or use the software.
 
 ## Contribution guidelines

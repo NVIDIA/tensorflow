@@ -229,7 +229,8 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   }
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream,
+                params.deferred_host_callbacks);
   if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
   }
@@ -319,7 +320,8 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   }
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, stream);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, stream,
+                params.deferred_host_callbacks);
 
   if (!stream->ok()) {
     return InternalError("BatchNormalizationBackward call failed.");

@@ -41,21 +41,28 @@ REGISTER_OP("TRTEngineOp")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8'}")
     .Attr("calibration_data: string = ''")
     .Attr("use_calibration: bool = true")
+    .Attr("input_shapes: list(shape) = []")
+    .Attr("output_shapes: list(shape) = []")
     .Input("in_tensor: InT")
     .Output("out_tensor: OutT")
-    // TODO(jie): TF requires concrete output shape for concrete input shapes.
-    // This is tricky for batch dimension, since we cannot ensure which input
-    // would carry the correct batch dimension (for the current stage of the
-    // implementation, we do require all input tensor to carry the same batch
-    // size, but this could change in the future). Hence we disable shape
-    // inference function as a workaround.
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      std::vector<tensorflow::PartialTensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+
+      for(int i=0; i<output_shapes.size(); i++) {
+        ::tensorflow::shape_inference::ShapeHandle shape;
+        shape_inference::ShapeHandle output_shape_handle;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            output_shapes[i], &output_shape_handle));
+        c->set_output(i, output_shape_handle);
+      }
+
+      return Status::OK();
+    })
     // Deprecated attributes.
     .Attr("segment_funcdef_name: string = ''")
     .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("fixed_input_size: bool = true")
-    .Attr("input_shapes: list(shape) = []")
-    .Attr("output_shapes: list(shape) = []")
     .Attr("static_engine: bool = true");
 }  // namespace tensorflow
 

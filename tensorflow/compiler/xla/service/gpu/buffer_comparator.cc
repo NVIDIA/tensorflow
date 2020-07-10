@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
-#include "absl/base/call_once.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -27,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
@@ -358,7 +356,7 @@ BB1_8:
 
 BB2_3:
  {
- .reg .b32 %temp; 
+ .reg .b32 %temp;
  mov.b64  {%temp, %r2}, %fd2;
  }
  and.b32   %r7, %r2, 2147483647;
@@ -366,14 +364,14 @@ BB2_3:
  @%p4 bra  BB2_8;
 
  {
- .reg .b32 %temp; 
+ .reg .b32 %temp;
  mov.b64  {%r8, %temp}, %fd2;
  }
  setp.ne.s32 %p5, %r8, 0;
  @%p5 bra  BB2_8;
 
  {
- .reg .b32 %temp; 
+ .reg .b32 %temp;
  mov.b64  {%temp, %r3}, %fd1;
  }
  and.b32   %r9, %r3, 2147483647;
@@ -381,7 +379,7 @@ BB2_3:
  @%p6 bra  BB2_8;
 
  {
- .reg .b32 %temp; 
+ .reg .b32 %temp;
  mov.b64  {%r10, %temp}, %fd1;
  }
  setp.ne.s32 %p7, %r10, 0;
@@ -579,22 +577,19 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::DeviceMemory<ElementT> rhs_typed(rhs);
   uint64 buffer_size = lhs_typed.ElementCount();
 
-  absl::Span<const uint8> compiled_ptx = {};
-  StatusOr<absl::Span<const uint8>> compiled_ptx_or =
-      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
-                                   buffer_compare_ptx,
-                                   PtxOptsFromConfig(config));
+  StatusOr<absl::Span<const uint8> > compiled_ptx_or =
+      se::cuda::CompilePtxOrGetCached(
+          executor->device_ordinal(), buffer_compare_ptx,
+          PtxOptsFromConfig(config));
+  absl::Span<const uint8> compiled_ptx;
   if (compiled_ptx_or.ok()) {
-    compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
+    compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {
-    static absl::once_flag ptxas_not_found_logged;
-    absl::call_once(ptxas_not_found_logged, [&]() {
-      LOG(WARNING)
-          << compiled_ptx_or.status().ToString()
-          << "\nRelying on driver to perform ptx compilation. "
-          << "\nSetting XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda "
-          << " or modifying $PATH can be used to set the location of ptxas"
-          << "\nThis message will only be logged once.";
+    static std::once_flag ptxas_not_found_logged;
+    std::call_once(ptxas_not_found_logged, [&]() {
+      LOG(WARNING) << compiled_ptx_or.status().ToString()
+                   << "\nRelying on driver to perform ptx compilation. "
+                   << "This message will be only logged once.";
     });
   }
 
@@ -608,13 +603,10 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, executor->GetDeviceDescription());
 
-  auto thread_counts = dim.thread_counts_per_block();
-  auto block_counts = dim.block_counts();
-  stream->ThenLaunch(
-      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
-      *comparison_kernel, lhs_typed, rhs_typed, static_cast<float>(kTolerance),
-      buffer_size, out_param.cref());
+  stream->ThenLaunch(se::ThreadDim(dim.threads_per_block()),
+                     se::BlockDim(dim.block_count()), *comparison_kernel,
+                     lhs_typed, rhs_typed, static_cast<float>(kTolerance),
+                     buffer_size, out_param.cref());
 
   uint64 result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));

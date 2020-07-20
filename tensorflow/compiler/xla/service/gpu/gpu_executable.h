@@ -113,12 +113,12 @@ class GpuExecutable : public Executable {
   // globals corresponding to constant buffers.  Returns a map mapping buffer
   // allocation indices to GPU pointers.
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
-      stream_executor::StreamExecutor* executor);
+      stream_executor::Stream* stream);
 
   // Computes annotations for each thunk and store them in thunk_annotations_.
   void ComputeThunkAnnotations();
 
-  // GpuExecutable check with either AMD's ISA version, or Nvdia's major minor
+  // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
@@ -159,9 +159,9 @@ class GpuExecutable : public Executable {
   // `ResolveConstantGlobals`.
   tensorflow::mutex module_handle_mutex_;
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ GUARDED_BY(module_handle_mutex_);
+      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
-      module_globals_ GUARDED_BY(module_handle_mutex_);
+      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

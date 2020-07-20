@@ -337,7 +337,7 @@ Backend* LocalClient::mutable_backend() {
   return local_service_->mutable_backend();
 }
 
-StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
+StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& options) {
@@ -347,12 +347,20 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
     VLOG(3) << "Set device ordinal to default value of: "
             << updated_options.device_ordinal();
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      local_service_->CompileExecutable(
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
+                      local_service_->CompileExecutables(
                           computation, argument_layouts, updated_options));
-  return absl::make_unique<LocalExecutable>(std::move(executable),
-                                            local_service_->mutable_backend(),
-                                            updated_options);
+
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.reserve(executables.size());
+
+  for (auto& executable : executables) {
+    local_executables.push_back(absl::make_unique<LocalExecutable>(
+        std::move(executable), local_service_->mutable_backend(),
+        updated_options));
+  }
+
+  return std::move(local_executables);
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
@@ -407,15 +415,14 @@ StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
 }
 
 StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
-    const ::xla::BorrowingLiteral& literal, int device_oridinal) {
+    const ::xla::BorrowingLiteral& literal, int device_ordinal) {
   const ::xla::Shape& shape = literal.shape();
 
-  TF_ASSIGN_OR_RETURN(
-      ::xla::ScopedShapedBuffer shaped_buffer,
-      backend().transfer_manager()->AllocateScopedShapedBuffer(
-          shape, backend().memory_allocator(), device_oridinal));
+  TF_ASSIGN_OR_RETURN(::xla::ScopedShapedBuffer shaped_buffer,
+                      backend().transfer_manager()->AllocateScopedShapedBuffer(
+                          shape, backend().memory_allocator(), device_ordinal));
   TF_ASSIGN_OR_RETURN(auto stream,
-                      mutable_backend()->BorrowStream(device_oridinal));
+                      mutable_backend()->BorrowStream(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
       stream.get(), literal, shaped_buffer));
   std::vector<::xla::ScopedShapedBuffer> replicated_buffer;

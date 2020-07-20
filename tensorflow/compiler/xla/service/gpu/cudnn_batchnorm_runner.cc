@@ -95,24 +95,26 @@ void RunCudnnBatchNormForwardInferenceImpl(
       params->mean,                                                 //
       params->variance,                                             //
       /*side_input=*/null_device_ptr, params->common.operand_desc,  //
-      params->common.scale_offset_desc, params->common.epsilon,      //
-      se::dnn::ActivationMode::kNone,                               //
-      &output_buf,                                                  //
-      /*batch_mean=*/nullptr,                                       //
-      /*batch_var=*/nullptr,                                        //
-      /*saved_mean=*/nullptr,                                       //
-      /*saved_inv_var=*/nullptr,                                    //
-      /*is_training=*/false,                                        //
-      /*var_to_inv_var=*/nullptr,                                   //
-      /*inv_var_to_var=*/nullptr,                                   //
-      /*reserve_space_allocator=*/nullptr,                          //
+      params->common.scale_offset_desc,                             //
+      static_cast<double>(params->common.epsilon),                  //
+      // TODO(b/137108598): Extend method to allow use of non-trivial
+      // exponential averaging.
+      /*exponential_average_factor=*/1.0,
+      se::dnn::ActivationMode::kNone,       //
+      &output_buf,                          //
+      /*batch_mean=*/nullptr,               //
+      /*batch_var=*/nullptr,                //
+      /*saved_mean=*/nullptr,               //
+      /*saved_inv_var=*/nullptr,            //
+      /*is_training=*/false,                //
+      /*reserve_space_allocator=*/nullptr,  //
       /*workspace_allocator=*/nullptr);
 }
 
 template <typename ElemType>
 void RunCudnnBatchNormForwardTrainingImpl(
-    CudnnBatchNormForwardTrainingParams* params, 
-    se::ScratchAllocator* reserve_space_allocator, 
+    CudnnBatchNormForwardTrainingParams* params,
+    se::ScratchAllocator* reserve_space_allocator,
     se::ScratchAllocator* workspace_allocator, se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
   auto output_data = se::DeviceMemory<ElemType>(params->output_data);
@@ -127,14 +129,17 @@ void RunCudnnBatchNormForwardTrainingImpl(
   workspace_allocator = allocator(workspace_allocator);
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<ElemType>(params->common.operand),
-      params->common.scale,                          //
-      params->offset,                                //
-      /*estimated_mean=*/null_device_ptr,            //
-      /*estimated_variance=*/null_device_ptr,        //
-      /*side_input=*/null_device_ptr,                //
-      params->common.operand_desc,                   //
-      params->common.scale_offset_desc,              //
-      params->common.epsilon,                        //
+      params->common.scale,                    //
+      params->offset,                          //
+      /*estimated_mean=*/null_device_ptr,      //
+      /*estimated_variance=*/null_device_ptr,  //
+      /*side_input=*/null_device_ptr,          //
+      params->common.operand_desc,             //
+      params->common.scale_offset_desc,        //
+      params->common.epsilon,                  //
+      // TODO(b/137108598): Extend method to allow use of non-trivial
+      // exponential averaging.
+      /*exponential_average_factor=*/1.0,
       se::dnn::ActivationMode::kNone,                //
       &output_data,                                  //
       /*batch_mean=*/&null_device_ptr,               //
@@ -142,9 +147,7 @@ void RunCudnnBatchNormForwardTrainingImpl(
       /*saved_mean=*/&params->output_mean,           //
       /*saved_inv_var=*/&params->output_inv_stddev,  //
       /*is_training=*/true,                          //
-      /*var_to_inv_var=*/nullptr,                    //
-      /*inv_var_to_var=*/nullptr,                    //
-      reserve_space_allocator,           //
+      reserve_space_allocator,                       //
       workspace_allocator);
 }
 
@@ -210,8 +213,8 @@ Status RunCudnnBatchNormForwardTraining(
     const HloInstruction* batchnorm, se::DeviceMemoryBase operand,
     se::DeviceMemoryBase output_data, se::DeviceMemory<float> output_mean,
     se::DeviceMemory<float> output_inv_stddev, se::DeviceMemory<float> scale,
-    se::DeviceMemory<float> offset,se::DeviceMemoryBase reserve_space, 
-    se::DeviceMemoryBase workspace, float epsilon, int64 feature_index, 
+    se::DeviceMemory<float> offset, se::DeviceMemoryBase reserve_space,
+    se::DeviceMemoryBase workspace, float epsilon, int64 feature_index,
     se::Stream* stream) {
   CudnnBatchNormForwardTrainingParams forward_params;
   ScratchBufAllocator reserve_space_scratch_allocator(reserve_space);
@@ -227,16 +230,14 @@ Status RunCudnnBatchNormForwardTraining(
       batchnorm->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
-      RunCudnnBatchNormForwardTrainingImpl<Eigen::half>(&forward_params,
-                                                        &reserve_space_scratch_allocator,
-                                                        &workspace_scratch_allocator,
-                                                        stream);
+      RunCudnnBatchNormForwardTrainingImpl<Eigen::half>(
+          &forward_params, &reserve_space_scratch_allocator,
+          &workspace_scratch_allocator, stream);
       break;
     case F32:
-      RunCudnnBatchNormForwardTrainingImpl<float>(&forward_params, 
-                                                  &reserve_space_scratch_allocator,
-                                                  &workspace_scratch_allocator,
-                                                  stream);
+      RunCudnnBatchNormForwardTrainingImpl<float>(
+          &forward_params, &reserve_space_scratch_allocator,
+          &workspace_scratch_allocator, stream);
       break;
     default:
       return Unimplemented("Primitive type not implemented for \"%s\" ",

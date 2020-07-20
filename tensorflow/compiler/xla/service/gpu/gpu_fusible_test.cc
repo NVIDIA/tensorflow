@@ -471,7 +471,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest,
-       ShapesCompatibleForMultiOutputFusion_MultiOutputLoopFusion_DifferentElementType) {
+       ShapesCompatibleForMultiOutputFusion_DifferentElementType) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)

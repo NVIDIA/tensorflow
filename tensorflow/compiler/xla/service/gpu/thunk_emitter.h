@@ -17,18 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
 
 // Implements handling of GPU execution for HLO operations that are handed off
-// to specialzied thunks that do not require code generation. Intended to be
+// to specialized thunks that do not require code generation. Intended to be
 // mixed into GPU emitters.
 class ThunkEmitter {
  public:

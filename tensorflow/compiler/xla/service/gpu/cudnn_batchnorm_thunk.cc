@@ -79,7 +79,7 @@ void CheckInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
 
   // The last operand is the feature index which must be int64.
   CHECK_EQ(hlo->operand(num_operands - 1)->shape().element_type(), S64)
-      << "Not yet impelemented";
+      << "Not yet implemented";
 
   // Check Outputs.
   if (hlo->shape().IsTuple()) {
@@ -87,19 +87,19 @@ void CheckInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
              operand_primitive_type)
         << "Invalid datatype";
     // For batchnorm forward, the last 2 outputs are optional reserve
-    // space and scratch space respectively. For batchnorm backward, the last 
+    // space and scratch space respectively. For batchnorm backward, the last
     // out is an optional scratch space. The scratch bytes have been determined
     // in cudnn_batchnorm_rewriter.
     int num_scratch_buffers = 0;
     if (hlo->custom_call_target() == kCudnnBatchNormForwardTrainingCallTarget &&
-       hlo->shape().tuple_shapes_size() == 5){
-           num_scratch_buffers = 2;
-       }
-    else if (hlo->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
-        hlo->shape().tuple_shapes_size() == 4){
-        num_scratch_buffers = 1;
-    } 
-    for (int j = 1; j < hlo->shape().tuple_shapes_size() - num_scratch_buffers; j++) {
+        hlo->shape().tuple_shapes_size() == 5) {
+      num_scratch_buffers = 2;
+    } else if (hlo->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
+               hlo->shape().tuple_shapes_size() == 4) {
+      num_scratch_buffers = 1;
+    }
+    for (int j = 1; j < hlo->shape().tuple_shapes_size() - num_scratch_buffers;
+         j++) {
       CHECK_EQ(hlo->shape().tuple_shapes(j).element_type(), F32)
           << "Not yet implemented";
     }
@@ -181,9 +181,12 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   auto& buffer_allocations = *params.buffer_allocations;
   CHECK_EQ(operand_slices_.size(), 3);
   CHECK_LE(output_slices_.size(), 5);
-  se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_slices_[0]);
-  se::DeviceMemory<float> scale(buffer_allocations.GetDeviceAddress(operand_slices_[1]));
-  se::DeviceMemory<float> offset(buffer_allocations.GetDeviceAddress(operand_slices_[2]));
+  se::DeviceMemoryBase operand =
+      buffer_allocations.GetDeviceAddress(operand_slices_[0]);
+  se::DeviceMemory<float> scale(
+      buffer_allocations.GetDeviceAddress(operand_slices_[1]));
+  se::DeviceMemory<float> offset(
+      buffer_allocations.GetDeviceAddress(operand_slices_[2]));
 
   se::DeviceMemoryBase output_data =
       buffer_allocations.GetDeviceAddress(output_slices_[0]);
@@ -193,29 +196,29 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   se::DeviceMemory<float> output_inv_stddev(
       buffer_allocations.GetDeviceAddress(output_slices_[2]));
 
-  bool use_reserve_space = output_slices_.size()== 5;
-  //se::DeviceMemory<float> null_device_ptr(nullptr);
+  bool use_reserve_space = output_slices_.size() == 5;
+  // se::DeviceMemory<float> null_device_ptr(nullptr);
   se::DeviceMemoryBase reserve_space(nullptr);
   se::DeviceMemoryBase workspace(nullptr);
   if (use_reserve_space) {
-      reserve_space = buffer_allocations.GetDeviceAddress(output_slices_[3]);
-      VLOG(1) << "DeviceMemory reserve_space BatchNorm Forward - the size, in "
-                 "bytes, for the backing memory "
-              << reserve_space.size();
-      VLOG(2) << "BatchNorm forward reserve space buffer slice: "
-              << output_slices_[3].ToString();
-      VLOG(2) << "Reserve space device address in "
-                 "CudnnBatchNormForwardTrainingThunk: "
-              << reserve_space.opaque();
-      workspace = buffer_allocations.GetDeviceAddress(output_slices_[4]);
+    reserve_space = buffer_allocations.GetDeviceAddress(output_slices_[3]);
+    VLOG(1) << "DeviceMemory reserve_space BatchNorm Forward - the size, in "
+               "bytes, for the backing memory "
+            << reserve_space.size();
+    VLOG(2) << "BatchNorm forward reserve space buffer slice: "
+            << output_slices_[3].ToString();
+    VLOG(2) << "Reserve space device address in "
+               "CudnnBatchNormForwardTrainingThunk: "
+            << reserve_space.opaque();
+    workspace = buffer_allocations.GetDeviceAddress(output_slices_[4]);
   }
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
       hlo_instruction(), operand, output_data, output_mean, output_inv_stddev,
-      scale, offset, reserve_space, workspace, 
-      epsilon_, feature_index_, &stream));
+      scale, offset, reserve_space, workspace, epsilon_, feature_index_,
+      &stream));
 
   // Write the output tuple.
   const int kNumOutputs = (use_reserve_space) ? 5 : 3;
@@ -224,8 +227,8 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   ptrs[1] = output_mean.opaque();
   ptrs[2] = output_inv_stddev.opaque();
   if (use_reserve_space) {
-      ptrs[3] = reserve_space.opaque();
-      ptrs[4] = workspace.opaque();
+    ptrs[3] = reserve_space.opaque();
+    ptrs[4] = workspace.opaque();
   }
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
@@ -290,13 +293,14 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   se::DeviceMemoryBase reserve_space_base(nullptr);
   se::DeviceMemoryBase workspace(nullptr);
   if (use_reserve_space) {
-    reserve_space_base = buffer_allocations.GetDeviceAddress(operand_slices_[5]);
+    reserve_space_base =
+        buffer_allocations.GetDeviceAddress(operand_slices_[5]);
     VLOG(1) << "DeviceMemory reserve_space BatchNorm Backward - the size, in "
                "bytes, for the backing memory "
             << reserve_space_base.size();
     workspace = buffer_allocations.GetDeviceAddress(output_slices_[3]);
     VLOG(2) << "BatchNorm backward reserve space buffer slice: "
-          << operand_slices_[5].ToString();
+            << operand_slices_[5].ToString();
   }
   se::DeviceMemory<uint8> reserve_space(reserve_space_base);
   VLOG(2) << "Reserve space device address in CudnnBatchNormBackwardThunk: "

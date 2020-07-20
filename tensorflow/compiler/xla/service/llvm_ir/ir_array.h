@@ -108,6 +108,11 @@ class IrArray {
     bool ShapeIsCompatible(const Shape& a) const {
       Shape own_shape = ShapeUtil::MakeShape(a.element_type(), dims_);
       *own_shape.mutable_layout() = layout_;
+      // The shape 'a' could have dynamic dimensions set. Before we check for
+      // equality, we need to copy the information which dimensions are dynamic.
+      for (int64 i = 0; i < a.rank(); ++i) {
+        own_shape.set_dynamic_dimension(i, a.is_dynamic_dimension(i));
+      }
       return ShapeUtil::Equal(own_shape, a);
     }
 
@@ -219,25 +224,9 @@ class IrArray {
                                        absl::string_view name = "",
                                        bool use_linear_index = true) const;
 
-  // As EmitArrayElementAddress, but load vector_size consecutive
-  // elements with one vector instruction.  Caller must make sure the
-  // data is aligned and this make sense with the memory layout.
-  llvm::Value* EmitVectorArrayElementAddress(const IrArray::Index& index,
-                                             llvm::IRBuilder<>* b,
-                                             absl::string_view name,
-                                             bool use_linear_index,
-                                             int vector_size) const;
-
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
       llvm::Instruction* instruction) const;
-
-  // When gen_vector_inst is true, the caller must make sure the
-  // data is aligned.
-  std::vector<llvm::Value*> EmitReadConsecutiveArrayElement(
-      const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
-      bool use_linear_index = true, int vector_size = 1,
-      bool gen_vector_inst = false) const;
 
   // Emit IR to read an array element at the given index. Returns the read
   // result (effectively, a Value loaded from memory). This method seamlessly

@@ -244,8 +244,9 @@ TEST_F(HloCreationUtilsTest, MakeBitcastConvertToHlo_S32) {
   auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2, 2},
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation, F32);
-  auto* input =  module->entry_computation()->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}})));
+  auto* input = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}})));
 
   HloInstruction* output = MakeBitcastConvertToHlo(input, F32);
   entry_computation->set_root_instruction(output);
@@ -253,7 +254,8 @@ TEST_F(HloCreationUtilsTest, MakeBitcastConvertToHlo_S32) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate(*module, {LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}})}));
+      evaluator.Evaluate(*module,
+                         {LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}})}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
 }
@@ -266,7 +268,7 @@ TEST_F(HloCreationUtilsTest, MakeIotaHlo_I32) {
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation, F32);
   HloInstruction* output = MakeIotaHlo(module->entry_computation(),
-                                      ShapeUtil::MakeShape(F32, {2, 2}), {0});
+                                       ShapeUtil::MakeShape(F32, {2, 2}), 0);
   entry_computation->set_root_instruction(output);
 
   HloEvaluator evaluator;

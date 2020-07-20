@@ -31,7 +31,6 @@ namespace xla {
 namespace {
 
 using DepthwiseConvolutionConverterTest = HloTestBase;
-namespace op = testing::opcode_matchers;
 
 TEST_F(DepthwiseConvolutionConverterTest,
        ConvertBatchGroupCountToFeatureGroupCount) {
@@ -52,7 +51,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
   auto conv_dim_num = root->convolution_dimension_numbers();
   int64 out_batch_dim = conv_dim_num.output_batch_dimension();
   int64 out_feature_dim = conv_dim_num.output_feature_dimension();
-  auto cost_model = [](HloInstruction* conv) { return false; };
+  auto cost_model = [](HloInstruction*) { return false; };
   DepthwiseConvolutionConverter converter(cost_model);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
@@ -68,9 +67,13 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
   EXPECT_EQ(new_conv->feature_group_count(), batch_group_count);
   // Verify that the output_batch_dim and output_feature_dim
   // have been swapped back (tf2xla swaps these dimensions to make use
-  // of batch_group convolution for computing filter grad for depthwise convolutions)
-  EXPECT_EQ(new_conv->convolution_dimension_numbers().output_batch_dimension(), out_feature_dim);
-  EXPECT_EQ(new_conv->convolution_dimension_numbers().output_feature_dimension(), out_batch_dim);
+  // of batch_group convolution for computing filter grad for depthwise
+  // convolutions)
+  EXPECT_EQ(new_conv->convolution_dimension_numbers().output_batch_dimension(),
+            out_feature_dim);
+  EXPECT_EQ(
+      new_conv->convolution_dimension_numbers().output_feature_dimension(),
+      out_batch_dim);
 
   // Verify that the operand to conv is a reshape
   auto reshape_1 = new_conv->operand(0);
@@ -86,6 +89,26 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
   auto reshape_2 = transpose->operand(0);
   EXPECT_EQ(reshape_2->opcode(), HloOpcode::kReshape)
       << HloOpcodeString(reshape_2->opcode()) << " vs Reshape";
+}
+
+TEST_F(DepthwiseConvolutionConverterTest,
+       OutputFeatureNotEqualBatchGroupCount) {
+  string hlo_string = R"(HloModule Convolve1D1Window_0_module
+  ENTRY %Convolve1D1Window_0.v3 (input: f32[4,6,6,48]{3,2,1,0}, filter: f32[4,6,6,96]{3,2,1,0}) -> f32[1,1,96,1]{3,2,1,0} {
+    %input = f32[4,6,6,48]{3,2,1,0} parameter(0)
+    %filter = f32[4,6,6,96]{3,2,1,0} parameter(1)
+
+    ROOT %convolution = f32[1,1,96,1]{3,2,1,0} convolution(f32[4,6,6,48]{3,2,1,0} %input, f32[4,6,6,96]{3,2,1,0} %filter), window={size=6x6 stride=2x2}, dim_labels=f01b_i01o->01fb, batch_group_count=48
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
+  auto cost_model = [](HloInstruction*) { return false; };
+  DepthwiseConvolutionConverter converter(cost_model);
+  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
 }
 
 }  // namespace

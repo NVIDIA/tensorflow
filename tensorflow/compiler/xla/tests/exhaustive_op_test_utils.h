@@ -133,7 +133,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                   : (T == F16 || T == BF16) ? U16 : PRIMITIVE_TYPE_INVALID;
   };
 
-  // Native types that correspond to the primtive types above.
+  // Native types that correspond to the primitive types above.
   using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
   using NativeRefT =
       typename primitive_util::PrimitiveTypeToNative<RefT::value>::type;
@@ -249,7 +249,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
         [&](const Literal* input_literal) { return &input_literal->shape(); });
 
     TF_ASSIGN_OR_RETURN(
-        auto executable,
+        auto executables,
         client_->Compile(computation, input_shapes, build_opts));
 
     std::vector<ScopedShapedBuffer> input_buffers;
@@ -271,7 +271,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     run_opts.set_intra_op_thread_pool(
         client_->backend().eigen_intra_op_thread_pool_device());
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                        executable->Run(input_buffer_pointers, run_opts));
+                        executables[0]->Run(input_buffer_pointers, run_opts));
 
     TF_ASSIGN_OR_RETURN(Literal result_literal,
                         client_->ShapedBufferToLiteral(result));
@@ -504,7 +504,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // The platform under test.
   const string platform_;
 
-  // Testing will ignore inputs for which known_incorect_fn_ returns true. The
+  // Testing will ignore inputs for which known_incorrect_fn_ returns true. The
   // argument to the function is the raw bits for the data being test, zero
   // extended to 64 bits if the data type is less than 64 bits.
   std::function<bool(int64)> known_incorrect_fn_;
@@ -1003,6 +1003,57 @@ template <PrimitiveType T, size_t N>
 typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
   return DefaultSpecGenerator<T, N>;
 }
+
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
+T ReferenceMax(T x, T y) {
+  // We need to propagate NAN here because std::max may not propagate NAN.
+  if (std::fpclassify(x) == FP_NAN) {
+    return x;
+  }
+  if (std::fpclassify(y) == FP_NAN) {
+    return y;
+  }
+
+  return std::max<T>(x, y);
+}
+
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
+T ReferenceMin(T x, T y) {
+  // We need to propagate NAN here because std::max may not propagate NAN.
+  if (std::fpclassify(x) == FP_NAN) {
+    return x;
+  }
+  if (std::fpclassify(y) == FP_NAN) {
+    return y;
+  }
+
+  return std::min<T>(x, y);
+}
+
+// Returns a wrapper of the given build method, which build an HLO operation
+// with an empty broadcast dimension.
+inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
+    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64>)> build_method) {
+  return [&](XlaOp src0, XlaOp src1) -> XlaOp {
+    return build_method(src0, src1, {});
+  };
+}
+
+template <PrimitiveType T>
+class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
+ public:
+  using typename ExhaustiveOpTestBase<T, 1>::ErrorSpecGen;
+  static ErrorSpecGen GetDefaultSpecGenerator() {
+    return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
+  }
+};
+
+template <PrimitiveType T>
+using ExhaustiveBinaryTest = ExhaustiveOpTestBase<T, 2>;
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

@@ -27,7 +27,7 @@ namespace xla {
 
 class DepthwiseConvolutionConverter : public HloModulePass {
  public:
-  DepthwiseConvolutionConverter(
+  explicit DepthwiseConvolutionConverter(
       std::function<bool(HloInstruction*)> is_cost_viable)
       : is_cost_viable_(is_cost_viable) {}
 

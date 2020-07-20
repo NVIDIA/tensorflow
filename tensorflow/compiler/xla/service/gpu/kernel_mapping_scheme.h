@@ -37,7 +37,7 @@ namespace gpu {
 // Currently, there are two main use cases for a tiling scheme. First, we
 // implement kernels with 0-2-1 memory transpose using shared memory to improve
 // memory access pattern. Second, we implement reduction to contiguous
-// dimensions in layout, with or without memory tranpsose, to achieve better
+// dimensions in layout, with or without memory transpose, to achieve better
 // memory access pattern as well as to reduce the need numbers of executed
 // expensive instructions, such as thread synchronization related instructions
 // and atomic operations. For both use cases, we can apply a normalization to
@@ -76,43 +76,28 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-  enum IndexingOrder {
-    // Thread reads consecutive elements.
-    LinearIndexingX,
-    // Thread reads strided elements while keeping memory coalescing.
-    StridedIndexingX,
-    // Thread reads a few consecutive elements then take a strided
-    // step. This can trigger vectorized reads and keep memory
-    // coalescing.
-    StridedLinearIndexingX
-  };
-
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                       absl::Span<const int64> tile_sizes, int64 num_threads_y,
-                      int64 num_threads_x, IndexingOrder indexing_order,
-                      int vector_size, bool row_contiguous = false)
+                      int64 num_threads_x, bool is_dilated_x,
+		      bool is_row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
-        indexing_order_(indexing_order),
-        vector_size_(vector_size),
-	row_contiguous_(row_contiguous) {
+        dilated_x_(is_dilated_x),
+	is_row_contiguous_(is_row_contiguous) {
     CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
-    if (indexing_order != LinearIndexingX) {
-      // StridedIndexingX, and StridedLinearIndexingX
-      // is for the purpose of vectorization, which requires
+    if (!dilated_x_) {
+      // dilated_x_=false is for the purpose of vectorization, which requires
       // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
       CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
     }
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
-  absl::Span<const int64> GetDimsInElems() const {
-    return dims_in_elems_;
-  }
+  absl::Span<const int64> GetDimsInElems() const { return dims_in_elems_; }
 
   int64 GetNumberOfBlocks() const {
     return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
@@ -135,9 +120,8 @@ class KernelMappingScheme {
     return GetNumThreadsX() * GetNumThreadsY();
   }
 
-  IndexingOrder GetIndexingOrder() const { return indexing_order_; }
-  int GetVectorSize() const { return vector_size_; }
-  bool GetRowContiguous() const {return row_contiguous_; }
+  bool DilatedX() const { return dilated_x_; }
+  bool GetRowContiguous() const {return is_row_contiguous_; }
 
  private:
   // The number of elements in each dimension.
@@ -152,18 +136,13 @@ class KernelMappingScheme {
   // Number of threads used to process elements in the Y direction of a tile.
   const int64 num_threads_y_;
 
-  // When num_threads_x threads process a total of tile_size_x
-  // elements in the X dimension of a tile, each threads process
-  // n=tile_size_x/num_threads_x elements.
-  // indexing_order defines which tile's elements each thread reads.
-  const IndexingOrder indexing_order_;
-
-  // vector_size_ only supported for row reduction and must be a divisor
-  // of tile_sizes_[2]/num_threads_x.  Interesting values are 2 and 4
-  // to trigger vectorized loads on GPUs while keeping memory
-  // coalescing.
-  const int vector_size_;
-  const bool row_contiguous_;
+  // When num_threads_x threads process a total of tile_size_x elements in the
+  // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
+  // elements. When dilated_x=false, the n elements processed by a thread are
+  // contiguous. On the other hand, when dilated_x=true the n elements are
+  // dilated by a factor of num_threads_x.
+  const bool dilated_x_;
+  const bool is_row_contiguous_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
@@ -171,14 +150,8 @@ using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
-                                int num_partial_results,
                                 bool is_row_reduction)
-      : mapping_scheme_(mapping_scheme), num_partial_results_(num_partial_results), is_row_reduction_(is_row_reduction) {
-    if (num_partial_results > 1) {
-      CHECK_EQ(num_partial_results,
-               (mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX()));
-    }
-  }
+      : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
@@ -214,7 +187,6 @@ class ReductionCodegenInfo {
     return reduction_input_addresses_;
   }
 
-  int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRowReduction() const { return is_row_reduction_; }
 
   // Gets a pointer to a mutable shared cache used by reduction.
@@ -233,7 +205,6 @@ class ReductionCodegenInfo {
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  int num_partial_results_;
   bool is_row_reduction_;
 };
 

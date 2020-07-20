@@ -40,13 +40,13 @@ using se::dnn::FilterLayout;
 using se::dnn::ProfileResult;
 
 template <typename ElementType, typename OutputType>
-Status RunCudnnConvForward(CudnnConvParams params,
-                           se::ScratchAllocator* scratch_allocator,
-                           se::Stream* stream, RunConvOptions options,
-                           DeviceMemory<ElementType> input_buf,
-                           DeviceMemory<ElementType> filter_buf,
-                           DeviceMemory<OutputType> output_buf,
-                           AlgorithmConfig algorithm) {
+Status RunGpuConvForward(GpuConvParams params,
+                         se::ScratchAllocator* scratch_allocator,
+                         se::Stream* stream, RunConvOptions options,
+                         DeviceMemory<ElementType> input_buf,
+                         DeviceMemory<ElementType> filter_buf,
+                         DeviceMemory<OutputType> output_buf,
+                         AlgorithmConfig algorithm) {
   if (params.conv_result_scale != 1) {
     return InternalError(
         "StreamExecutor doesn't support scaled convolution: %lf.",
@@ -60,13 +60,13 @@ Status RunCudnnConvForward(CudnnConvParams params,
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunCudnnConvForwardActivation(CudnnConvParams params,
-                                     se::ScratchAllocator* scratch_allocator,
-                                     se::Stream* stream, RunConvOptions options,
-                                     DeviceMemory<ElementType> input_buf,
-                                     DeviceMemory<ElementType> filter_buf,
-                                     DeviceMemory<OutputType> output_buf,
-                                     AlgorithmConfig algorithm) {
+Status RunGpuConvForwardActivation(GpuConvParams params,
+                                   se::ScratchAllocator* scratch_allocator,
+                                   se::Stream* stream, RunConvOptions options,
+                                   DeviceMemory<ElementType> input_buf,
+                                   DeviceMemory<ElementType> filter_buf,
+                                   DeviceMemory<OutputType> output_buf,
+                                   AlgorithmConfig algorithm) {
   BatchDescriptor bias_desc;
   bias_desc.set_count(1)
       .set_height(1)
@@ -113,17 +113,17 @@ Status RunCudnnConvForwardActivation(CudnnConvParams params,
 template <typename ElementType, typename BiasType, typename OutputType,
           typename std::enable_if<
               !std::is_integral<ElementType>::value>::type* = nullptr>
-Status RunCudnnConvInternalImpl(CudnnConvParams params,
-                                se::ScratchAllocator* scratch_allocator,
-                                se::Stream* stream, RunConvOptions options,
-                                DeviceMemory<ElementType> input_buf,
-                                DeviceMemory<ElementType> filter_buf,
-                                DeviceMemory<OutputType> output_buf,
-                                AlgorithmConfig algorithm) {
+Status RunGpuConvInternalImpl(GpuConvParams params,
+                              se::ScratchAllocator* scratch_allocator,
+                              se::Stream* stream, RunConvOptions options,
+                              DeviceMemory<ElementType> input_buf,
+                              DeviceMemory<ElementType> filter_buf,
+                              DeviceMemory<OutputType> output_buf,
+                              AlgorithmConfig algorithm) {
   switch (params.kind) {
     case CudnnConvKind::kForward:
-      return RunCudnnConvForward(params, scratch_allocator, stream, options,
-                                 input_buf, filter_buf, output_buf, algorithm);
+      return RunGpuConvForward(params, scratch_allocator, stream, options,
+                               input_buf, filter_buf, output_buf, algorithm);
     case CudnnConvKind::kBackwardInput:
       if (params.conv_result_scale != 1) {
         return InternalError(
@@ -147,7 +147,7 @@ Status RunCudnnConvInternalImpl(CudnnConvParams params,
           scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kForwardActivation: {
-      return RunCudnnConvForwardActivation<ElementType, BiasType, OutputType>(
+      return RunGpuConvForwardActivation<ElementType, BiasType, OutputType>(
           params, scratch_allocator, stream, options, input_buf, filter_buf,
           output_buf, algorithm);
     }
@@ -159,19 +159,19 @@ Status RunCudnnConvInternalImpl(CudnnConvParams params,
 template <typename ElementType, typename BiasType, typename OutputType,
           typename std::enable_if<std::is_integral<ElementType>::value>::type* =
               nullptr>
-Status RunCudnnConvInternalImpl(CudnnConvParams params,
-                                se::ScratchAllocator* scratch_allocator,
-                                se::Stream* stream, RunConvOptions options,
-                                DeviceMemory<ElementType> input_buf,
-                                DeviceMemory<ElementType> filter_buf,
-                                DeviceMemory<OutputType> output_buf,
-                                AlgorithmConfig algorithm) {
+Status RunGpuConvInternalImpl(GpuConvParams params,
+                              se::ScratchAllocator* scratch_allocator,
+                              se::Stream* stream, RunConvOptions options,
+                              DeviceMemory<ElementType> input_buf,
+                              DeviceMemory<ElementType> filter_buf,
+                              DeviceMemory<OutputType> output_buf,
+                              AlgorithmConfig algorithm) {
   switch (params.kind) {
     case CudnnConvKind::kForward:
-      return RunCudnnConvForward(params, scratch_allocator, stream, options,
-                                 input_buf, filter_buf, output_buf, algorithm);
+      return RunGpuConvForward(params, scratch_allocator, stream, options,
+                               input_buf, filter_buf, output_buf, algorithm);
     case CudnnConvKind::kForwardActivation:
-      return RunCudnnConvForwardActivation<ElementType, BiasType, OutputType>(
+      return RunGpuConvForwardActivation<ElementType, BiasType, OutputType>(
           params, scratch_allocator, stream, options, input_buf, filter_buf,
           output_buf, algorithm);
     default:
@@ -183,22 +183,21 @@ Status RunCudnnConvInternalImpl(CudnnConvParams params,
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunCudnnConvImpl(const CudnnConvParams& params,
-                        se::ScratchAllocator* scratch_allocator,
-                        se::Stream* stream, RunConvOptions options) {
+Status RunGpuConvImpl(const GpuConvParams& params,
+                      se::ScratchAllocator* scratch_allocator,
+                      se::Stream* stream, RunConvOptions options) {
   auto input_buf = se::DeviceMemory<ElementType>(params.input_buf);
   auto filter_buf = se::DeviceMemory<ElementType>(params.filter_buf);
   auto output_buf = se::DeviceMemory<OutputType>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-  if (options.algo_override) {
+  if (options.algo_override.has_value()) {
     algorithm = AlgorithmConfig(*options.algo_override);
   }
 
-  Status run_status =
-      RunCudnnConvInternalImpl<ElementType, BiasType, OutputType>(
-          params, scratch_allocator, stream, options, input_buf, filter_buf,
-          output_buf, algorithm);
+  Status run_status = RunGpuConvInternalImpl<ElementType, BiasType, OutputType>(
+      params, scratch_allocator, stream, options, input_buf, filter_buf,
+      output_buf, algorithm);
 
   if (run_status != Status::OK()) {
     return run_status;
@@ -217,11 +216,11 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
 
 }  // anonymous namespace
 
-StatusOr<CudnnConvParams> GetCudnnConvParams(
+StatusOr<GpuConvParams> GetGpuConvParams(
     const HloCustomCallInstruction* conv,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer) {
-  CudnnConvParams params;
+  GpuConvParams params;
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       conv->backend_config<CudnnConvBackendConfig>());
@@ -230,8 +229,13 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   const Shape* filter_shape;
   const Shape* output_shape;
 
-  params.algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
-      backend_config.algorithm(), backend_config.tensor_ops_enabled()));
+  // The third field is scratch size stored from conv_algorithm_picker
+  // The operand is added to the shape field of the conv instruction
+  // in GpuConvAlgorithmPicker::RunOnInstruction() call.
+  params.algorithm = se::dnn::AlgorithmConfig(
+      se::dnn::AlgorithmDesc(backend_config.algorithm(),
+                             backend_config.tensor_ops_enabled()),
+      conv->shape().tuple_shapes(1).dimensions(0));
   params.conv_result_scale = backend_config.conv_result_scale();
 
   switch (params.kind) {
@@ -264,7 +268,7 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       filter_shape = &conv->operand(1)->shape();
       output_shape = &conv->shape().tuple_shapes(0);
       params.fusion.emplace();
-      CudnnConvParams::FusionParams& fusion = *params.fusion;
+      GpuConvParams::FusionParams& fusion = *params.fusion;
       if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
         return InternalError("Bad activation mode: %s",
                              backend_config.ShortDebugString());
@@ -301,7 +305,7 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
   const int num_dimensions = window.dimensions_size();
   CHECK_LE(num_dimensions, 3) << conv->ToString();
-  CHECK_GE(num_dimensions, 1) << conv->ToString();
+
   // cuDNN does not support 1D convolutions. We therefore express 1D
   // convolutions as 2D convolutions where the first spatial dimension is 1.
   // This matches the behavior of TF (see definition of conv1d in
@@ -310,7 +314,8 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
   // If one dimension is reversed, we need to have all dimensions reversed (so
   // we're doing convolution not cross correlation).
-  const bool dims_reversed = window.dimensions()[0].window_reversal();
+  const bool dims_reversed =
+      window.dimensions_size() > 0 && window.dimensions()[0].window_reversal();
 
   CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size())
       << conv->ToString();
@@ -393,56 +398,56 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   }
 
   // Add a singleton dimension in the 1D convolution case.
-  if (num_dimensions == 1) {
-    input_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    output_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    filter_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    params.conv_desc.set_zero_padding(static_cast<DimIndex>(0), 0)
-        .set_filter_stride(static_cast<DimIndex>(0), 1);
+  for (int dim = 0; dim < effective_num_dimensions - num_dimensions; dim++) {
+    input_descriptor.set_spatial_dim(static_cast<DimIndex>(dim), 1);
+    output_descriptor.set_spatial_dim(static_cast<DimIndex>(dim), 1);
+    filter_descriptor.set_spatial_dim(static_cast<DimIndex>(dim), 1);
+    params.conv_desc.set_zero_padding(static_cast<DimIndex>(dim), 0)
+        .set_filter_stride(static_cast<DimIndex>(dim), 1);
   }
 
   return params;
 }
 
-Status RunCudnnConv(const HloCustomCallInstruction* conv,
-                    absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
-                    se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                    RunConvOptions options) {
+Status RunGpuConv(const HloCustomCallInstruction* conv,
+                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  se::DeviceMemoryBase result_buffer,
+                  se::DeviceMemoryBase scratch_buf, se::Stream* stream,
+                  RunConvOptions options) {
   ScratchBufAllocator scratch_allocator(scratch_buf);
-  return RunCudnnConv(conv, operand_buffers, result_buffer, &scratch_allocator,
-                      stream, options);
+  return RunGpuConv(conv, operand_buffers, result_buffer, &scratch_allocator,
+                    stream, options);
 }
 
-Status RunCudnnConv(const HloCustomCallInstruction* conv,
-                    absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
-                    se::ScratchAllocator* scratch_allocator, se::Stream* stream,
-                    RunConvOptions options) {
-  TF_ASSIGN_OR_RETURN(CudnnConvParams params,
-                      GetCudnnConvParams(conv, operand_buffers, result_buffer));
+Status RunGpuConv(const HloCustomCallInstruction* conv,
+                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  se::DeviceMemoryBase result_buffer,
+                  se::ScratchAllocator* scratch_allocator, se::Stream* stream,
+                  RunConvOptions options) {
+  TF_ASSIGN_OR_RETURN(GpuConvParams params,
+                      GetGpuConvParams(conv, operand_buffers, result_buffer));
 
   PrimitiveType input_primitive_type = conv->operand(0)->shape().element_type();
   switch (input_primitive_type) {
     case F16:
-      return RunCudnnConvImpl<Eigen::half, Eigen::half, Eigen::half>(
+      return RunGpuConvImpl<Eigen::half, Eigen::half, Eigen::half>(
           params, scratch_allocator, stream, options);
     case F32:
-      return RunCudnnConvImpl<float, float, float>(params, scratch_allocator,
-                                                   stream, options);
+      return RunGpuConvImpl<float, float, float>(params, scratch_allocator,
+                                                 stream, options);
     case F64:
-      return RunCudnnConvImpl<double, double, double>(params, scratch_allocator,
-                                                      stream, options);
+      return RunGpuConvImpl<double, double, double>(params, scratch_allocator,
+                                                    stream, options);
     case S8: {
       PrimitiveType output_primitive_type =
           conv->shape().tuple_shapes(0).element_type();
       switch (output_primitive_type) {
         case F32:
-          return RunCudnnConvImpl<int8, float, float>(params, scratch_allocator,
-                                                      stream, options);
+          return RunGpuConvImpl<int8, float, float>(params, scratch_allocator,
+                                                    stream, options);
         case S8:
-          return RunCudnnConvImpl<int8, float, int8>(params, scratch_allocator,
-                                                     stream, options);
+          return RunGpuConvImpl<int8, float, int8>(params, scratch_allocator,
+                                                   stream, options);
         default:
           LOG(FATAL) << conv->ToString();
       }

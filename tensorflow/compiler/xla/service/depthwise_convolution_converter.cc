@@ -83,7 +83,7 @@ bool ConvolutionVisitor::Run(
 
 namespace {
 Shape SwapInputOutputFeatureDims(const Shape& shape, int64 input_feature_dim,
-                           int64 output_feature_dim) {
+                                 int64 output_feature_dim) {
   int64 num_dims = shape.dimensions_size();
   CHECK_GE(num_dims, 2);
   Shape transformed_shape = shape;
@@ -96,26 +96,31 @@ Shape SwapInputOutputFeatureDims(const Shape& shape, int64 input_feature_dim,
 }  // namespace
 
 // This function handles batch_group_counts which are relevant only for
-// depthwise backprop filter convolutions. 
-Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruction* convolution) {
+// depthwise backprop filter convolutions.
+Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(
+    HloInstruction* convolution) {
   auto dim_numbers = convolution->convolution_dimension_numbers();
   auto lhs = convolution->mutable_operand(0);
   auto rhs = convolution->mutable_operand(1);
-  int64 batch_group_count = convolution->batch_group_count();
+  int64 num_groups = convolution->batch_group_count();
+  int64 input_batch_dimension = dim_numbers.input_batch_dimension();
+  int64 input_batch = lhs->shape().dimensions(input_batch_dimension);
 
-  if (batch_group_count == 1) {
+  // TODO(b/139748189): Support 'num_grous' > 1 when input_batch !=
+  // num_groups.
+  if (num_groups == 1 || input_batch != num_groups) {
     return Status::OK();
   }
 
-  VLOG(2) << "Dealing with batch_group_count " << batch_group_count
+  VLOG(2) << "Dealing with batch_group_count " << num_groups
           << " for convolution " << convolution->ToString() << "\n";
 
   int64 output_batch_dimension = dim_numbers.output_batch_dimension();
   int64 output_feature_dimension = dim_numbers.output_feature_dimension();
 
-  // When mapping depthwise conv backward filter to batch grouped convolution, 
-  // tf2xla bridge needs to swap the output batch and feature dimension. Since we 
-  // want to use grouped convolution APIs, this swap needs to be reverted.
+  // When mapping depthwise conv backward filter to batch grouped convolution,
+  // tf2xla bridge needs to swap the output batch and feature dimension. Since
+  // we want to use grouped convolution APIs, this swap needs to be reverted.
   dim_numbers.set_output_batch_dimension(output_feature_dimension);
   dim_numbers.set_output_feature_dimension(output_batch_dimension);
 
@@ -124,15 +129,8 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
         convolution->shape(), dim_numbers.output_batch_dimension(),
         dim_numbers.output_feature_dimension());
 
-    int64 num_groups = convolution->batch_group_count();
-    int64 input_batch_dimension = dim_numbers.input_batch_dimension();
-    int64 input_batch = lhs->shape().dimensions(input_batch_dimension);
     int64 input_feature_dimension = dim_numbers.input_feature_dimension();
     int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
-
-    CHECK_EQ(input_batch, num_groups)
-        << "Feature group count should be equal to number of input features "
-           "for depthwise convolution";
 
     auto add = [&](std::unique_ptr<HloInstruction> inst) {
       return computation_->AddInstruction(std::move(inst));
@@ -181,7 +179,8 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
     // expected shape is [kh, kw, C_i = G, DM=1] assuming the Depth-Multiplier
     // (DM) is 1 and number of input features = G as required by the depthwise
     // conv semantics
-    auto reshape = HloInstruction::CreateReshape(convolution->shape(), new_convolution);
+    auto reshape =
+        HloInstruction::CreateReshape(convolution->shape(), new_convolution);
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         convolution, std::move(reshape)));
     changed_ = true;
@@ -191,6 +190,9 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
 }
 
 Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
+  if (is_cost_viable_(convolution)) {
+    return Status::OK();
+  }
   return HandleBackwardFilterBatchGroupConvolution(convolution);
 }
 

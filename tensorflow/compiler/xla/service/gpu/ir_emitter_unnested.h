@@ -45,7 +45,7 @@ namespace gpu {
 // Examples of things that are not unnested computations:
 //
 //  - The reducer of a kReduce HLO.  This is emitted using IrEmitterNested.
-//  - The body of a fusion node.  IrEmitterUnenested emits the relevant code
+//  - The body of a fusion node.  IrEmitterUnnested emits the relevant code
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
@@ -75,8 +75,7 @@ class IrEmitterUnnested : public IrEmitter,
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num, int vector_size,
-      bool gen_vector_inst)>;
+      llvm::Value* x_loc, int64 x_iter_num)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64)>;
 
@@ -177,7 +176,7 @@ class IrEmitterUnnested : public IrEmitter,
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
       const HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
-      bool use_linear_index, int vector_size,
+      bool use_linear_index,
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
@@ -277,8 +276,7 @@ class IrEmitterUnnested : public IrEmitter,
   // ensure there is no overlap.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
-                     const llvm_ir::ElementGenerator& updates_gen,
-                     bool unique_indices);
+                     const llvm_ir::ElementGenerator& updates_gen);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
@@ -365,8 +363,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloInstruction* const> output_instructions,
       const llvm_ir::IrArray::Index& index,
       const ReductionCodegenInfo& reduction_info,
-      absl::Span<HloComputation* const> reducers, int64 x_iter_num,
-      int vector_size, bool gen_vector_inst);
+      absl::Span<HloComputation* const> reducers, int64 x_iter_num);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
   //

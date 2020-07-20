@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace xla {
@@ -53,7 +54,6 @@ size_t GetOutputSizeOfFusion(const HloInstruction& instr) {
 PrimitiveType GetUniqueOutputTypeOfFusion(const HloInstruction& instr) {
   auto outputs = GetOutputsOfFusion(instr);
   CHECK(!outputs.empty());
-  const HloInstruction* first_output = outputs[0];
   PrimitiveType first_output_type = outputs[0]->shape().element_type();
   for (size_t i = 1; i < outputs.size(); ++i) {
     PrimitiveType cur_output_type = outputs[i]->shape().element_type();
@@ -68,7 +68,7 @@ PrimitiveType GetUniqueOutputTypeOfFusion(const HloInstruction& instr) {
 
 class HorizontalFusionImpl {
  public:
-  HorizontalFusionImpl(HloComputation* computation)
+  explicit HorizontalFusionImpl(HloComputation* computation)
       : computation_(computation) {}
 
   ~HorizontalFusionImpl() {}
@@ -96,7 +96,8 @@ class HorizontalFusionImpl {
   // acquire the next set of fusion candidates based on some heuristics.
   class FusionCandidates {
    public:
-    FusionCandidates(HloInstruction* consumer) : fusion_instrs_(), pos_(0) {
+    explicit FusionCandidates(HloInstruction* consumer)
+        : fusion_instrs_(), pos_(0) {
       Initialize(consumer);
     }
 
@@ -303,7 +304,8 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
     if (first_output_type != cur_output_type) {
       // Cannot fuse computations who have multiple output types.
       break;
-    } else if (first_output_size != GetOutputSizeOfFusion(*fusion_instrs_[right])) {
+    } else if (first_output_size !=
+               GetOutputSizeOfFusion(*fusion_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
       break;
     } else if (fusion_instrs_[left]->fused_instruction_count() !=
@@ -426,7 +428,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
   // Make a tuple of output_slices.
   auto tuple = comp->AddInstruction(HloInstruction::CreateTuple(output_slices));
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
-  comp->RemoveInstruction(dummy_root);
+  TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
   return Status::OK();
 }
@@ -466,7 +468,8 @@ Status HorizontalFusionImpl::Fuse(
                                 ? bitcasts.at(0)
                                 : computation_->AddInstruction(
                                       HloInstruction::CreateTuple(bitcasts));
-    computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple);
+    TF_RETURN_IF_ERROR(
+        computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
   }
 
   return Status::OK();
@@ -484,7 +487,7 @@ StatusOr<bool> HorizontalFusionImpl::Run() {
     HorizontalFusionImpl::FusionCandidates fusion_candidates(consumer);
     while (true) {
       auto fusions = fusion_candidates.GetNextSpanOfFusions();
-      if (fusions.size() == 0) {
+      if (fusions.empty()) {
         break;
       } else if (fusions.size() == 1) {
         // Skip; there is just one fused_instr.
@@ -499,7 +502,7 @@ StatusOr<bool> HorizontalFusionImpl::Run() {
   return changed;
 }
 
-}  // anonymous
+}  // namespace
 
 StatusOr<bool> GpuHorizontalFusion::RunOnComputation(
     HloComputation* computation) {

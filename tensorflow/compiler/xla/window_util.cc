@@ -38,10 +38,11 @@ Window MakeWindow(absl::Span<const int64> sizes) {
   return window;
 }
 
-Window MakeWindow(absl::Span<const int64> sizes, absl::Span<const int64> strides) {
+Window MakeWindow(absl::Span<const int64> sizes,
+                  absl::Span<const int64> strides) {
   Window window;
   CHECK_EQ(sizes.size(), strides.size());
-  for (auto nb=0; nb < sizes.size(); ++nb) {
+  for (auto nb = 0; nb < sizes.size(); ++nb) {
     auto* dimension = window.add_dimensions();
     dimension->set_size(sizes[nb]);
     dimension->set_stride(strides[nb]);
@@ -103,8 +104,10 @@ string ToString(const Window& window) {
         }
       };
 
-  add_field("size",
-            [](const WindowDimension& dim) { return StrCat(dim.size()); });
+  if (window.dimensions_size() > 0) {
+    add_field("size",
+              [](const WindowDimension& dim) { return StrCat(dim.size()); });
+  }
   if (HasStride(window)) {
     add_field(" stride",
               [](const WindowDimension& dim) { return StrCat(dim.stride()); });

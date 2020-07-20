@@ -37,7 +37,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_autotune_level(4);
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
-  opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_include_timestamp(true);
@@ -46,10 +45,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
-  // Set cudnn batchnorm off by default.
+  // Set cudnn batchnorm off by default; it does not provide a performance win
+  // on average.
   opts.set_xla_gpu_use_cudnn_batchnorm(false);
-  // Set cudnn softmax off by default.
-  opts.set_xla_gpu_use_cudnn_softmax(false);
 
   // Run all GPU work on one stream by default.  Using multiple streams
   // increases memory usage and we lack strong motivating benchmarks for tuning
@@ -65,7 +63,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_deterministic_reductions(false);
-  opts.set_xla_multiheap_size_constraint_per_heap(-1);
   return opts;
 }
 
@@ -388,12 +385,6 @@ static void AllocateFlags() {
                        "comma-separated list of 'key=val' strings (=val "
                        "may be omitted); no whitespace around commas."),
       tensorflow::Flag(
-          "xla_gpu_use_cudnn_softmax",
-          bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_softmax),
-          flag_values->xla_gpu_use_cudnn_softmax(),
-          "Allows the GPU backend to implement softmax HLOs using cudnn, "
-          "rather than expanding them to a soup of HLOs."),
-      tensorflow::Flag(
           "xla_gpu_use_cudnn_batchnorm",
           bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_batchnorm),
           flag_values->xla_gpu_use_cudnn_batchnorm(),
@@ -467,12 +458,6 @@ static void AllocateFlags() {
           flag_values->xla_dump_hlo_as_dot(),
           "Dumps HLO modules rendered as dot files to the directory "
           "specified by --xla_dump_to."),
-      tensorflow::Flag(
-          "xla_gpu_asm_extra_flags",
-          string_setter_for(&DebugOptions::set_xla_gpu_asm_extra_flags), "",
-          "Pass extra parameters to the GPU assembler tool (i.e., ptxas for "
-          "CUDA). "
-          "If multiple parameters, separate them by comma."),
       tensorflow::Flag("xla_dump_hlo_as_html",
                        bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_html),
                        flag_values->xla_dump_hlo_as_html(),
@@ -550,14 +535,6 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
           flag_values->xla_gpu_deterministic_reductions(),
           "Always run deterministic reductions on GPU"),
-      tensorflow::Flag(
-          "xla_multiheap_size_constraint_per_heap",
-          int32_setter_for(
-              &DebugOptions::set_xla_multiheap_size_constraint_per_heap),
-          flag_values->xla_multiheap_size_constraint_per_heap(),
-          "Generates multiple heaps (i.e., temp buffers) with a size "
-          "constraint on each heap to avoid Out-of-Memory due to memory "
-          "fragmentation."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

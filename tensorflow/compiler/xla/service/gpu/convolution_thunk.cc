@@ -58,23 +58,12 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  string msg;
-  string op = hlo_instruction()->NvtxNodeOpString();
-  if (tensorflow::nvtx::NvtxRangesEnabled() ||
-      tensorflow::nvtx::NvtxRangesDetailedEnabled()) {
-    string name = hlo_instruction()->NvtxNodeNameString();
-    if (tensorflow::nvtx::NvtxRangesDetailedEnabled()) {
-      msg = absl::StrCat("{\"op\":\"", op, "\",\"name\":\"", name,
-                            "\",\"args\":[],\"attrs\":{}}");
-    } else {
-      msg = op + ": " + name;
-    }
-  }
-  auto nvtx_range = tensorflow::nvtx::MaybeNvtxDomainRangeStartMsg(msg, op);
-  TF_RETURN_IF_ERROR(RunCudnnConv(cudnn_call_,
-                                  absl::MakeSpan(operand_se_buffers),
-                                  result_buffer, scratch, params.stream));
-  tensorflow::nvtx::MaybeNvtxDomainRangeEnd(nvtx_range);
+  auto nvtx_range = tensorflow::nvtx::MaybeNvtxRangeStart(
+      hlo_instruction()->NvtxNodeOpString(),
+      hlo_instruction()->NvtxNodeNameString());
+  TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
+                                result_buffer, scratch, params.stream));
+  tensorflow::nvtx::MaybeNvtxRangeEnd(nvtx_range);
 
   // Write the output tuple.
   const int kNumOutputs = 2;

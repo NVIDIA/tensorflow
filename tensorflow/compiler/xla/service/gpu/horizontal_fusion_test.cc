@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
 
-#include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -30,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -68,7 +67,8 @@ TEST_F(HorizontalFusionTest, BasicTest) {
    ROOT tuple.1 = (f16[1024]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2)
  }
-)").ValueOrDie();
+)")
+                    .ValueOrDie();
 
   EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
@@ -119,7 +119,8 @@ TEST_F(HorizontalFusionTest, NegativeTestForCycle) {
    ROOT tuple.1 = (f16[123]{0}, f16[123]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2, add.2)
  }
-)").ValueOrDie();
+)")
+                    .ValueOrDie();
 
   EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
 }
@@ -154,7 +155,8 @@ TEST_F(HorizontalFusionTest, NegativeTestForIncompatibleTypes) {
    ROOT tuple.1 = (f16[1024]{0}, s32[123]{0})
        tuple(fusion.1, fusion.2)
  }
-)").ValueOrDie();
+)")
+                    .ValueOrDie();
 
   EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
 }
@@ -181,7 +183,8 @@ TEST_F(HorizontalFusionTest, HorizontalFusionAfterVerticalFusion) {
   mul.2.2     = f32[321,5]{1,0} multiply(param.2.3, broadcast.2)
   add.2       = f32[321,5]{1,0} add(mul.2.1, mul.2.2)
   ROOT tuple = (f32[4,1024]{1,0}, f32[321,5]{1,0}) tuple(add.1, add.2)
-})").ValueOrDie();
+})")
+                    .ValueOrDie();
 
   HloPassPipeline fusion("fusion");
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
@@ -274,7 +277,8 @@ TEST_F(HorizontalFusionTest, FusingDifferentOutputs) {
    ROOT tuple.1 = (f16[1024]{0}, f16[1024]{0}, f16[123]{0}, f16[123]{0})
        tuple(gte.1, gte.2, gte.3, gte.4)
  }
-)").ValueOrDie();
+)")
+                    .ValueOrDie();
 
   EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());

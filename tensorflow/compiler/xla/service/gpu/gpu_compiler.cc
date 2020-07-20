@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
-#include "tensorflow/compiler/xla/service/softmax_expander.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -44,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_softmax_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
@@ -56,8 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
-#include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -174,14 +171,6 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
-      // If cudnn softmax is enabled, rewrite sofmax HLOs to cudnn calls
-      // where possible.  Not every softmax op can be implemented as a call to
-      // cudnn, so decompose any remaining sofmax ops into a soup of HLOs.
-      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_softmax()) {
-        pass.AddPass<CudnnSoftmaxRewriter>();
-      }
-      pass.AddPass<SoftmaxExpander>();
-
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
       // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
@@ -293,9 +282,8 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
-    HloPassFix<HloPassPipeline> horizontal_fusion("horizontal_fusion");
-    horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
-    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    HloPassPipeline horizontal_fusion("horizontal_fusion");
+    horizontal_fusion.AddPass<GpuHorizontalFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -517,9 +505,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_to to get the IR and looks for files with "
-           "name containing: *"
-        << FilenameFor(*module, "", "") << "*";
+           "Rerun with --xla_dump_to to get the IR. ";
   }
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_REFCOUNTING_HASH_MAP_H_
 #define TENSORFLOW_COMPILER_XLA_REFCOUNTING_HASH_MAP_H_
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 
@@ -24,7 +23,6 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/default/logging.h"
 
 namespace xla {
 

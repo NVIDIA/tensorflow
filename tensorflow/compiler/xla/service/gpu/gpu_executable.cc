@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -74,6 +75,19 @@ GpuExecutable::~GpuExecutable() {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->UnregisterModule(module().name(), shared_module(),
                                                assignment_);
+
+  {
+    // We could have issued host->device mem copies in ResolveConstantGlobals.
+    // Wait for those to finish so that we can safely deallocate the backing HLO
+    // module.
+    //
+    // We need for the host->device memcpies to finish they are concurrently
+    // reading memory (xla::Literal's) owned by the HLO module.
+    tensorflow::mutex_lock lock(module_handle_mutex_);
+    for (const auto& pair : module_globals_) {
+      CHECK(pair.first->SynchronizeAllActivity());
+    }
+  }
 }
 
 void GpuExecutable::ComputeThunkAnnotations() {
@@ -82,11 +96,8 @@ void GpuExecutable::ComputeThunkAnnotations() {
     const HloInstruction* hlo = thunk->hlo_instruction();
     CHECK(hlo);
     thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#tf_op=%s:%s,hlo_op=%s,hlo_module=%s#",
-                        hlo->ToStringWithCanonicalNameMap(
-                            HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->metadata().op_name(), hlo->metadata().op_type(),
-                        hlo->name(), hlo->GetModule()->name());
+        absl::StrFormat("Thunk#hlo_op=%s,hlo_module=%s#", hlo->name(),
+                        hlo->GetModule()->name());
   }
 }
 
@@ -109,8 +120,8 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
         &stream_compute_compatibility.first,
         &stream_compute_compatibility.second);
-    GpuVersion nvdia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvdia_compute_compatibility == gpu_version_)
+    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
+    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
         << "Compute capability mismatch; expected {"
         << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
         << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
@@ -184,13 +195,21 @@ Status GpuExecutable::ExecuteThunks(
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
+    const GpuExecutableRunOptions* gpu_options =
+        run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),
-        &deferred_host_callbacks};
+        &deferred_host_callbacks,
+        gpu_options && gpu_options->gpu_global_device_ids()
+            ? &*gpu_options->gpu_global_device_ids()
+            : nullptr,
+        gpu_options && gpu_options->nccl_unique_id_callback()
+            ? &gpu_options->nccl_unique_id_callback()
+            : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
@@ -250,7 +269,9 @@ Status GpuExecutable::ExecuteThunks(
 }
 
 StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
-GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
+GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
+  se::StreamExecutor* executor = stream->parent();
+
   tensorflow::mutex_lock lock(module_handle_mutex_);
   auto it = module_globals_.find(executor);
   if (it != module_globals_.end()) {
@@ -293,8 +314,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
         VLOG(3) << "H2D memcpy for constant with shape "
                 << ShapeUtil::HumanString(literal.shape());
-        TF_RETURN_IF_ERROR(executor->SynchronousMemcpyH2D(
-            literal.untyped_data(), allocation.size(), &global));
+        stream->ThenMemcpy(&global, literal.untyped_data(), allocation.size());
       }
     }
   }
@@ -308,6 +328,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(",
+                                        module().name(), ")"));
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
@@ -318,16 +340,16 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   }
 
   BufferAllocations::Builder buffer_allocations_builder;
-  se::StreamExecutor* executor = run_options->stream()->parent();
-
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
         [&] { return std::string("Resolve constant globals"); },
         tensorflow::profiler::TraceMeLevel::kInfo);
 
-    TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(executor));
+    TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(run_options->stream()));
   }
+
+  se::StreamExecutor* executor = run_options->stream()->parent();
 
   std::unique_ptr<BufferAllocations> buffer_allocations;
 
@@ -422,7 +444,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
               slice.allocation()->parameter_number(),
               slice.allocation()->param_shape_index());
           CHECK(output_alias)
-              << "Ouput buffer is coming from parameter "
+              << "Output buffer is coming from parameter "
               << slice.allocation()->parameter_number() << " at index "
               << slice.allocation()->param_shape_index()
               << ", but no alias exists";

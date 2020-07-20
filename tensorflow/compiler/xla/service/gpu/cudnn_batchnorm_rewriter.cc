@@ -242,7 +242,7 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
   if (is_batchnorm_with_fp16_inputs) {
     new_gte = AddConvert(new_gte, F32);
   }
-  // Repackage the results. Athough this tuple is redundant when convert is not
+  // Repackage the results. Although this tuple is redundant when convert is not
   // inserted, TupleSimplifier eliminates the Tuple eventually
   HloInstruction::InstructionVector replacing_tuple_elements = {
       new_gte,
@@ -343,7 +343,6 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
     batch_norm_tuple_shape.push_back(
         ShapeUtil::MakeShape(U8, {workspace_size}));
   }
-  
 
   const Shape& batch_norm_shape =
       ShapeUtil::MakeTupleShape(batch_norm_tuple_shape);
@@ -358,7 +357,7 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
   if (is_batchnorm_with_fp16_inputs) {
     new_gte = AddConvert(new_gte, F32);
   }
-  // Repackage the results. Athough this tuple is redundant when convert is not
+  // Repackage the results. Although this tuple is redundant when convert is not
   // inserted, TupleSimplifier eliminates the Tuple eventually
   std::unique_ptr<HloInstruction> replacing_tuple = HloInstruction::CreateTuple(
       {new_gte,
@@ -384,7 +383,7 @@ StatusOr<bool> CudnnBatchNormRewriter::Run(HloModule* module) {
   }
 
   TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-		      allocator_->GetStream(stream_exec_->device_ordinal()));
+                      allocator_->GetStream(stream_exec_->device_ordinal()));
 
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {

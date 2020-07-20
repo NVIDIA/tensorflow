@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -128,9 +129,9 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    const stream_executor::DeviceDescription *device_description) {
+    const stream_executor::DeviceDescription* device_description) {
   if (reduction_dimensions.is_row_reduction) {
-    int64 tile_z = std::min(reduction_dimensions.dimensions[0], 8LL);
+    int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
@@ -141,8 +142,7 @@ std::array<int64, 3> GetReductionTiling(
     }
     int cc_major = 0, cc_minor = 0;
     if (device_description != nullptr) {
-      device_description->cuda_compute_capability(
-          &cc_major, &cc_minor);
+      device_description->cuda_compute_capability(&cc_major, &cc_minor);
     }
     int unroll_x = 8;
     if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
@@ -465,6 +465,39 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
     return CudnnConvKind::kForwardActivation;
   }
   return InternalError("Unexpected call target: %s", target);
+}
+
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
+  if (target == kCudnnConvForwardCallTarget) {
+    return se::dnn::ConvolutionKind::FORWARD;
+  }
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_DATA;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* conv) {
+  PrimitiveType output_primitive_type =
+      conv->shape().tuple_shapes(0).element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return se::dnn::ToDataType<Eigen::half>::value;
+    case F32:
+      return se::dnn::ToDataType<float>::value;
+    case F64:
+      return se::dnn::ToDataType<double>::value;
+    default:
+      break;
+  }
+  return InternalError("Unsupported convolution datatype : %s",
+                       conv->ToString());
 }
 
 string CudnnConvKindToString(CudnnConvKind kind) {

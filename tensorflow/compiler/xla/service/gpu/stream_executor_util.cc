@@ -209,28 +209,22 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
-                             const LaunchDimensions& dims, se::Stream* stream) {
+                             int64 threads_per_block, int64 block_count,
+                             se::Stream* stream) {
   static constexpr int kKernelArgsLimit = 1024;
   auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
-  auto thread_counts = dims.thread_counts_per_block();
-  auto block_counts = dims.block_counts();
-  return stream->parent()->Launch(
-      stream, se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z), kernel,
-      *kernel_args);
+  return stream->parent()->Launch(stream, se::ThreadDim(threads_per_block),
+                                  se::BlockDim(block_count), kernel,
+                                  *kernel_args);
 }
 
-se::cuda::PtxCompilationOptions PtxOptsFromConfig(
-    const HloModuleConfig& hlo_module_config) {
-  string extra_string = hlo_module_config.debug_options().xla_gpu_asm_extra_flags();
-  std::vector<std::string> extra_flags;
-  extra_flags = absl::StrSplit(extra_string, ",", absl::SkipEmpty());
+se::cuda::PtxCompilationOptions PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
   return se::cuda::PtxCompilationOptions(
       hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
-      hlo_module_config.debug_options().xla_gpu_cuda_data_dir(), extra_flags);
+      hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
 }
 
 // Unimplemented for integers yet.
@@ -319,10 +313,8 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
   }
 }
 
-static
-se::dnn::BatchDescriptor MakeBatchDescriptor(const Shape& shape,
-                                             int64 feature_index,
-                                             bool prefer_NCHW) {
+DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
+                                             int64 feature_index) {
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
 
@@ -354,7 +346,6 @@ se::dnn::BatchDescriptor MakeBatchDescriptor(const Shape& shape,
   }
 
   se::dnn::DataLayout data_layout = se::dnn::DataLayout::kBatchDepthYX;
-
   // For a general NHWC data layout (i.e, feature index is that last index),
   // [N, X1, X2, X3,...Xn, Y1, Y2,..., Ym, C], the above computation will
   // produce batch_size = N*X1*X2....Xn*Y1*Y2*..Ym; y_size = 1. For an NHWC
@@ -362,32 +353,17 @@ se::dnn::BatchDescriptor MakeBatchDescriptor(const Shape& shape,
   // dim. Note even if it is a spatial dimension, this assumption would not
   // alter the results since anyway batchnorm only cares about the location of
   // the depth (aka "feature" dim).
-  if (!prefer_NCHW &&
-      logical_to_physical[feature_index] == shape.dimensions_size() - 1) {
+  if (logical_to_physical[feature_index] == shape.dimensions_size() - 1) {
     data_layout = se::dnn::DataLayout::kBatchYXDepth;
     y_size = batch_size / physical_dim_size(0);
     batch_size = physical_dim_size(0);
   }
-
-  se::dnn::BatchDescriptor input_desc;
-  input_desc.set_layout(data_layout)
+  DnnBatchDescriptors batch_descs;
+  batch_descs.input_desc.set_layout(data_layout)
       .set_count(batch_size)
       .set_feature_map_count(shape.dimensions(feature_index))
       .set_height(y_size)
       .set_width(1 /*width*/);
-
-  return input_desc;
-}
-
-se::dnn::BatchDescriptor MakeSoftmaxDescriptor(const Shape& shape,
-                                               int64 feature_index) {
-  return MakeBatchDescriptor(shape, feature_index, true);
-}
-
-DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
-                                             int64 feature_index) {
-  DnnBatchDescriptors batch_descs;
-  batch_descs.input_desc = MakeBatchDescriptor(shape, feature_index, false);
 
   batch_descs.scale_offset_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
       .set_feature_map_count(batch_descs.input_desc.feature_map_count())

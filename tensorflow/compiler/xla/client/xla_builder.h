@@ -580,9 +580,6 @@ class XlaBuilder {
   XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                         const Shape& shape);
 
-  XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
-                        const Shape& shape);
-
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
 
@@ -623,8 +620,6 @@ class XlaBuilder {
   XlaOp Recv(const Shape& shape, const ChannelHandle& handle);
   XlaOp RecvWithToken(XlaOp token, const Shape& shape,
                       const ChannelHandle& handle);
-
-  XlaOp Softmax(XlaOp operand, int64 feature_index, bool log);
 
   XlaOp BatchNormTraining(XlaOp operand, XlaOp scale, XlaOp offset,
                           float epsilon, int64 feature_index,
@@ -1037,7 +1032,6 @@ class XlaBuilder {
   friend void Send(XlaOp operand, const ChannelHandle& handle);
   friend XlaOp Recv(XlaBuilder* builder, const Shape& shape,
                     const ChannelHandle& handle);
-  friend XlaOp Softmax(XlaOp operand, int64 dimension, bool log);
   friend XlaOp BatchNormTraining(XlaOp operand, XlaOp scale, XlaOp offset,
                                  float epsilon, int64 feature_index,
                                  size_t reserve_space_size,
@@ -2009,10 +2003,6 @@ XlaOp CreateToken(XlaBuilder* builder);
 // takes a variadic number of token-shaped operands. The number of operands must
 // be greater than zero. Used for joining tokens.
 XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
-
-// Calculates a sofmax.
-//
-XlaOp Softmax(XlaOp operand, int64 dimension, bool log);
 
 // Normalizes operand across spatial and batch dimensions for each feature.
 //

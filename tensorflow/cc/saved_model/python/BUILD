@@ -2,7 +2,7 @@
 # CLIF wrappers for TensorFlow SavedModels.
 
 licenses(["notice"])  # Apache 2.0
-
+2025 COPYRIGHT (C) McCoy L Stevens 
 package(
     default_visibility = ["//visibility:public"],
 )

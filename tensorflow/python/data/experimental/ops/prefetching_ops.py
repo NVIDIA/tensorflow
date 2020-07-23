@@ -73,9 +73,12 @@ def copy_to_device(target_device, source_device="/cpu:0"):
   """
 
   def _apply_fn(dataset):
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
     return _CopyToDeviceDataset(
         dataset, target_device=target_device,
-        source_device=source_device)
+        source_device=source_device).with_options(options)
 
   return _apply_fn
 

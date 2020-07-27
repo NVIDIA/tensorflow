@@ -1826,7 +1826,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
-    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
+    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk,
+    bool few_waves) {
   int unroll_factor = thunk->unroll_factor();
   VLOG(3) << bindings_.ToString();
 
@@ -1838,7 +1839,8 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
           << ShapeUtil::HumanStringWithLayout(hlo.shape())
           << " for unroll_factor " << unroll_factor;
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->device_description(), unroll_factor);
+      element_shape, ir_emitter_context_->device_description(), unroll_factor,
+      few_waves);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
   if (!multi_output) {
@@ -1924,8 +1926,29 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
 
   std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(
       &hlo, /*implements_whole_instruction=*/true, unroll_factor);
+
+  // Check if we want to schedule grid size that has fewer SM waves.
+  // This speed up computations in some cases.
+  bool few_waves = false;
+  auto few_waves_allow_instr = [](const HloInstruction* instr) {
+    return instr->IsElementwise() ||
+        instr->opcode() == HloOpcode::kParameter ||
+        // We need to make the codegen broadcast aware before enabling
+        // more broadcast pattern.
+        (instr->opcode() == HloOpcode::kBroadcast &&
+         instr->dimensions().empty());
+  };
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    few_waves = absl::c_all_of(
+        hlo.fused_instructions_computation()->instructions(),
+        few_waves_allow_instr);
+  } else {
+    few_waves = few_waves_allow_instr(&hlo);
+  }
+
   Status emit_status =
-      EmitTargetElementLoopInThunk(hlo, body_emitter, kernel_thunk.get());
+      EmitTargetElementLoopInThunk(hlo, body_emitter, kernel_thunk.get(),
+                                   few_waves);
   thunk_sequence_->emplace_back(std::move(kernel_thunk));
 
   return emit_status;

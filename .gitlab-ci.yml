@@ -22,7 +22,7 @@ stages:
         fi;
       fi
     - echo "Selected builder branch $REF"
-    - curl -X POST 
+    - curl -X POST --fail
            -F token="${CI_JOB_TOKEN}"
            -F ref="$REF" 
            -F "variables[TF_HASH]=${CI_COMMIT_SHA}"

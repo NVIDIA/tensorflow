@@ -9,6 +9,9 @@ stages:
 .build_template : &BUILD
   stage: build
   script:
+    - if [[ -n "${CI_MERGE_REQUEST_IID}" ]]; then
+        echo "Original MR https://gitlab-master.nvidia.com/dl/tensorflow/tensorflow/-/merge_requests/$CI_MERGE_REQUEST_IID";
+      fi
     - BUILDWITH="$(echo "$CI_COMMIT_MESSAGE" | sed -n 's/^.*\[buildwith \([^]]*\)\].*$/\1/p')"
     - if [[ -n "$BUILDWITH" ]]; then
         REF="$BUILDWITH";

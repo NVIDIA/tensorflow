@@ -29,6 +29,7 @@ stages:
            -F token="${CI_JOB_TOKEN}"
            -F ref="$REF" 
            -F "variables[TF_HASH]=${CI_COMMIT_SHA}"
+           -F "variables[MR_URL]=https://gitlab-master.nvidia.com/dl/tensorflow/tensorflow/-/merge_requests/$CI_MERGE_REQUEST_IID/diffs?commit_id=${CI_COMMIT_SHA}"
            https://gitlab-master.nvidia.com/api/v4/projects/9743/trigger/pipeline
   
 

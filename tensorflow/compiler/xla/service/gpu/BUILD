@@ -422,7 +422,7 @@ filegroup(
 
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = if_cuda(
+    srcs = if_nccl(
         [":nccl_all_reduce_thunk_src"],
         ["dummy_all_reduce_thunk.cc"],
     ),

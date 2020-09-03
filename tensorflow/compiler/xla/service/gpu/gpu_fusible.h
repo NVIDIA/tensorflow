@@ -78,7 +78,7 @@ bool CreatesNestedLoop(const HloInstruction& producer,
 
 // Returns the instruction that determines the emitter used for lowering,
 // sometimes referred to as "the real hero".
-const HloInstruction* GetRealHeroForMultiOutputFusion(
+const HloInstruction* GetMajorNodeForMultiOutputFusion(
     const HloInstruction& instr);
 
 // Whether instruction shapes are compatible for multi-output fusion, i.e.

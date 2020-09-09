@@ -44,6 +44,25 @@ Shape GetInputShapeForMultiOutputFusion(const HloInstruction& instr) {
   }
 }
 
+// Creates a kInput fusion instruction and fuses `fused` into the created
+// fusion instruction.
+HloInstruction* MakeInputFusionInstruction(HloInstruction* fused) {
+  HloComputation* comp = fused->parent();
+  HloInstruction* fusion_instruction =
+      comp->AddInstruction(HloInstruction::CreateFusion(
+          fused->shape(), HloInstruction::FusionKind::kInput, fused));
+  TF_CHECK_OK(comp->ReplaceInstruction(fused, fusion_instruction));
+  return fusion_instruction;
+}
+
+size_t GetInstrCountOfFusible(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return 1;
+  } else {
+    return instr.fused_instruction_count();
+  }
+}
+
 class HorizontalInputFusionImpl {
  public:
   explicit HorizontalInputFusionImpl(HloComputation* computation)
@@ -57,6 +76,23 @@ class HorizontalInputFusionImpl {
   HloComputation* computation_;
 };  // HorizontalInputFusionImpl
 
+// Compares one-by-one the dimensions of `shape_a` and `shape_b` from left to
+// right.
+bool CompareShapeDimsFromLeftToRight(const Shape& shape_a,
+                                     const Shape& shape_b) {
+  if (shape_a.rank() != shape_b.rank()) {
+    return shape_a.rank() < shape_b.rank();
+  }
+  auto dims_a = shape_a.dimensions();
+  auto dims_b = shape_b.dimensions();
+  for (size_t i = 0; i < dims_a.size(); ++i) {
+    if (dims_a[i] != dims_b[i]) {
+      return dims_a[i] < dims_b[i];
+    }
+  }
+  return true;
+}
+
 std::vector<HloInstruction*> FindAndSortFusionCandidates(
     HloInstruction* consumer) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
@@ -65,7 +101,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
     // Find out the input fusion instructions whose only consumer is `consumer`.
     // This guarantees that fusing these candidates will never create cycles, as
     // there is no back edge.
-    if (IsReduceInputFusion(*predecessor) &&
+    if (IsInputFusibleReduction(*predecessor) &&
         IsConsumerTheOnlyNonRootUser(*predecessor, *consumer)) {
       fusion_instr_set.insert(predecessor);
     }
@@ -79,20 +115,14 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
             [&](const HloInstruction* a, const HloInstruction* b) {
               Shape shape_a = GetInputShapeForMultiOutputFusion(*a);
               Shape shape_b = GetInputShapeForMultiOutputFusion(*b);
-              if (shape_a.rank() != shape_b.rank()) {
-                return shape_a.rank() < shape_b.rank();
-              } else if (ShapeUtil::ElementsIn(shape_a) !=
-                         ShapeUtil::ElementsIn(shape_b)) {
-                // Sort according to element size so that roughly the same input
-                // shape will be placed adjacent.
-                return ShapeUtil::ElementsIn(shape_a) <
-                       ShapeUtil::ElementsIn(shape_b);
-              } else {
-                // Sort `fusion_instrs` according to instruction counts, because
-                // we'd like to fuse together computations of similar sizes.
-                return a->fused_instruction_count() <
-                       b->fused_instruction_count();
+              if (!ShapeUtil::EqualIgnoringElementType(shape_a, shape_b)) {
+                // Sort shapes according to dimensions, so that the same input
+                // shape will be placed adjacent each other.
+                return CompareShapeDimsFromLeftToRight(shape_a, shape_b);
               }
+              // Sort `fusion_instrs` according to instruction counts, because
+              // we'd like to fuse together computations of similar sizes.
+              return GetInstrCountOfFusible(*a) < GetInstrCountOfFusible(*b);
             });
 
   return fusion_instrs;
@@ -108,8 +138,16 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
   for (size_t i = 0; i < def_to_use_order.size(); ++i) {
     auto consumer = def_to_use_order[i];
     auto candidates = FindAndSortFusionCandidates(consumer);
-    if (candidates.empty()) {
+    if (candidates.size() <= 1) {
       continue;
+    }
+
+    // Convert candidates into fusions if needed.
+    for (size_t j = 0; j < candidates.size(); ++j) {
+      if (candidates[j]->opcode() != HloOpcode::kFusion) {
+        candidates[j] = MakeInputFusionInstruction(candidates[j]);
+        changed = true;
+      }
     }
 
     size_t fusion_anchor_id = 0;

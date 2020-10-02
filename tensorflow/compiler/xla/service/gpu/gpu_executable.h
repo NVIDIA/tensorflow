@@ -88,6 +88,11 @@ class GpuExecutable : public Executable {
       std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile) override;
+
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
     return assignment_;
   }
@@ -206,6 +211,15 @@ class GpuExecutable : public Executable {
   se::internal::StreamExecutorInterface* GetExecutor() {
     return executor_impl_;
   }
+
+  // The real implementation of ExecuteAsyncOnStream. Exactly one of
+  // `arguments_buffer` or `arguments_shapetree` must be provided and
+  // the other must be nullptr.
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const>* arguments_buffer,
+      std::vector<ShapeTree<MaybeOwningDeviceMemory>>* arguments_shapetree,
+      HloExecutionProfile* hlo_execution_profile);
 
   GraphCacheStats graph_stats_;
 

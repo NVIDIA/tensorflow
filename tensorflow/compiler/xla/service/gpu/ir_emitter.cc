@@ -735,11 +735,19 @@ Status IrEmitter::HandleRng(HloInstruction* random) {
       .EmitLoop(IrName(random));
 }
 
+Status IrEmitter::HandleSoftmax(HloInstruction* softmax) {
+  return Unimplemented(
+      "The GPU backend does not implement Softmax directly.  It "
+      "should be lowered before IR emission to HLO-soup using "
+      "SoftmaxExpander or to a cudnn CustomCall using "
+      "CudnnSoftMaxRewriter.");
+}
+
 Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
+      "BatchNormExpander or to a cudnn CustomCall using "
       "CudnnBatchNormRewriter.");
 }
 
@@ -747,14 +755,14 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormTraining directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
+      "BatchNormExpander or to a cudnn CustomCall using "
       "CudnnBatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormGrad directly.  It should "
-      "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
+      "be lowered before IR emission to HLO-soup (using BatchNormExpander) or "
       "to a cudnn CustomCall using CudnnBatchNormRewriter.");
 }
 

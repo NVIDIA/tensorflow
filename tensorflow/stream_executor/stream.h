@@ -218,6 +218,14 @@ class Stream {
   //
   // See DnnSupport::* for comments on the following methods.
 
+  Stream &ThenSoftmax(
+      const DeviceMemory<float> &x, const dnn::BatchDescriptor &x_desc,
+      bool log , DeviceMemory<float> *y);
+
+  Stream &ThenSoftmax(
+      const DeviceMemory<Eigen::half> &x, const dnn::BatchDescriptor &x_desc,
+      bool log , DeviceMemory<Eigen::half> *y);
+
   Stream &ThenBatchNormalizationForward(
       const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
       const DeviceMemory<float> &offset,

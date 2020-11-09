@@ -89,6 +89,7 @@ namespace xla {
 
     // Expensive instructions.
     case HloOpcode::kAtan2:
+    case HloOpcode::kSoftmax:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:

@@ -777,10 +777,6 @@ Status AvgPoolGradTransposer::TransposeNode(TransposeContext* context,
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
-  // BiasAdd itself only needs NCHW/NHWC to determine whether C dim is the
-  // second or the last dim. Therefore, we use the original 4D data format in
-  // the context to update the node. For the input/output tensor, the
-  // corresponding 4D or 5D data format is needed.
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));

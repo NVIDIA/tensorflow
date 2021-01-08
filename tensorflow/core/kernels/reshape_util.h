@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Reshapes the input indices and input shape to the target shape.
-// Note: This template is explicitly instantiated for CPU device only.
+// Note: This template is explicitly instantiated for CPU and GPU devices.
 template <typename Device>
 void ReshapeSparseTensor(OpKernelContext *context,
                          const Tensor &input_indices_in,
@@ -36,7 +36,7 @@ namespace functor {
 
 template <typename Device>
 struct ReshapeSparseTensorFunctor {
-  Status operator()(const TensorShape &input_shape,
+  Status operator()(OpKernelContext *context, const TensorShape &input_shape,
                     const TensorShape &output_shape,
                     typename TTypes<int64>::ConstMatrix input_indices,
                     typename TTypes<int64>::Matrix output_indices) const;

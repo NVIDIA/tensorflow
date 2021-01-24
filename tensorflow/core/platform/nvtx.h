@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_NVTX_H_
 #define TENSORFLOW_CORE_PLATFORM_NVTX_H_
 
+#ifdef _WIN32
+#include "cuda/include/nvtx3/nvToolsExt.h"
+#else
 #include "third_party/nvtx3/nvToolsExt.h"
+#endif
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"

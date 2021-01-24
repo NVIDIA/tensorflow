@@ -3287,9 +3287,10 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:traceme",
-        "@nvtx_archive//:nvtx",
         "//tensorflow/core/profiler/internal:traceme_recorder",
-    ] + mkl_deps(),
+    ] + if_not_windows([
+        "@nvtx_archive//:nvtx",
+    ]) + mkl_deps(),
     alwayslink = 1,
 )
 

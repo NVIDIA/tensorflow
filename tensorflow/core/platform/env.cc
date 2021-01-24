@@ -570,10 +570,4 @@ Status ReadTextOrBinaryProto(Env* env, const string& fname,
   return ReadBinaryProto(env, fname, proto);
 }
 
-int setenv(const char* name, const char* value, int overwrite) {
-  return ::setenv(name, value, overwrite);
-}
-
-int unsetenv(const char* name) { return ::unsetenv(name); }
-
 }  // namespace tensorflow

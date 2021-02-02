@@ -19,12 +19,12 @@ referred to as nvidia-tensorflow.
 Link to Tensorflow [README](https://github.com/tensorflow/tensorflow)
 
 ## Requirements
-* Ubuntu 18.04 or later (64-bit)
+* Ubuntu 20.04 or later (64-bit)
 * GPU support requires a CUDA&reg;-enabled card 
-* For NVIDIA GPUs, the r450 driver must be installed
+* For NVIDIA GPUs, the r455 driver must be installed
 
 For wheel installation:
-* Python 3.6
+* Python 3.8
 * pip 19.0 or later
 
 

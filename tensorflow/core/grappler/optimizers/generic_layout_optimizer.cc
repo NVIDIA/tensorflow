@@ -81,7 +81,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
-    if (!IsConv2D(*node_def) and !IsConv3D(*node_def)) {
+    if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
     const string& device_name =
@@ -401,7 +401,7 @@ Status PrintDebugLogs(string suffix, GraphDef* graph_) {
   TF_RETURN_IF_ERROR(ReadBoolFromEnvVar(
       "TF_ENABLE_LAYOUT_OPTIMIZE_GRAPH_REWRITE_LOG", /*default_value=*/false,
       &allow_print));
-  if (not allow_print) return Status::OK();
+  if (!allow_print) return Status::OK();
 
   string prepend_path = "/tmp/logs/";
   if (prepend_path.empty()) return Status::OK();

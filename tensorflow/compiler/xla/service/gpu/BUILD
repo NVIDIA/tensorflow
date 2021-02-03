@@ -14,6 +14,7 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "if_not_windows",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -605,8 +606,9 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ] + if_not_windows([
         "@nvtx_archive//:nvtx",
-    ] + if_cuda_is_configured([
+    ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",

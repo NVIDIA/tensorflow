@@ -3,6 +3,7 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "if_not_windows",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -203,9 +204,10 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
             "//tensorflow/core/grappler/optimizers:meta_optimizer",
-            "@nvtx_archive//:nvtx",
         ],
-    }),
+    }) + if_not_windows([
+        "@nvtx_archive//:nvtx",
+    ]),
 )
 
 tf_cc_test(

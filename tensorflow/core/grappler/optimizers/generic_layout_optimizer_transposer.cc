@@ -292,7 +292,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
   node.mutable_attr()->insert({"dtype", attr_data_type});
 
   AttrValue attr_tensor;
-  Tensor tensor(DT_INT32, TensorShape({permutation.size()}));
+  Tensor tensor(DT_INT32, TensorShape({(long long)permutation.size()}));
   for (int i = 0; i < permutation.size(); i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
@@ -728,7 +728,7 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutSensitiveOp(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
@@ -748,7 +748,7 @@ Status BiasAddTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsBiasAdd(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   if (!ShouldProcess(*context, *node)) {
@@ -789,7 +789,7 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
   DCHECK(IsBiasAddGrad(*node->node()));
   const int rank = GetFaninPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   if (!ShouldProcess(*context, *node)) {
@@ -962,7 +962,7 @@ Status FusedBatchNormGradTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsFusedBatchNormGrad(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
@@ -1335,7 +1335,7 @@ Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
                                          utils::MutableNodeView* node) {
   DCHECK(IsConcat(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
@@ -1518,7 +1518,7 @@ Status ReduceTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsReduceOp(*node->node()));
   const int rank = GetFaninPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
@@ -1591,7 +1591,7 @@ Status ShapeTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsShape(*node->node()));
   const int rank = GetFaninPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
@@ -1636,7 +1636,7 @@ Status SliceTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsSlice(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
@@ -1907,7 +1907,7 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsUnaryGrad(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
-  if (rank != 4 and rank != 5) {
+  if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);

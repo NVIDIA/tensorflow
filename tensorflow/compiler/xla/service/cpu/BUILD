@@ -191,6 +191,9 @@ cc_library(
         "@llvm-project//llvm:target",
         "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
     ] + select({
+        "//tensorflow:linux_aarch64": [
+            "@llvm-project//llvm:aarch64_code_gen",  # fixdeps: keep
+        ],
         "//tensorflow:linux_ppc64le": [
             "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
         ],

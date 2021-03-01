@@ -2937,9 +2937,10 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
-	"//tensorflow/core:framework/bfloat16",
-	"//tensorflow/core:framework/numeric_types",
+        "//tensorflow/core:framework/bfloat16",
+        "//tensorflow/core:framework/numeric_types",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
@@ -3286,6 +3287,7 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/internal:traceme_recorder",
     ] + if_not_windows([

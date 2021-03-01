@@ -203,6 +203,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
+            "//tensorflow/core/profiler:nvtx_utils",
             "//tensorflow/core/grappler/optimizers:meta_optimizer",
         ],
     }) + if_not_windows([

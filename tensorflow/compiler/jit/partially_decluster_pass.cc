@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 
+#include <queue>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -29,8 +31,33 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+absl::flat_hash_set<string> GetBlacklistedDynamicOps() {
+  absl::flat_hash_set<string> result{"Where", "Unique"};
+  string blacklisted_ops;
+  TF_CHECK_OK(ReadStringFromEnvVar("TF_XLA_DYNAMIC_OPS", "", &blacklisted_ops));
+  if (!blacklisted_ops.empty()) {
+    for (auto op : absl::StrSplit(blacklisted_ops, ',')) {
+      result.insert(string(op));
+    }
+  }
+  return result;
+}
+
+bool DeclusterPossibleDynamicOps() {
+  static bool decluster = [] {
+    bool to_decluster = false;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_XLA_DECLUSTER_POSSIBLE_DYNAMIC_OPS",
+                                       /*default_val=*/false, &to_decluster));
+    return to_decluster;
+  }();
+  return decluster;
+}
+
 namespace {
 
 bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
@@ -385,6 +412,164 @@ Status PartiallyDeclusterGraph(Graph* graph) {
   return Status::OK();
 }
 }  // namespace decluster_root_shape_consumers
+
+namespace decluster_possible_dynamic_ops {
+Status PopulateReachableDynamicNodes(
+    const Node* src_dynamic_node, std::unordered_map<string, bool>& visited,
+    std::vector<const Node*>& candidate_dynamic_nodes) {
+  VLOG(2) << "Trying to populate candidate dynamic nodes using "
+          << src_dynamic_node->def().op() << "(" << src_dynamic_node->name()
+          << ")"
+          << " as source of dynamism ...";
+  for (auto edge : src_dynamic_node->out_edges()) {
+    absl::optional<absl::string_view> consumer_cluster =
+        GetXlaClusterForNode(*edge->dst());
+    if (!consumer_cluster.has_value()) {
+      VLOG(2) << "One of the out edges of src " << src_dynamic_node->def().op()
+              << "(" << src_dynamic_node->name() << ")"
+              << " is " << edge->dst()->def().op() << "(" << edge->dst()->name()
+              << ")"
+              << " and doesn't feed into any cluster.";
+      continue;
+    } else {
+      VLOG(2) << "One of the out edges of src " << src_dynamic_node->def().op()
+              << "(" << src_dynamic_node->name() << ")"
+              << " is " << edge->dst()->def().op() << "(" << edge->dst()->name()
+              << ")"
+              << " and feeds into " << *consumer_cluster
+              << ". Hence, Looking for reachable nodes only within "
+              << *consumer_cluster;
+    }
+
+    if (visited[edge->dst()->name()]) continue;
+
+    std::queue<const Node*> queue;
+    queue.push(edge->dst());
+    while (!queue.empty()) {
+      const Node* n = queue.front();
+      queue.pop();
+      if (visited[n->name()]) continue;
+      visited[n->name()] = true;
+      absl::optional<absl::string_view> cluster_n = GetXlaClusterForNode(*n);
+      CHECK_EQ(*cluster_n, *consumer_cluster);
+      VLOG(2) << "Possible dynamic node " << n->def().op() << " (" << n->name()
+              << ")"
+              << " in " << *cluster_n << ". Adding to candidate dynamic nodes.";
+      candidate_dynamic_nodes.push_back(n);
+
+      for (const Node* out_node : n->out_nodes()) {
+        VLOG(2) << "Examining " << out_node->def().op() << "("
+                << out_node->name() << ")"
+                << " out node of " << n->def().op() << " (" << n->name() << ")";
+        if (GetXlaClusterForNode(*out_node).has_value() &&
+            (*GetXlaClusterForNode(*out_node) == *consumer_cluster)) {
+          VLOG(2) << out_node->def().op() << "(" << out_node->name()
+                  << ") which is in " << *GetXlaClusterForNode(*out_node)
+                  << " is poisonable by " << src_dynamic_node->def().op() << "("
+                  << src_dynamic_node->name() << ")";
+          queue.push(out_node);
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status PopulatePossibleDynamicNodes(
+    Graph* graph, std::vector<const Node*>& candidate_dynamic_nodes) {
+  VLOG(2) << "Generating list of possible dynamic nodes...";
+  std::unordered_map<string, bool> visited;
+  visited.reserve(graph->num_node_ids());
+  for (const Node* v_n : graph->op_nodes()) {
+    visited[v_n->name()] = false;
+  }
+  absl::flat_hash_set<string> blacklisted_ops =
+      tensorflow::GetBlacklistedDynamicOps();
+  for (const Node* b_node : graph->op_nodes()) {
+    if (visited[b_node->name()]) continue;
+    visited[b_node->name()] = true;
+    if (blacklisted_ops.find(b_node->def().op()) == blacklisted_ops.end()) {
+      continue;
+    }
+
+    absl::optional<absl::string_view> incoming_cluster =
+        GetXlaClusterForNode(*b_node);
+
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Examining whether " << b_node->def().op() << " ("
+              << b_node->name()
+              << ") found in the blacklist is on the edge of a cluster.";
+      if (!incoming_cluster.has_value()) {
+        VLOG(3) << b_node->name() << " node found "
+                << " which is unclustered. ";
+      } else {
+        VLOG(3) << b_node->name() << " node found in " << *incoming_cluster
+                << ".";
+      }
+    }
+
+    bool is_node_blacklisted = false;
+    for (auto edge : b_node->out_edges()) {
+      absl::optional<absl::string_view> consumer_cluster =
+          GetXlaClusterForNode(*edge->dst());
+
+      // Exit right away if there is no consumer cluster.
+      if (!consumer_cluster.has_value()) continue;
+
+      // !incoming_cluster.has_value() implies b_node is unclustered but on the
+      // edge of a cluster. If !incoming_cluster.has_value() is true, then lazy
+      // evaluation will ensure that *incoming_cluster deref is not computed.
+      // Otherwise, if incoming_cluster.has_value() is true, *incoming_cluster
+      // != *consumer_cluster will imply b_node is a different cluster but on
+      // edge of another cluster.
+      if (!incoming_cluster.has_value() ||
+          *incoming_cluster != *consumer_cluster) {
+        VLOG(3) << "Out edge of " << b_node->def().op() << " ("
+                << b_node->name() << ")"
+                << " is " << edge->dst()->name() << " and is in "
+                << *consumer_cluster << ".";
+        is_node_blacklisted = true;
+        break;
+      }
+    }
+
+    if (!is_node_blacklisted) {
+      VLOG(2) << b_node->def().op() << "(" << b_node->name() << ")"
+              << " is in the blacklist but not on the edge of a cluster.";
+      continue;
+    }
+    VLOG(1) << "We have found a blacklisted op " << b_node->def().op() << "("
+            << b_node->name()
+            << ") that can be used to analyse possible dynamic nodes in the "
+               "graph based on reachability.";
+
+    TF_RETURN_IF_ERROR(PopulateReachableDynamicNodes(b_node, visited,
+                                                     candidate_dynamic_nodes));
+  }
+  return Status::OK();
+}
+
+Status PartiallyDeclusterGraph(Graph* graph) {
+  std::vector<const Node*> candidate_dynamic_nodes;
+  TF_RETURN_IF_ERROR(
+      PopulatePossibleDynamicNodes(graph, candidate_dynamic_nodes));
+  std::vector<Node*> rpo;
+  GetReversePostOrder(*graph, &rpo, /*stable_comparator=*/NodeComparatorName(),
+                      /*edge_filter=*/NotBackedge);
+  for (Node* node : rpo) {
+    auto node_it = std::find(candidate_dynamic_nodes.begin(),
+                           candidate_dynamic_nodes.end(), node);
+    if (node_it != candidate_dynamic_nodes.end()) {
+      VLOG(1) << "Declustering " << node->def().op() << " " << node->name()
+              << " from " << *GetXlaClusterForNode(*node)
+              << " due to possible dynamic nature ";
+      RemoveFromXlaCluster(node);
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace decluster_possible_dynamic_ops
 }  // namespace
 
 Status PartiallyDeclusterPass::Run(
@@ -395,6 +580,10 @@ Status PartiallyDeclusterPass::Run(
   // invalid.
 
   Graph* graph = options.graph->get();
+  if (DeclusterPossibleDynamicOps()) {
+    TF_RETURN_IF_ERROR(
+        decluster_possible_dynamic_ops::PartiallyDeclusterGraph(graph));
+  }
 
   TF_RETURN_IF_ERROR(
       reduce_device_to_host_copies::PartiallyDeclusterGraph(graph));

@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <utility>
+#include <regex>
 
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -666,6 +667,32 @@ bool RnnTensorOpMathEnabled() {
     return !is_disabled;
   }();
   return is_enabled;
+}
+
+// A helper function to fetch the engine filter string from
+// TF_CUDNN_ENGINE_FILTER in convolution. Three types of convolution are
+// supported: ConvFwd, ConvBwdData, and ConvBwdFilter. For valid filter string,
+// we need to use the convolution type as the prefix and then specify engine
+// indices. For example:
+// (1) To exclude the forward convolution engine 1 and 4: "ConvFwd_eng(1|4)";
+// (2) To exclude all dgrad engine 1 and wgrad engine 3 and 4:
+// "ConvBwdData_eng1|ConvBwdFilter_eng(3|4)" 
+std::string CudnnExecutionPlanEngineFilter() {
+  static std::string filter_str = [] {
+    std::string str = "";
+    TF_CHECK_OK(tensorflow::ReadStringFromEnvVar(
+                    "TF_CUDNN_ENGINE_FILTER", "", &str));
+    // TODO(kaixih@nvidia): nvbugs/3270255 and nvbugs/3193140.
+    std::string default_str =
+        "(ConvFwd_eng(32|33)|ConvBwdFilter_eng(6|14)|ConvBwdData_eng(10|11))";
+    if (str != "") {
+      return absl::StrCat(default_str, "|(", str, ")");
+    } else {
+      return default_str;
+    }
+  }();
+
+  return filter_str;
 }
 
 // A helper function to decide whether to use
@@ -3699,12 +3726,23 @@ port::Status CudnnSupport::DoConvolve(
       cudnn_frontend::filter(fallback_list, filtered_configs,
                              isDownConvertingInputs);
     }
+
+    std::string filter_str = CudnnExecutionPlanEngineFilter();
     for (int i = 0; i < filtered_configs.size(); i++) {
       auto plan = cudnn_frontend::ExecutionPlanBuilder()
                       .setHandle(cudnn.handle())
                       .setEngineConfig(filtered_configs[i])
                       .build();
       if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+        if (filter_str != "") {
+          std::smatch m;
+          std::regex pattern(absl::StrCat("(", filter_str, ")($|_)"));
+          if (std::regex_search(plan.getTag(), m, pattern)) {
+            VLOG(4) << "Exclude engine: " << plan.getTag();
+            continue;
+          }
+        }
+
         bool specify_workspace_limit = scratch_allocator != nullptr;
         auto memory_limit_bytes =
             specify_workspace_limit
@@ -3982,12 +4020,23 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
+
+  std::string filter_str = CudnnExecutionPlanEngineFilter();
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
                     .setEngineConfig(filtered_configs[i])
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (filter_str != "") {
+        std::smatch m;
+        std::regex pattern(absl::StrCat("(", filter_str, ")($|_)"));
+        if (std::regex_search(plan.getTag(), m, pattern)) {
+          VLOG(4) << "Exclude engine: " << plan.getTag();
+          continue;
+        }
+      }
+
       out_exec_plans->push_back(std::move(plan));
       // We will use the first working plan when determinism is required.
       if (stream_executor::cuda::RequireCuDNNDeterminism()) {

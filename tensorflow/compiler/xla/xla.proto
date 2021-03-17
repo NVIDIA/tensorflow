@@ -104,9 +104,13 @@ message DebugOptions {
 
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
 
-  // If true, the GPU backend is free to use cudnn for HLO batch normalization
-  // ops.
-  bool xla_gpu_use_cudnn_batchnorm = 94;
+  // 0 = Expand BatchNorm into soup of HLOs.
+  // 1 = Only thunk BatchNormForwardTraining (expand BatchNormGrad) to cuDNN iff
+  // BN+Add+Act or BN+Act cudnn fusion is possible. 2 = Use cuDNN for both
+  // BatchNormForwardTraining and BatchNormGrad irrespective of whether fusion
+  // is possible.
+  int32 xla_gpu_use_cudnn_batchnorm_level = 94;
+
   bool xla_gpu_use_cudnn_softmax = 95;
 
   // Generate calls to MKL-DNN in the CPU backend.

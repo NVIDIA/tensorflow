@@ -55,14 +55,21 @@ namespace gpu {
 class CudnnBatchNormRewriter : public HloModulePass {
  public:
   CudnnBatchNormRewriter(se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* allocator)
-      : stream_exec_(stream_exec), allocator_(allocator) {}
+                         se::DeviceMemoryAllocator* allocator,
+                         int32 rewrite_level)
+      : stream_exec_(stream_exec),
+        allocator_(allocator),
+        rewrite_level_(rewrite_level) {}
   absl::string_view name() const override { return "cudnn_batchnorm_rewriter"; }
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
   se::StreamExecutor* stream_exec_;       // never null
   se::DeviceMemoryAllocator* allocator_;  // may be null
+  int32 rewrite_level_;  // 1 = cudnn on only for BNForwardTraining with scope
+                         // of BN+Add+Act cudnn fusion; 2 = on for both
+                         // BNForwardTraining and BNGrad irrespective of fusion
+                         // opportunities.
 };
 
 }  // namespace gpu

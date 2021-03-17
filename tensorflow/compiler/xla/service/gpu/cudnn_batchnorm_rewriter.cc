@@ -28,11 +28,15 @@ namespace {
 
 class Visitor : public DfsHloVisitorWithDefault {
  public:
-  explicit Visitor(HloComputation* computation, se::Stream* stream)
-      : computation_(computation), stream_(stream) {}
+  explicit Visitor(HloComputation* computation, se::Stream* stream,
+                   int32 rewrite_level)
+      : computation_(computation),
+        stream_(stream),
+        rewrite_level_(rewrite_level) {}
 
-  static bool Run(HloComputation* computation, se::Stream* stream) {
-    Visitor visitor(computation, stream);
+  static bool Run(HloComputation* computation, se::Stream* stream,
+                  int32 rewrite_level) {
+    Visitor visitor(computation, stream, rewrite_level);
     TF_CHECK_OK(computation->Accept(&visitor));
     return visitor.changed_;
   }
@@ -54,6 +58,7 @@ class Visitor : public DfsHloVisitorWithDefault {
     return this->computation_->AddInstruction(
         HloInstruction::CreateConvert(shape, hlo));
   }
+  int32 rewrite_level_;
 };
 
 // cudnn defines CUDNN_BN_MIN_EPSILON = 1e-5 as the minimum acceptable epsilon
@@ -165,6 +170,12 @@ Status Visitor::HandleBatchNormInference(HloInstruction* batch_norm) {
 
 Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
   VLOG(1) << batch_norm->ToString();
+  if (rewrite_level_ == 0 ||
+      (rewrite_level_ == 1 &&
+       !static_cast<HloBatchNormTrainingInstruction*>(batch_norm)
+            ->is_activation_relu())) {
+    return Status::OK();
+  }
   if (batch_norm->operand(0)->shape().element_type() != F32) {
     VLOG(1) << "Not rewriting op with non-F32 element type: "
             << batch_norm->ToString();
@@ -295,6 +306,9 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
 
 Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
   VLOG(1) << batch_norm->ToString();
+  if (rewrite_level_ <= 1) {
+    return Status::OK();
+  }
   if (batch_norm->operand(0)->shape().element_type() != F32) {
     VLOG(1) << "Not rewriting op with non-F32 element type: "
             << batch_norm->ToString();
@@ -415,7 +429,7 @@ StatusOr<bool> CudnnBatchNormRewriter::Run(HloModule* module) {
 
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (Visitor::Run(comp, stream)) {
+    if (Visitor::Run(comp, stream, rewrite_level_)) {
       changed = true;
     }
   }

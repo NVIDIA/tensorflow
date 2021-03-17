@@ -52,10 +52,10 @@ namespace {
 
 class BatchNormalizationTest
     : public ClientLibraryTestBase,
-      public ::testing::WithParamInterface<bool /*use_cudnn_batchnorm*/> {
+      public ::testing::WithParamInterface<int32 /*use_cudnn_batchnorm*/> {
  protected:
   BatchNormalizationTest() : input_array_(kSamples, kZ, kY, kX) {
-    mutable_debug_options()->set_xla_gpu_use_cudnn_batchnorm(GetParam());
+    mutable_debug_options()->set_xla_gpu_use_cudnn_batchnorm_level(GetParam());
 
     Array2D<float> pz({
         // z0 z1
@@ -95,10 +95,10 @@ class BatchNormalizationTest
 // doesn't matter.
 #ifdef XLA_TEST_BACKEND_GPU
 INSTANTIATE_TEST_CASE_P(BatchNormalizationTestInstance, BatchNormalizationTest,
-                        ::testing::Bool());
+                        ::testing::Values(1,2));
 #else
 INSTANTIATE_TEST_CASE_P(BatchNormalizationTestInstance, BatchNormalizationTest,
-                        ::testing::Values(false));
+                        ::testing::Values(0));
 #endif
 
 XLA_TEST_P(BatchNormalizationTest, SubtractInZ) {
@@ -565,7 +565,7 @@ struct BatchNormTestParam {
   int64 feature_index;
   float random_value_mean;
   float random_value_var;
-  bool use_cudnn_batchnorm;
+  int32 use_cudnn_batchnorm;
 
   friend ::std::ostream& operator<<(::std::ostream& os,
                                     const BatchNormTestParam& p) {
@@ -574,10 +574,10 @@ struct BatchNormTestParam {
     os << "random_value_mean=" << p.random_value_mean << ", ";
     os << "random_value_var=" << p.random_value_var;
 
-    // Don't print use_cudnn_batchnorm when it's false, because most backends
+    // Don't print use_cudnn_batchnorm when it's 0, because most backends
     // never set it to true.
-    if (p.use_cudnn_batchnorm) {
-      os << ", use_cudnn_batchnorm=true";
+    if (p.use_cudnn_batchnorm > 0) {
+      os << ", use_cudnn_batchnorm";
     }
     return os;
   }
@@ -589,7 +589,7 @@ class BatchNormTestManySizes
       public ::testing::WithParamInterface<BatchNormTestParam> {
  public:
   BatchNormTestManySizes() {
-    mutable_debug_options()->set_xla_gpu_use_cudnn_batchnorm(
+    mutable_debug_options()->set_xla_gpu_use_cudnn_batchnorm_level(
         GetParam().use_cudnn_batchnorm);
   }
 };
@@ -600,12 +600,12 @@ std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
   auto add_testcase = [&](std::vector<int64> bounds, int64 feature_index,
                           float random_value_mean, float random_value_var) {
     BatchNormTestParam p{bounds, feature_index, random_value_mean,
-                         random_value_var, /*use_cudnn_batchnorm=*/false};
+                         random_value_var, /*use_cudnn_batchnorm=*/2};
     params.push_back(p);
 
     // If testing the GPU backend, also run with cudnn batchnorm enabled.
 #ifdef XLA_TEST_BACKEND_GPU
-    p.use_cudnn_batchnorm = true;
+    p.use_cudnn_batchnorm = 2;
     params.push_back(p);
 #endif
   };

@@ -49,7 +49,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
-  opts.set_xla_gpu_use_cudnn_batchnorm(false);
+  opts.set_xla_gpu_use_cudnn_batchnorm_level(0);
   // Set cudnn softmax off by default.
   opts.set_xla_gpu_use_cudnn_softmax(false);
 
@@ -396,11 +396,14 @@ static void AllocateFlags() {
           "Allows the GPU backend to implement softmax HLOs using cudnn, "
           "rather than expanding them to a soup of HLOs."),
       tensorflow::Flag(
-          "xla_gpu_use_cudnn_batchnorm",
-          bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_batchnorm),
-          flag_values->xla_gpu_use_cudnn_batchnorm(),
+          "xla_gpu_use_cudnn_batchnorm_level",
+          int32_setter_for(
+              &DebugOptions::set_xla_gpu_use_cudnn_batchnorm_level),
+          flag_values->xla_gpu_use_cudnn_batchnorm_level(),
           "Allows the GPU backend to implement batchnorm HLOs using cudnn, "
-          "rather than expanding them to a soup of HLOs."),
+          "rather than expanding them to a soup of HLOs. 0 = off; 1 = on only "
+          "when BatchNorm+Activation+Add cudnn fusion is possible; 2 = fully "
+          "on."),
       tensorflow::Flag("xla_cpu_use_mkl_dnn",
                        bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
                        flag_values->xla_cpu_use_mkl_dnn(),

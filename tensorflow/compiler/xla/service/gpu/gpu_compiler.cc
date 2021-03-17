@@ -185,14 +185,17 @@ Status GpuCompiler::OptimizeHloModule(
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
       // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm_level() >
+          0) {
         // Since BatchNorm inference is essentially pointwise operations, it is
         // always advantageous to use kernel fusion rather than cudnn.
         pass.AddPass<BatchNormExpander>(
             /*rewrite_training_op=*/false,
             /*rewrite_inference_op=*/true,
             /*rewrite_grad_op=*/false);
-        pass.AddPass<CudnnBatchNormRewriter>(stream_exec, device_allocator);
+        pass.AddPass<CudnnBatchNormRewriter>(
+            stream_exec, device_allocator,
+            hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm_level());
       }
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,

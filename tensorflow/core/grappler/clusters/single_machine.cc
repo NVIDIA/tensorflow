@@ -18,6 +18,10 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 
+#if !defined(PLATFORM_WINDOWS)
+#include <unistd.h>
+#endif
+
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"

@@ -18,6 +18,10 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 
+#if !defined(PLATFORM_WINDOWS)
+#include <unistd.h>
+#endif
+
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"

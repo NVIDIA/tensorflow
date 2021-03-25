@@ -68,6 +68,7 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "@boringssl//:ssl",
         "@com_google_protobuf//:protobuf_headers",
+        "//third_party/eigen3",
     ],
 )
 
@@ -107,7 +108,10 @@ cc_library(
         "kernels/igfs/igfs_writable_file.cc",
         "kernels/igfs/igfs_writable_file.h",
     ],
-    deps = [":ignite_client"],
+    deps = [
+        ":ignite_client",
+        "//third_party/eigen3",
+    ],
     alwayslink = 1,
 )
 

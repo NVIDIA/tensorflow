@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
 // Any routine accepting either a string or a number may accept it.
@@ -117,6 +118,8 @@ class AlphaNum {
       : piece_(digits_, FloatToBuffer(f, digits_)) {}
   AlphaNum(double f)  // NOLINT(runtime/explicit)
       : piece_(digits_, DoubleToBuffer(f, digits_)) {}
+  AlphaNum(Eigen::half f)  // NOLINT(runtime/explicit)
+      : piece_(digits_, FloatToBuffer(static_cast<float>(f), digits_)) {}
 
   AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 

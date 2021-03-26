@@ -11,10 +11,39 @@ index 1a60dcb..dfa6586 100644
    #include <hip/hip_runtime.h>
  #endif
 diff --git a/Eigen/src/Core/MathFunctions.h b/Eigen/src/Core/MathFunctions.h
-index e29733c..2c1f44c 100644
+index e29733c..20a1edb 100644
 --- a/Eigen/src/Core/MathFunctions.h
 +++ b/Eigen/src/Core/MathFunctions.h
-@@ -687,6 +687,24 @@ namespace std_fallback {
+@@ -338,6 +338,28 @@ struct sqrt_impl
+   }
+ };
+ 
++template<>
++struct sqrt_impl<int>
++{
++  EIGEN_DEVICE_FUNC
++  static EIGEN_ALWAYS_INLINE int run(const int& x) {
++    double d = static_cast<double>(x);
++    EIGEN_USING_STD(sqrt);
++    return static_cast<int>(sqrt(d));
++  }
++};
++
++template<>
++struct sqrt_impl<long long>
++{
++  EIGEN_DEVICE_FUNC
++  static EIGEN_ALWAYS_INLINE long long run(const long long& x) {
++    double d = static_cast<double>(x);
++    EIGEN_USING_STD(sqrt);
++    return static_cast<long long>(sqrt(d));
++  }
++};
++
+ // Complex sqrt defined in MathFunctionsImpl.h.
+ template<typename T> EIGEN_DEVICE_FUNC std::complex<T> complex_sqrt(const std::complex<T>& a_x);
+ 
+@@ -687,6 +709,24 @@ namespace std_fallback {
      const bool is_inf = numext::equal_strict(x1p, log_1p);
      return (is_small || is_inf) ? x : x * (log_1p / (x1p - RealScalar(1)));
    }
@@ -39,7 +68,7 @@ index e29733c..2c1f44c 100644
  }
  
  template<typename Scalar>
-@@ -1446,6 +1464,19 @@ T log(const T &x) {
+@@ -1446,6 +1486,19 @@ T log(const T &x) {
    return static_cast<T>(log(x));
  }
  

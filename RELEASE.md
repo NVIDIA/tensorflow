@@ -12,6 +12,8 @@
   ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601)).
 * Fixes integer division by 0 in sparse reshaping.
   ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640)).
+* Fixes Incomplete validation in SparseAdd.
+  ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609)).
 
 # Release 1.15.5+nv21.11
 

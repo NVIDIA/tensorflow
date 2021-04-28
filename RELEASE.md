@@ -8,6 +8,8 @@
   ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675)).
 * Fixes heap OOB in UpperBound and LowerBound.
   ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670)).
+* Fixes integer overflow in TFLite concat.
+  ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601)).
 
 # Release 1.15.5+nv21.11
 

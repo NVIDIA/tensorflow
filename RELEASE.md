@@ -2,6 +2,8 @@
 ## Bug Fixes and Other Changes
 * Fixes Division by 0 in ResourceScatterDiv.
   ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642)).
+* Fixes memory corruption issue with tf.raw_ops.DrawBoundingBoxesV2.
+  ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571)).
 
 # Release 1.15.5+nv21.11
 

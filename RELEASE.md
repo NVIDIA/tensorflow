@@ -22,6 +22,8 @@
   ([CVE-2021-37674](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37674)).
 * Fixes heap OOB and null pointer dereference in RaggedTensorToTensor.
   ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608)).
+* Fixes incomplete validation in tf.raw_ops.CTCLoss.
+  ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613)).
 
 # Release 1.15.5+nv21.11
 

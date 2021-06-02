@@ -39,7 +39,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:amdgpu_code_gen",
         "@llvm-project//llvm:analysis",
         "@llvm-project//llvm:bit_reader",
         "@llvm-project//llvm:bit_writer",

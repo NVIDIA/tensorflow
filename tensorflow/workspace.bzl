@@ -131,7 +131,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:cudnn_frontend.BUILD"),
         patches = [clean_dep("//third_party:cudnn_frontend_header_fix.patch")],
         patch_args = ['-p1'],
-        commit = "e9ad21cc61f8427bbaed98045b7e4f24bad57619",
+        commit = "f14853412734f71777c91cac1421893195d558de",
         remote = "https://oauth2:J64G8MymaUmqNKG_N3rR@gitlab-master.nvidia.com/cudnn/cudnn_frontend.git"
     )
 

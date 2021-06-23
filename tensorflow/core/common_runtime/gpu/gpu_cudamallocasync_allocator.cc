@@ -222,16 +222,9 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   }
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
-  auto result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
-                                        num_bytes, pool_, cuda_stream_);
-  if (result == CUDA_ERROR_OUT_OF_MEMORY) {
-    // This can fix some OOM when memory is tight.
-    cuStreamSynchronize(cuda_stream_);
-    result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
-                                     num_bytes, pool_, cuda_stream_);
-  }
-
-  if (result) {
+  if (auto result =
+      cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                              num_bytes, pool_, cuda_stream_)) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes

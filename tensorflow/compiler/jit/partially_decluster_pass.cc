@@ -35,18 +35,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-absl::flat_hash_set<string> GetBlacklistedDynamicOps() {
-  absl::flat_hash_set<string> result{"Where", "Unique"};
-  string blacklisted_ops;
-  TF_CHECK_OK(ReadStringFromEnvVar("TF_XLA_DYNAMIC_OPS", "", &blacklisted_ops));
-  if (!blacklisted_ops.empty()) {
-    for (auto op : absl::StrSplit(blacklisted_ops, ',')) {
-      result.insert(string(op));
-    }
-  }
-  return result;
-}
-
 bool DeclusterPossibleDynamicOps() {
   static bool decluster = [] {
     bool to_decluster = false;

@@ -3089,6 +3089,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/eval_const_tensor.h",
     "common_runtime/graph_runner.h",
     "common_runtime/shape_refiner.h",
+    "common_runtime/node_shape_info.h",
     "framework/versions.h",
     "common_runtime/process_function_library_runtime.h",
     "common_runtime/function.h",

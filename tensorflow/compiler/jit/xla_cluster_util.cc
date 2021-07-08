@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/xla_config_registry.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -84,6 +85,18 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
 bool AlwaysForwardsRefInput(const Node& node) { return node.IsIdentity(); }
 
 }  // namespace
+
+absl::flat_hash_set<string> GetBlacklistedDynamicOps() {
+  absl::flat_hash_set<string> result{"Where", "Unique"};
+  string blacklisted_ops;
+  TF_CHECK_OK(ReadStringFromEnvVar("TF_XLA_DYNAMIC_OPS", "",
+  &blacklisted_ops)); if (!blacklisted_ops.empty()) {
+    for (auto op : absl::StrSplit(blacklisted_ops, ',')) {
+      result.insert(string(op));
+    }
+  }
+  return result;
+}
 
 bool HasForwardedRefInput(const Node& node) {
   if (AlwaysForwardsRefInput(node)) {

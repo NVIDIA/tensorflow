@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <queue>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/node_shape_info.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -53,8 +55,20 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+bool ExcludePossibleDynamicOps() {
+  static bool exclude = [] {
+    bool to_be_excluded = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_XLA_DO_NOT_COMPILE_POSSIBLE_DYNAMIC_OPS",
+        /*default_val=*/false, &to_be_excluded));
+    return to_be_excluded;
+  }();
+  return exclude;
+}
 
 namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;
@@ -268,6 +282,10 @@ class MarkForCompilationPassImpl {
   // tf_xla_min_cluster_size, are applied here.
   Status CreateClusters();
 
+  Status PopulateDynamicNodesToExclude();
+
+  Status PopulateFullyDefinedNodes(const Node*);
+
   Status DumpDebugInfo();
 
   bool IsCompilationCandidate(Node* n) const {
@@ -406,8 +424,11 @@ class MarkForCompilationPassImpl {
                         ".");
   }
 
+  bool IsNodeDynamic(const Node* node);
+
   DebugOptions debug_options_;
   Graph* graph_;
+  std::vector<const Node*> candidate_dynamic_nodes_;
   FunctionLibraryDefinition* flib_def_;
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
@@ -1132,6 +1153,152 @@ absl::flat_hash_set<string> GetOrCreateWhitelist() {
   return whitelist;
 }
 
+bool MarkForCompilationPassImpl::IsNodeDynamic(const Node* node) {
+    auto node_it = std::find(candidate_dynamic_nodes_.begin(),
+                             candidate_dynamic_nodes_.end(), node);
+    return node_it != candidate_dynamic_nodes_.end();
+}
+
+Status MarkForCompilationPassImpl::PopulateDynamicNodesToExclude() {
+  std::vector<Node*> sorted_nodes;
+  for (Node* node : graph_->op_nodes()) {
+    sorted_nodes.push_back(node);
+  }
+  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeComparatorID());
+
+  std::unordered_map<string, bool> visited;
+  visited.reserve(sorted_nodes.size());
+  for (const Node* v_n : sorted_nodes) {
+    visited[v_n->name()] = false;
+  }
+  absl::flat_hash_set<string> blacklisted_ops =
+      tensorflow::GetBlacklistedDynamicOps();
+  for (const Node* b_node : sorted_nodes) {
+    if (blacklisted_ops.find(b_node->def().op()) == blacklisted_ops.end()) {
+      continue;
+    }
+    std::queue<const Node*> queue;
+    queue.push(b_node);
+
+    while (!queue.empty()) {
+      const Node* n = queue.front();
+      queue.pop();
+      if (visited[n->name()]) continue;
+      visited[n->name()] = true;
+      candidate_dynamic_nodes_.push_back(n);
+
+      // Are all outputs of n fully defined?
+      bool all_outputs_fully_defined = true;
+      for (const Edge* out_edge : n->out_edges()) {
+        if (out_edge->IsControlEdge()) continue;
+        const Node* out_node = out_edge->dst();
+        VLOG(2) << "Examining " << out_node->def().op() << "("
+                << out_node->name() << ")"
+                << " out node of " << n->def().op() << " (" << n->name() << ")";
+        std::vector<const Edge*> sorted_data_edges;
+        TF_RETURN_IF_ERROR(out_node->input_edges(&sorted_data_edges));
+
+        for (int idx = 0; idx < sorted_data_edges.size(); idx++) {
+          Node* in;
+          out_node->input_node(idx, &in);
+          if (in == n) {
+            if (VLOG_IS_ON(3)) {
+              VLOG(3) << "Input " << idx << " of " << out_node->def().op()
+                      << "(" << out_node->name() << ") "
+                      << " is " << in->def().op() << " (" << in->name() << ") "
+                      << "Is input " << idx << " fully defined? "
+                      << tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                             ->GetShapeDefinition(out_node->name(), idx)
+                             .first
+                      << "-> "
+                      << tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                             ->GetShapeDefinition(out_node->name(), idx)
+                             .second;
+            }
+            if (!tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                     ->GetShapeDefinition(out_node->name(), idx)
+                     .first) {
+              VLOG(2) << out_node->def().op() << "(" << out_node->name()
+                      << ") input " << idx << " is NOT fully defined shape. "
+                      << "Hence, it is poisonable by " << b_node->def().op()
+                      << "(" << b_node->name() << ")";
+              // Edge from n -> out_node is not fully defined. This implies that
+              // n is injecting a 'dynamism' into out_node. Hence, add out_node
+              // to the queue.
+              queue.push(out_node);
+              all_outputs_fully_defined = false;
+              break;
+            }
+          }
+        }
+      }
+      if (all_outputs_fully_defined) {
+        TF_RETURN_IF_ERROR(PopulateFullyDefinedNodes(n));
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status MarkForCompilationPassImpl::PopulateFullyDefinedNodes(const Node* n) {
+  VLOG(3) << n->def().op() << " (" << n->name()
+          << ") curbs dynamism. All outputs fully defined.";
+  // Debug logging.
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << " This node has " << n->out_edges().size()
+            << " output edges. Out edges : ";
+    for (auto out_edge : n->out_edges()) {
+      string c = (out_edge->IsControlEdge()) ? " control edge " : " data edge ";
+      VLOG(4) << out_edge->dst()->def().op() << "(" << out_edge->dst()->name()
+              << ")" << c;
+    }
+  }
+  tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+      ->InitializeFullyDefinedNodeMapVector(n->name(), n->num_outputs());
+  for (const Edge* out_edge : n->out_edges()) {
+    if (out_edge->IsControlEdge()) continue;
+    const Node* out_node = out_edge->dst();
+
+    // Debug information.
+    if (VLOG_IS_ON(4)) {
+      VLOG(4) << "Looking at Out node: " << out_node->def().op() << " ("
+              << out_node->name() << ") has " << out_node->in_edges().size()
+              << " input edges. Following are the inputs: ";
+    }
+    std::vector<const Edge*> sorted_input_data_edges;
+    TF_RETURN_IF_ERROR(out_node->input_edges(&sorted_input_data_edges));
+    for (int idx = 0; idx < sorted_input_data_edges.size(); idx++) {
+      const Node* in;
+      out_node->input_node(idx, &in);
+      // Debug information.
+      if (VLOG_IS_ON(4)) {
+        VLOG(4) << "Input " << idx << ": " << in->def().op() << "("
+                << in->name() << ")";
+      }
+      if (in == n) {
+        tensorflow::NodeShapesInfo::GetNodeShapesInfo()->AddFullyDefinedNode(
+            n->name(),
+            tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                ->GetShapeDefinition(out_node->name(), idx)
+                .second,
+            out_edge->src_output());
+        // Debug information.
+        if (VLOG_IS_ON(4)) {
+          VLOG(4) << out_node->def().op() << " (" << out_node->name() << ") "
+                  << tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                         ->GetShapeDefinition(out_node->name(), idx)
+                         .first
+                  << " "
+                  << tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                         ->GetShapeDefinition(out_node->name(), idx)
+                         .second;
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
@@ -1176,6 +1343,16 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
   }
 
+  bool exclude_possible_dynamic_nodes = ExcludePossibleDynamicOps();
+  if (exclude_possible_dynamic_nodes) {
+    TF_RETURN_IF_ERROR(PopulateDynamicNodesToExclude());
+    if (VLOG_IS_ON(4)) {
+      VLOG(4) << "List of nodes with fully defined output shapes: "
+              << tensorflow::NodeShapesInfo::GetNodeShapesInfo()
+                     ->ToStringFullyDefinedNodes();
+    }
+  }
+
   for (Node* node : sorted_nodes) {
     if (*debug_options_.fuel <= 0) {
       VLOG(1)
@@ -1216,6 +1393,13 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     if (whitelist.size() > 0 && !whitelist.contains(node->def().op())) {
       VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
+      continue;
+    }
+
+    if (exclude_possible_dynamic_nodes && IsNodeDynamic(node)) {
+      VLOG(3) << "Found possible dynamic node. " << node->def().op() << " "
+              << node->name()
+              << " might be costly to cluster due to possible dynamic nature ";
       continue;
     }
 

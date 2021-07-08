@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/node_shape_info.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -295,6 +296,24 @@ Status ShapeRefiner::AddNode(const Node* node) {
 
   // Run the shape inference function, and return if there was an error.
   TF_RETURN_IF_ERROR(RunShapeFn(node, op_reg_data, ec.get()));
+
+  VLOG(2) << "Adding Node: " << node->def().op() << "(" << node->name() << ")";
+  for (int i = 0; i < ec->get_context()->num_inputs(); i++) {
+    auto in_shape_handle = ec->get_context()->input(i);
+    VLOG(2) << "Input " << i << " of " << node->def().op() << "("
+            << node->name() << ")"
+            << " : " << ec->get_context()->DebugString(in_shape_handle);
+
+    NodeShapesInfo::GetNodeShapesInfo()->SetShapeDefinition(
+        node->name(), ec->get_context()->FullyDefined(in_shape_handle),
+        ec->get_context()->DebugString(in_shape_handle), i);
+
+    if (VLOG_IS_ON(2) && ec->get_context()->FullyDefined(in_shape_handle)) {
+      VLOG(2) << "Input " << i << " of " << node->def().op() << "("
+              << node->name() << ") is fully defined: "
+              << ec->get_context()->DebugString(in_shape_handle);
+    }
+  }
 
   // Store the resulting context object in the map.
   node_to_context_[node].swap(ec);

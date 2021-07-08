@@ -79,9 +79,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         "Failed to get device attribute: " << GetCudaErrorMessage(status);
   if (!cuda_malloc_async_supported)
     LOG(FATAL)  // Crash OK.
-        << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported."
-        << " Possible causes: device not supported, driver too old, "
-        << " OS not supported, CUDA version too old.";
+        << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported on "
+        << "GPU id " << platform_device_id.value() << ":"
+        << " Possible causes: device not supported (request SM60+), driver too old, "
+        << " OS not supported, CUDA version too old(request CUDA11.2+).";
 
   if (auto status =
           cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
@@ -110,10 +111,17 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
                                              &deterministic_ops));
   if (deterministic_ops) {
     int disable = 0;
-    cuMemPoolSetAttribute(pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC,
-                          &disable);
-    cuMemPoolSetAttribute(
-        pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES, &disable);
+    if (auto status = cuMemPoolSetAttribute(
+            pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC, &disable)) {
+      LOG(FATAL) <<  // Crash OK.
+          "Failed to set CUDA pool attribute: " << GetCudaErrorMessage(status);
+    }
+    if (auto status = cuMemPoolSetAttribute(
+            pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES,
+            &disable)) {
+      LOG(FATAL) <<  // Crash OK.
+          "Failed to set CUDA pool attribute: " << GetCudaErrorMessage(status);
+    }
   }
 
   // Set read/write access to all GPUs.
@@ -135,8 +143,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
                                             map.location.id)) {
       pool_ = nullptr;
       LOG(FATAL)  // Crash OK.
-          << "cuDeviceCanAccessPeer failed: "
-          << GetCudaErrorMessage(status);
+          << "cuDeviceCanAccessPeer failed to know if GPU id "
+          << map.location.id
+          << " can access GPU id " << platform_device_id.value()
+          << ": " << GetCudaErrorMessage(status);
     }
     if (canAccessPeer == 1) {
       if (auto status = cuMemPoolSetAccess(pool_, &map, 1)) {
@@ -212,16 +222,68 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   }
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
-  if (auto result =
-          cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
-                                  num_bytes, pool_, cuda_stream_)) {
+  auto result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                                        num_bytes, pool_, cuda_stream_);
+  if (result == CUDA_ERROR_OUT_OF_MEMORY) {
+    // This can fix some OOM when memory is tight.
+    cuStreamSynchronize(cuda_stream_);
+    result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                                     num_bytes, pool_, cuda_stream_);
+  }
+
+  if (result) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
-               << ": " << GetCudaErrorMessage(result)
-               << "\n Free memory/Total memory: " << free << "/" << total;
+               << " bytes: " << GetCudaErrorMessage(result)
+               << "\n Reported by CUDA: Free memory/Total memory: " << free << "/" << total;
     if (auto stats = GetStats())
       LOG(ERROR) << "Stats: " << stats->DebugString();
+
+    std::map<size_t, int> size_map_historgram;
+    std::vector<string> ptr_size_string;
+    for (auto p : size_map_) {
+      if (VLOG_IS_ON(8)) {
+	ptr_size_string.push_back(
+            absl::StrCat("(", absl::Hex(p.first), ",", p.second) + ")");
+      }
+      size_map_historgram[p.second]++;
+    }
+    LOG(ERROR)
+      << "Histogram of current allocation: (allocation_size_in_bytes, "
+      << "nb_allocation_of_that_sizes), ...;";
+    for (auto p : size_map_historgram) {
+      LOG(ERROR) << p.first << ", " << p.second;
+    }
+
+    VLOG(8) << "\nThe sorted list of (ptr,size):";
+    VLOG(8) << absl::StrJoin(ptr_size_string, ",");
+
+    cuuint64_t mem_reserved_current;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT, &mem_reserved_current)) {
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    cuuint64_t mem_used_current;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_CURRENT, &mem_used_current)) {
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    cuuint64_t mem_reserved_high;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH, &mem_reserved_high)) {
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    cuuint64_t mem_used_high;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_HIGH, &mem_used_high)) {
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: " << mem_reserved_current;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
+
     return nullptr;
   }
 
@@ -230,6 +292,9 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     mutex_lock lock(lock_);
     ++(stats_->num_allocs);
     stats_->bytes_in_use += num_bytes;
+    if (stats_->bytes_in_use > stats_->peak_bytes_in_use) {
+      VLOG(9) << "New Peak memory usage of " << stats_->bytes_in_use << " bytes.";
+    }
     stats_->peak_bytes_in_use =
         std::max(stats_->peak_bytes_in_use, stats_->bytes_in_use);
     stats_->largest_alloc_size =

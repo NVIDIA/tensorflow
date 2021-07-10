@@ -26,6 +26,8 @@
   ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613)).
 * Fixes FPE in tf.raw_ops.UnravelIndex.
   ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668)).
+* Fixes floating point exception in SparseDenseCwiseDiv.
+  ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636)).
 
 # Release 1.15.5+nv21.11
 

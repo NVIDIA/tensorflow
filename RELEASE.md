@@ -40,6 +40,8 @@
   ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647)).
 * Fixes heap out of bounds access in sparse reduction operations
   ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635)).
+* Fixes null pointer dereference in RaggedTensorToTensor
+  ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638)).
 
 # Release 1.15.5
 

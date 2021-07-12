@@ -24,6 +24,8 @@
   ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608)).
 * Fixes incomplete validation in tf.raw_ops.CTCLoss.
   ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613)).
+* Fixes FPE in tf.raw_ops.UnravelIndex.
+  ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668)).
 
 # Release 1.15.5+nv21.11
 

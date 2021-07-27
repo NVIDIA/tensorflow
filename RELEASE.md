@@ -20,6 +20,8 @@
   ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671)).
 * Fixes incomplete validation in MKL requantization
   ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665)).
+* Fixes heap OOB in boosted trees
+  ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664)).
 
 # Release 1.15.5
 

@@ -30,6 +30,8 @@
   ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636)).
 * Fixes division by 0 in LSH projection.
   ([CVE-2021-37691](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37691)).
+* Fixes bad alloc in StringNGrams caused by integer conversion.
+  ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646)).
 
 # Release 1.15.5+nv21.11
 

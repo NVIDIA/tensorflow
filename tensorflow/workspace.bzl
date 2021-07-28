@@ -126,13 +126,10 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
-    new_git_repository(
+    native.new_local_repository(
         name = "cudnn_frontend_archive",
         build_file = clean_dep("//third_party:cudnn_frontend.BUILD"),
-        patches = [clean_dep("//third_party:cudnn_frontend_header_fix.patch")],
-        patch_args = ['-p1'],
-        commit = "f14853412734f71777c91cac1421893195d558de",
-        remote = "https://oauth2:J64G8MymaUmqNKG_N3rR@gitlab-master.nvidia.com/cudnn/cudnn_frontend.git"
+	path = "/opt/tensorflow/cudnn-frontend",
     )
 
     # Important: If you are upgrading MKL-DNN, then update the version numbers

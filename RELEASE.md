@@ -42,6 +42,8 @@
   ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690)).
 * Fix heap OOB in SdcaOptimizerV2.
   ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672)).
+* Fixes crash caused by integer conversion to unsigned.
+  ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661)).
 
 # Release 1.15.5+nv21.11
 

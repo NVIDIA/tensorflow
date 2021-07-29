@@ -6,6 +6,9 @@
   code execution. It is recommended to use JSON serialization instead of YAML,
   or, a better alternative, serialize to H5.
   ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+* Fixes heap OOB in nested tf.map_fn with RaggedTensors
+  ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679)).
+
 
 # Release 1.15.5
 

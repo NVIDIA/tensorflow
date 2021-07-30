@@ -129,7 +129,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     native.new_local_repository(
         name = "cudnn_frontend_archive",
         build_file = clean_dep("//third_party:cudnn_frontend.BUILD"),
-	path = "/opt/tensorflow/cudnn-frontend",
+	path = "../cudnn-frontend",
     )
 
     # Important: If you are upgrading MKL-DNN, then update the version numbers

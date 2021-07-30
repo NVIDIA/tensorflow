@@ -10,6 +10,8 @@
   ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679)).
 * Fixes reference binding to nullptr and heap OOB in binary cwise ops
   ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659)).
+* Fixes reference binding to nullptr in shape inference
+  ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676)).
 
 
 # Release 1.15.5

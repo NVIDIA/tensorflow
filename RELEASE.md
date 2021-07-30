@@ -16,6 +16,8 @@
   ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667)).
 * Fixes segfault and heap buffer overflow in DatasetToTFRecord
   ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650)).
+* Fixes reference binding to nullptr in map operations
+  ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671)).
 
 # Release 1.15.5
 

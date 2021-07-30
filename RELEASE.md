@@ -14,6 +14,8 @@
   ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640)).
 * Fixes Incomplete validation in SparseAdd.
   ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609)).
+* Fixes CHECK failure in MapStage.
+  ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673)).
 
 # Release 1.15.5+nv21.11
 

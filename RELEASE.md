@@ -6,6 +6,8 @@
   ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571)).
 * Fixes division by 0 in most convolution operators.
   ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675)).
+* Fixes heap OOB in UpperBound and LowerBound.
+  ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670)).
 
 # Release 1.15.5+nv21.11
 

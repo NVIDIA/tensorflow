@@ -28,6 +28,8 @@
   ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641)).
 * Fixes reference binding to nullptr in boosted trees
   ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662)).
+* Fixes reference binding to nullptr in RaggedTensorToSparse
+  ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656)).
 
 # Release 1.15.5
 

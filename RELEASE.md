@@ -40,6 +40,8 @@
   ([CVE-2021-37644](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37644)).
 * Fix segmentation fault in shape inference logic.
   ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690)).
+* Fix heap OOB in SdcaOptimizerV2.
+  ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672)).
 
 # Release 1.15.5+nv21.11
 

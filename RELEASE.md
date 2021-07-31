@@ -16,6 +16,8 @@
   ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609)).
 * Fixes CHECK failure in MapStage.
   ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673)).
+* Fixes crash in NMS ops caused by integer conversion to unsigned.
+  ([CVE-2021-37669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37669)).
 
 # Release 1.15.5+nv21.11
 

@@ -8,6 +8,8 @@
   ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
 * Fixes heap OOB in nested tf.map_fn with RaggedTensors
   ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679)).
+* Fixes reference binding to nullptr and heap OOB in binary cwise ops
+  ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659)).
 
 
 # Release 1.15.5

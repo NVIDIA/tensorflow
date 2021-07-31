@@ -34,6 +34,8 @@
   ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646)).
 * Fixes null pointer dereference in TFLite's Reshape operator.
   ([CVE-2021-29592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29592)).
+* Fixes division by 0 in ResourceGather.
+  ([CVE-2021-37653](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37653)).
 
 # Release 1.15.5+nv21.11
 

@@ -50,6 +50,8 @@
   ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666)).
 * Fixes use after free in boosted trees creation
   ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652)).
+* Fixes heap OOB and CHECK fail in ResourceGather
+  ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654)).
 
 # Release 1.15.5
 

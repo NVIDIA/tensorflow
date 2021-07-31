@@ -48,6 +48,8 @@
   ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639)).
 * Fixes reference binding to nullptr in RaggedTensorToVariant
   ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666)).
+* Fixes use after free in boosted trees creation
+  ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652)).
 
 # Release 1.15.5
 

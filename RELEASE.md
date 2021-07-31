@@ -34,6 +34,8 @@
   ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658)).
 * Fixes null pointer dereference in MatrixDiagPartOp
   ([CVE-2021-37643](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37643)).
+* Fixes incorrect validation of SaveV2 inputs
+  ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648)).
 
 # Release 1.15.5
 

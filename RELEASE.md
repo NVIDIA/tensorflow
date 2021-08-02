@@ -10,6 +10,8 @@
   ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670)).
 * Fixes integer overflow in TFLite concat.
   ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601)).
+* Fixes integer division by 0 in sparse reshaping.
+  ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640)).
 
 # Release 1.15.5+nv21.11
 

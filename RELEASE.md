@@ -22,6 +22,8 @@
   ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665)).
 * Fixes heap OOB in boosted trees
   ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664)).
+* Fixes heap OOB in ResourceScatterUpdate
+  ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655)).
 
 # Release 1.15.5
 

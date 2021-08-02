@@ -44,6 +44,8 @@
   ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638)).
 * Fixes reference binding to nullptr in MatrixDiagV ops
   ([CVE-2021-37657](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37657)).
+* Fixes null pointer dereference and heap OOB read in operations restoring tensors
+  ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639)).
 
 # Release 1.15.5
 

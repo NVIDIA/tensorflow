@@ -44,6 +44,8 @@
   ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672)).
 * Fixes crash caused by integer conversion to unsigned.
   ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661)).
+* Fixes division by 0 in inplace operations.
+  ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660)).
 
 # Release 1.15.5+nv21.11
 

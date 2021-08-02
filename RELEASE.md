@@ -52,6 +52,8 @@
   ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652)).
 * Fixes heap OOB and CHECK fail in ResourceGather
   ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654)).
+* Fixes heap buffer overflow in FractionalAvgPoolGrad
+  ([CVE-2021-37651](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37651)).
 
 # Release 1.15.5
 

@@ -24,6 +24,8 @@
   ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664)).
 * Fixes heap OOB in ResourceScatterUpdate
   ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655)).
+* Fixes heap OOB in RaggedGather
+  ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641)).
 
 # Release 1.15.5
 

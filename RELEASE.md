@@ -1,3 +1,8 @@
+# Release 1.15.5+nv21.12
+## Bug Fixes and Other Changes
+* Fixes Division by 0 in ResourceScatterDiv.
+  ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642)).
+
 # Release 1.15.5+nv21.11
 
 ## Bug Fixes and Other Changes

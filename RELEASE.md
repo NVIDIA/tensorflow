@@ -83,6 +83,8 @@
   ([CVE-2021-41198](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41198)).
 * Fixes overflow/crash in tf.image.resize when size is large.
   ([CVE-2021-41199](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41199)).
+* Fixes overflow/crash in tf.range.
+  ([CVE-2021-41202](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41202)).
 
 
 # Release 1.15.5+nv21.11

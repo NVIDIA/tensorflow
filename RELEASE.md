@@ -81,6 +81,8 @@
   ([CVE-2021-41195](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41195)).
 * Fixes overflow/crash in tf.tile when tiling tensor is large.
   ([CVE-2021-41198](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41198)).
+* Fixes overflow/crash in tf.image.resize when size is large.
+  ([CVE-2021-41199](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41199)).
 
 
 # Release 1.15.5+nv21.11

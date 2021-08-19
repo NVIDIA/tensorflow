@@ -69,6 +69,8 @@
   ([CVE-2021-41207](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41207)).
 * Fixes incomplete validation in boosted trees code.
   ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
+* Fixes segfault while copying constant resource tensor.
+  ([CVE-2021-41204](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41204)).
 
 # Release 1.15.5+nv21.11
 

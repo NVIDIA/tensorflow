@@ -99,6 +99,8 @@
   ([CVE-2021-41221](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41221)).
 * Fixes incomplete validation of shapes in multiple TF ops.
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
+* Adds missing validation during checkpoint loading.
+  ([CVE-2021-41203](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41203)).
 
 
 # Release 1.15.5+nv21.11

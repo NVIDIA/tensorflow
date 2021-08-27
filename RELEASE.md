@@ -73,6 +73,8 @@
   ([CVE-2021-41204](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41204)).
 * Fixes unitialized access in EinsumHelper::ParseEquation.
   ([CVE-2021-41201](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41201)).
+* Fixes incomplete validation in tf.summary.create_file_writer.
+  ([CVE-2021-41200](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41200)).
 
 # Release 1.15.5+nv21.11
 

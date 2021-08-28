@@ -77,6 +77,9 @@
   ([CVE-2021-41200](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41200)).
 * Fixes crash in max_pool3d when size argument is 0 or negative.
   ([CVE-2021-41196](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41196)).
+* Fixes crash in tf.math.segment operations.
+  ([CVE-2021-41195](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41195)).
+
 
 # Release 1.15.5+nv21.11
 

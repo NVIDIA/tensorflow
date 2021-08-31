@@ -14,7 +14,8 @@
   ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676)).
 * Fixes reference binding to nullptr in unicode encoding
   ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667)).
-
+* Fixes segfault and heap buffer overflow in DatasetToTFRecord
+  ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650)).
 
 # Release 1.15.5
 

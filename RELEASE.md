@@ -30,6 +30,8 @@
   ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662)).
 * Fixes reference binding to nullptr in RaggedTensorToSparse
   ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656)).
+* Fixes reference binding to nullptr in MatrixSetDiagV ops
+  ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658)).
 
 # Release 1.15.5
 

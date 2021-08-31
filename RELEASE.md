@@ -12,6 +12,8 @@
   ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659)).
 * Fixes reference binding to nullptr in shape inference
   ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676)).
+* Fixes reference binding to nullptr in unicode encoding
+  ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667)).
 
 
 # Release 1.15.5

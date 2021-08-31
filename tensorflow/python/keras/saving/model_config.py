@@ -23,13 +23,6 @@ import json
 
 from tensorflow.python.util.tf_export import keras_export
 
-# pylint: disable=g-import-not-at-top
-try:
-  import yaml
-except ImportError:
-  yaml = None
-# pylint: enable=g-import-not-at-top
-
 
 @keras_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
@@ -59,6 +52,9 @@ def model_from_config(config, custom_objects=None):
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
+  Note: Since TF 1.15.5+nv21.09, this method is no longer supported and will
+  raise a RuntimeError.
+
   Arguments:
       yaml_string: YAML string encoding a model configuration.
       custom_objects: Optional dictionary mapping names
@@ -69,13 +65,13 @@ def model_from_yaml(yaml_string, custom_objects=None):
       A Keras model instance (uncompiled).
 
   Raises:
-      ImportError: if yaml module is not found.
+      RuntimeError: announces that the method poses a security risk
   """
-  if yaml is None:
-    raise ImportError('Requires yaml module installed (`pip install pyyaml`).')
-  config = yaml.load(yaml_string)
-  from tensorflow.python.keras.layers import deserialize  # pylint: disable=g-import-not-at-top
-  return deserialize(config, custom_objects=custom_objects)
+  raise RuntimeError(
+      'Method `model_from_yaml()` has been removed due to security risk of '
+      'arbitrary code execution. Please use `Model.to_json()` and '
+      '`model_from_json()` instead.'
+  )
 
 
 @keras_export('keras.models.model_from_json')

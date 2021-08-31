@@ -1,3 +1,12 @@
+# Release 1.15.5+nv21.09
+
+## Bug Fixes and Other Changes
+* The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been
+  replaced to raise a `RuntimeError` as they can be abused to cause arbitrary
+  code execution. It is recommended to use JSON serialization instead of YAML,
+  or, a better alternative, serialize to H5.
+  ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+
 # Release 1.15.5
 
 Note that this is the last patch release for the TensorFlow 1.x series.

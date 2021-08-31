@@ -438,7 +438,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "org_python_license",
         licenses = ["notice"],  # Python 2.0
         sha256_urls = {
-            "e76cacdf0bdd265ff074ccca03671c33126f597f39d0ed97bc3e5673d9170cf6": [
+            "629431b6e4f268457ec1c1a9c9032506e3b720312e22cc8f679f76c2decacad2": [
                 "https://storage.googleapis.com/mirror.tensorflow.org/docs.python.org/2.7/_sources/license.rst.txt",
                 "https://docs.python.org/2.7/_sources/license.rst.txt",
             ],

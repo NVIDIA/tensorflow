@@ -38,6 +38,8 @@
   ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648)).
 * Fixes null pointer dereference in SparseTensorSliceDataset
   ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647)).
+* Fixes heap out of bounds access in sparse reduction operations
+  ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635)).
 
 # Release 1.15.5
 

@@ -75,6 +75,8 @@
   ([CVE-2021-41201](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41201)).
 * Fixes incomplete validation in tf.summary.create_file_writer.
   ([CVE-2021-41200](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41200)).
+* Fixes crash in max_pool3d when size argument is 0 or negative.
+  ([CVE-2021-41196](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41196)).
 
 # Release 1.15.5+nv21.11
 

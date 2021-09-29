@@ -51,6 +51,8 @@
   ([CVE-2021-41228](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41228)).
   The TF SavedModel saved_model_cli's `--input_examples` inputs are now restricted
   to python literals to avoid code injection.
+* Fixes uninitalized variable use in grappler.
+  ([CVE-2021-41225](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41225)).
 
 # Release 1.15.5+nv21.11
 

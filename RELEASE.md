@@ -93,6 +93,8 @@
 * Fixes inifinite loop in TFLite.
   ([CVE-2021-37686](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37686)),
   ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684)).
+* Fixes heap OOB in FusedBatchNorm kernels.
+  ([CVE-2021-41223](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41223)).
 
 
 

@@ -47,6 +47,10 @@
 * Fixes division by 0 in inplace operations.
   ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660)).
 * Update Curl version to 7.78.0.
+* Fixes code injection in saved_model_cli.
+  ([CVE-2021-41228](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41228)).
+  The TF SavedModel saved_model_cli's `--input_examples` inputs are now restricted
+  to python literals to avoid code injection.
 
 # Release 1.15.5+nv21.11
 

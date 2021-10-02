@@ -95,6 +95,8 @@
   ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684)).
 * Fixes heap OOB in FusedBatchNorm kernels.
   ([CVE-2021-41223](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41223)).
+* Fixes IMA during shape inference in Cudnn ops.
+  ([CVE-2021-41221](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41221)).
 
 
 

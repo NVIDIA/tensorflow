@@ -63,6 +63,8 @@
   ([CVE-2021-41216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41216)).
 * Fix deadlock in mutually recursive tf.function objects.
   ([CVE-2021-41213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41213)).
+* Fixes null pointer exception in DeserializeSparse.
+  ([CVE-2021-41215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41215)).
 
 # Release 1.15.5+nv21.11
 

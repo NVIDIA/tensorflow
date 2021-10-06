@@ -85,6 +85,9 @@
   ([CVE-2021-41199](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41199)).
 * Fixes overflow/crash in tf.range.
   ([CVE-2021-41202](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41202)).
+* Fixes undefined behavior via `nullptr` reference binding in sparse matrix
+  multiplication.
+  ([CVE-2021-41219](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41219)).
 
 
 # Release 1.15.5+nv21.11

@@ -61,6 +61,8 @@
   ([CVE-2021-41218](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41218)).
 * Fixes heap buffer overflow in Transpose.
   ([CVE-2021-41216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41216)).
+* Fix deadlock in mutually recursive tf.function objects.
+  ([CVE-2021-41213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41213)).
 
 # Release 1.15.5+nv21.11
 

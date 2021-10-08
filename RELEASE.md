@@ -97,7 +97,8 @@
   ([CVE-2021-41223](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41223)).
 * Fixes IMA during shape inference in Cudnn ops.
   ([CVE-2021-41221](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41221)).
-
+* Fixes incomplete validation of shapes in multiple TF ops.
+  ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
 
 
 # Release 1.15.5+nv21.11

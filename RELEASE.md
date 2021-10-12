@@ -65,6 +65,8 @@
   ([CVE-2021-41213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41213)).
 * Fixes null pointer exception in DeserializeSparse.
   ([CVE-2021-41215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41215)).
+* Fixes FPE in ParallelConcat.
+  ([CVE-2021-41207](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41207)).
 
 # Release 1.15.5+nv21.11
 

@@ -55,20 +55,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
-
-bool ExcludePossibleDynamicOps() {
-  static bool exclude = [] {
-    bool to_be_excluded = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_XLA_DO_NOT_COMPILE_POSSIBLE_DYNAMIC_OPS",
-        /*default_val=*/false, &to_be_excluded));
-    return to_be_excluded;
-  }();
-  return exclude;
-}
 
 namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;

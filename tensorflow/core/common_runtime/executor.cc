@@ -2043,6 +2043,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     device_context = device_context_map_[node->id()];
   }
   bool is_shape_fully_defined =
+      ExcludePossibleDynamicOps() &&
       tensorflow::NodeShapesInfo::GetNodeShapesInfo()->IsNodeFullyDefined(
           node->name());
   std::vector<string> out_shapes_vec;

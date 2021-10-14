@@ -34,8 +34,20 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+static bool ExcludePossibleDynamicOps() {
+  static bool exclude = [] {
+    bool to_be_excluded = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_XLA_DO_NOT_COMPILE_POSSIBLE_DYNAMIC_OPS",
+        /*default_val=*/false, &to_be_excluded));
+    return to_be_excluded;
+  }();
+  return exclude;
+}
 
 class NodeShapesInfo {
  public:

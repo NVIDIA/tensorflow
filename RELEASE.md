@@ -59,6 +59,8 @@
   ([CVE-2021-41222](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41222)).
 * Fixes integer division by 0 in tf.raw_ops.AllToAll.
   ([CVE-2021-41218](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41218)).
+* Fixes heap buffer overflow in Transpose.
+  ([CVE-2021-41216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41216)).
 
 # Release 1.15.5+nv21.11
 

@@ -88,6 +88,8 @@
 * Fixes undefined behavior via `nullptr` reference binding in sparse matrix
   multiplication.
   ([CVE-2021-41219](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41219)).
+* Fixes null pointer exception when Exit node is not preceded by Enter op.
+  ([CVE-2021-41217](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41217)).
 
 
 # Release 1.15.5+nv21.11

@@ -67,6 +67,8 @@
   ([CVE-2021-41215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41215)).
 * Fixes FPE in ParallelConcat.
   ([CVE-2021-41207](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41207)).
+* Fixes incomplete validation in boosted trees code.
+  ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
 
 # Release 1.15.5+nv21.11
 

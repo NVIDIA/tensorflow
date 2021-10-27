@@ -1,3 +1,9 @@
+# Release 1.15.5+nv21.11
+
+## Bug Fixes and Other Changes
+* Fixes Incomplete validation in QuantizeV2.
+  ([CVE-2021-37663](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37663)).
+
 # Release 1.15.5+nv21.09
 
 ## Bug Fixes and Other Changes

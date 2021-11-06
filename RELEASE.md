@@ -38,6 +38,8 @@
   ([CVE-2022-23562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23562)).
 * Fixes insecure temporary files.
   ([CVE-2022-23563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23563)).
+* Fixes CHECK-fail when decoding resource handles from proto.
+  ([CVE-2022-23564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23564)).
 
 
 # Release 1.15.5+nv21.12

@@ -40,6 +40,8 @@
   ([CVE-2022-23563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23563)).
 * Fixes CHECK-fail when decoding resource handles from proto.
   ([CVE-2022-23564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23564)).
+* Fixes a CHECK-fail with repeated AttrDef.
+  ([CVE-2022-23565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23565)).
 
 
 # Release 1.15.5+nv21.12

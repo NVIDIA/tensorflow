@@ -48,6 +48,8 @@
   ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567)).
 * Fixes integer overflow in AddManySparseToTensorsMap.
   ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568)).
+* Fixes CHECK-fail when decoding invalid tensors from proto.
+  ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571)).
 
 
 # Release 1.15.5+nv21.12

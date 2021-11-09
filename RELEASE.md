@@ -50,6 +50,8 @@
   ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568)).
 * Fixes CHECK-fail when decoding invalid tensors from proto.
   ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571)).
+* Fixes uninitialized variable access in AssignOp.
+  ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573)).
 
 
 # Release 1.15.5+nv21.12

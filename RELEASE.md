@@ -64,6 +64,8 @@
   ([CVE-2022-23579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23579)).
 * Fixes abort caused by too large vector allocation.
   ([CVE-2022-23580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23580)).
+* Fixes CHECK-failures in Grappler IsSimplifiableReshape.
+  ([CVE-2022-23581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23581)).
 
 
 # Release 1.15.5+nv21.12

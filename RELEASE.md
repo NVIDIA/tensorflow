@@ -60,6 +60,8 @@
   ([CVE-2022-23577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23577)).
 * Fixes memory leak when graph node is invalid.
   ([CVE-2022-23578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23578)).
+* Fixes CHECK-fialures in Grappler SafeToRemoveIdentity.
+  ([CVE-2022-23579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23579)).
 
 
 # Release 1.15.5+nv21.12

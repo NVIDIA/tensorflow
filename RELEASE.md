@@ -74,6 +74,8 @@
   ([CVE-2022-23584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23584)).
 * Fix memory leak in PNG decode.
   ([CVE-2022-23585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23585)).
+* Fixes CHECK-failures in function.cc
+  ([CVE-2022-23586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23586)).
 
 
 # Release 1.15.5+nv21.12

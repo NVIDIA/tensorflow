@@ -76,6 +76,8 @@
   ([CVE-2022-23585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23585)).
 * Fixes CHECK-failures in function.cc
   ([CVE-2022-23586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23586)).
+* Fixes CHECK-failure in Grappler. 
+  ([CVE-2022-23588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23588)).
 
 
 # Release 1.15.5+nv21.12

@@ -78,6 +78,8 @@
   ([CVE-2022-23586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23586)).
 * Fixes CHECK-failure in Grappler. 
   ([CVE-2022-23588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23588)).
+* Fixes null pointer dereference in Grappler contant folding.
+  ([CVE-2022-23589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23589)).
 
 
 # Release 1.15.5+nv21.12

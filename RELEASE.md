@@ -53,6 +53,8 @@
   to python literals to avoid code injection.
 * Fixes uninitalized variable use in grappler.
   ([CVE-2021-41225](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41225)).
+* Fixes heap OOB in SparseFillEmptyRows.
+  ([CVE-2021-41224](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41224)).
 
 # Release 1.15.5+nv21.11
 

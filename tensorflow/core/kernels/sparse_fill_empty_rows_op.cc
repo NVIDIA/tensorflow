@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -60,6 +61,11 @@ class SparseFillEmptyRowsOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t->shape()),
                 errors::InvalidArgument("values must be a vector, saw: ",
                                         values_t->shape().DebugString()));
+    OP_REQUIRES(context, indices_t->dim_size(0) == values_t->dim_size(0),
+                errors::InvalidArgument("The length of `values` (",
+                    values_t->dim_size(0),
+                    ") must match the first dimension of `indices` (",
+                    indices_t->dim_size(0), ")."));
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(default_value_t->shape()),
         errors::InvalidArgument("default_value must be a scalar, saw: ",

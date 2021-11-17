@@ -57,6 +57,8 @@
   ([CVE-2021-41224](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41224)).
 * Fixes Segfault due to negative splits in SplitV.
   ([CVE-2021-41222](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41222)).
+* Fixes integer division by 0 in tf.raw_ops.AllToAll.
+  ([CVE-2021-41218](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41218)).
 
 # Release 1.15.5+nv21.11
 

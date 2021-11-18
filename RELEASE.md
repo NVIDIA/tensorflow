@@ -71,6 +71,8 @@
   ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
 * Fixes segfault while copying constant resource tensor.
   ([CVE-2021-41204](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41204)).
+* Fixes unitialized access in EinsumHelper::ParseEquation.
+  ([CVE-2021-41201](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41201)).
 
 # Release 1.15.5+nv21.11
 

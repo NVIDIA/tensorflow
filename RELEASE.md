@@ -12,6 +12,8 @@
   ([CVE-2022-21730](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21730)).
 * Fixes segfault in ConcatV2.
   ([CVE-2022-21731](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21731)).
+* Fixes memory exhaustion in ThreadPoolHandle.
+  ([CVE-2022-21732](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21732)).
 
 
 # Release 1.15.5+nv21.12

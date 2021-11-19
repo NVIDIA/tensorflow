@@ -101,6 +101,8 @@
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
 * Adds missing validation during checkpoint loading.
   ([CVE-2021-41203](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41203)).
+* Fixes crashes due to overflow and CHECK-fail in ops with large tensor shapes.
+  ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197)).
 
 
 # Release 1.15.5+nv21.11

@@ -10,6 +10,8 @@
   ([CVE-2022-21729](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21729)).
 * Fixes OOB read in FractionalAvgPoolGrad.
   ([CVE-2022-21730](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21730)).
+* Fixes segfault in ConcatV2.
+  ([CVE-2022-21731](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21731)).
 
 
 # Release 1.15.5+nv21.12

@@ -18,6 +18,8 @@
   ([CVE-2022-21733](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21733)).
 * Fixes a number of CHECK-failures in MapStage.
   ([CVE-2022-21734](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21734)).
+* Fixes division by zero in FractionalMaxPool.
+  ([CVE-2022-21735](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21735)).
 
 
 # Release 1.15.5+nv21.12

@@ -6,6 +6,8 @@
   ([CVE-2022-21725](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21725)).
 * Fixes OOB read in ReverseSequence.
   ([CVE-2022-21728](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21728)).
+* Fixes divide by zero in UnravelIndex.
+  ([CVE-2022-21729](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21729)).
 
 
 # Release 1.15.5+nv21.12

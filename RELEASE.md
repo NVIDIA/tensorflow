@@ -14,6 +14,8 @@
   ([CVE-2022-21731](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21731)).
 * Fixes memory exhaustion in ThreadPoolHandle.
   ([CVE-2022-21732](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21732)).
+* Fixes OOM in StringNGrams.
+  ([CVE-2022-21733](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21733)).
 
 
 # Release 1.15.5+nv21.12

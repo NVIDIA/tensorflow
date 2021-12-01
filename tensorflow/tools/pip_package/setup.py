@@ -48,6 +48,8 @@ DOCLINES = __doc__.split('\n')
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
 _VERSION = '1.15.5'
+import setupnovernormalize
+VERSION = _VERSION.replace('-', '')+"+nv"+os.getenv('RELEASE_VERSION', "")
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.9.0',
@@ -77,6 +79,7 @@ REQUIRED_PACKAGES = [
     # Pin h5py to at most 2.10.0 as newer versions break old keras tests
     'h5py <= 2.10.0',
 ]
+EXTRA_PACKAGES = {}
 
 if sys.byteorder == 'little':
   # grpcio does not build correctly on big-endian machines due to lack of
@@ -101,6 +104,40 @@ if 'tf_nightly' in project_name:
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 
+if 'nvidia_tensorflow' == project_name:
+  require_exact_versions = os.getenv('REQUIRE_EXACT_VERSIONS','') == '1'
+  def get_version_specifier(version_var_name):
+    requested_version = os.getenv(version_var_name, '')
+    if require_exact_versions:
+      if not requested_version:
+        raise Exception("No version was set in env var %s, but REQUIRE_EXACT_VERSIONS was set." % version_var_name)
+      return ' == ' + requested_version
+    if len(requested_version) == 0:
+      return ''
+    # Require only maj.min
+    return ' >= ' + '.'.join(requested_version.split('.')[:2])
+
+  REQUIRED_PACKAGES += [
+      'nvidia-cuda-runtime-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUDARUNTIME_VERSION'),
+      'nvidia-cublas-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUBLAS_VERSION'),
+      'nvidia-cufft-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUFFT_VERSION'),
+      'nvidia-cudnn-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUDNN_VERSION'),
+      'nvidia-curand-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CURAND_VERSION'),
+      'nvidia-cusolver-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUSOLVER_VERSION'),
+      'nvidia-cusparse-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUSPARSE_VERSION'),
+      'nvidia-nccl-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('NCCL_VERSION'),
+      'nvidia-cuda-cupti-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUPTI_VERSION'),
+      'nvidia-cuda-nvcc-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('NVCC_VERSION'),
+      
+      'nvidia-tensorrt' + get_version_specifier('TRT_VERSION'),
+      'nvidia-dali-nvtf-plugin == ' + os.getenv('DALI_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')
+  ]
+  EXTRA_PACKAGES['horovod'] = ['nvidia-horovod == ' + os.getenv('HOROVOD_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')]
+  EXTRA_PACKAGES['dlprof'] = [
+     'nvidia-dlprof' + get_version_specifier('NVIDIA_DLPROF_VERSION'),
+     'nvidia-dlprofviewer' + get_version_specifier('DLPROFVIEWER_VERSION')
+  ]
+  
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
@@ -253,7 +290,7 @@ headers = (
 
 setup(
     name=project_name,
-    version=_VERSION.replace('-', '')+"+nv"+os.getenv('RELEASE_BRANCH_NAME', ""),
+    version=VERSION,
     build_tag=os.getenv('CI_PIPELINE_ID', ""),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
@@ -268,6 +305,7 @@ setup(
     },
     headers=headers,
     install_requires=REQUIRED_PACKAGES,
+    extras_require=EXTRA_PACKAGES,
     tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
     # Add in any packaged data.
     include_package_data=True,

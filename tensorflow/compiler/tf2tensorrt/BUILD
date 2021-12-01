@@ -43,6 +43,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
+    linkopts = if_tensorrt([
+        "-Wl,-rpath,$$ORIGIN/../../tensorrt",
+        "-Wl,-rpath,$$ORIGIN/../tensorrt",
+    ]),
 )
 
 alias(
@@ -51,7 +55,6 @@ alias(
         "//tensorflow:oss": ":tensorrt_stub",
         "//conditions:default": "@local_config_tensorrt//:tensorrt",
     }),
-    visibility = ["//visibility:private"],
 )
 
 tf_cuda_cc_test(

@@ -24,6 +24,8 @@
   ([CVE-2022-21736](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21736)).
 * Fixes assertion failure based DOS via Bincount.
   ([CVE-2022-21737](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21737)).
+* Fixes reference binding to null pointer in QuantizedMaxPool.
+  ([CVE-2022-21739](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21739)).
 
 
 # Release 1.15.5+nv21.12

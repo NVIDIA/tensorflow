@@ -8,6 +8,8 @@
   ([CVE-2022-21728](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21728)).
 * Fixes divide by zero in UnravelIndex.
   ([CVE-2022-21729](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21729)).
+* Fixes OOB read in FractionalAvgPoolGrad.
+  ([CVE-2022-21730](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21730)).
 
 
 # Release 1.15.5+nv21.12

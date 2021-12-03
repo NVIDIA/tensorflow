@@ -16,6 +16,8 @@
   ([CVE-2022-21732](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21732)).
 * Fixes OOM in StringNGrams.
   ([CVE-2022-21733](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21733)).
+* Fixes a number of CHECK-failures in MapStage.
+  ([CVE-2022-21734](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21734)).
 
 
 # Release 1.15.5+nv21.12

@@ -28,6 +28,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/framework/nvtx_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -271,7 +271,7 @@ class SegmentSumGPUOp : public AsyncOpKernel {
     functor::SegmentSumFunctor<T, Index> functor_;
     auto create_and_check_output = [this, context, output_rows_host, &input,
                                     &segment_ids, &functor_, done]() {
-      nvtx::ScopedRangeIfEnabled<nvtx::CoreDomain> nvtx_range(this);
+      nvtx::ScopedKernelRangeIfEnabled<nvtx::CoreDomain> nvtx_range(this);
 
       // Ensure that within the callback, the proper GPU settings are
       // configured.

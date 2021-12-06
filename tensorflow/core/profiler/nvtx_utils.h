@@ -17,16 +17,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_NVTX_UTILS_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
 #include "third_party/nvtx3/nvToolsExt.h"
 
 namespace tensorflow {
+
+// Forward declarations.
+class OpKernel;
+class Tensor;
+
 namespace nvtx {
 
 namespace detail {
@@ -48,29 +48,7 @@ inline bool RangesEnabled() {
 void MakeAttributes(const char* msg, absl::string_view category,
                     nvtxEventAttributes_t* result);
 
-string GetNodeExecutionRangeMessageImpl(
-    const OpKernel* kernel,
-    const gtl::InlinedVector<const Tensor*, 4>& input_tensors);
-
 }  // namespace detail
-
-// Returns a message describing the given OpKernel and its inputs, for use in
-// annotating an NVTX range.
-// If RangesDetailedEnabled() then the message is formatted as JSON and includes
-// detailed information about the inputs and attributes, otherwise the message
-// includes only the name and op type. Note that construction of detailed
-// messages is significantly more expensive.
-template <typename InputContainer, class InputToTensorFunc>
-inline string GetNodeExecutionRangeMessage(
-    const OpKernel* kernel, size_t num_inputs, const InputContainer& inputs,
-    InputToTensorFunc input_to_tensor_fn) {
-  gtl::InlinedVector<const Tensor*, 4> input_tensors;
-  input_tensors.reserve(num_inputs);
-  for (int i = 0; i < num_inputs; ++i) {
-    input_tensors.push_back(input_to_tensor_fn(inputs[i]));
-  }
-  return detail::GetNodeExecutionRangeMessageImpl(kernel, input_tensors);
-}
 
 string GetThunkExecutionRangeMessage(absl::string_view cluster_name,
                                      absl::string_view op_name,
@@ -135,15 +113,6 @@ class ScopedRangeIfEnabled {
   }
   explicit ScopedRangeIfEnabled(std::function<string()> msg_fn)
       : ScopedRangeIfEnabled({}, msg_fn) {}
-  // Convenience overload for creating a range for an op kernel (does not
-  // include inputs to the node). This is useful for adding a range around the
-  // end of an async op (e.g., in the lambda it passes to ThenExecute).
-  explicit ScopedRangeIfEnabled(const OpKernel* kernel)
-      : ScopedRangeIfEnabled(kernel->def().op(), [&]() {
-          return nvtx::GetNodeExecutionRangeMessage(
-              kernel, /*num_inputs = */0, /*inputs = */(int*)nullptr,
-              [](int _) -> const Tensor* { return nullptr; });
-        }) {}
   ~ScopedRangeIfEnabled() {
     if (TF_PREDICT_TRUE(!detail::RangesEnabled())) return;
     if (domain()) {

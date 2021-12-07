@@ -2,6 +2,8 @@
 ## Bug Fixes and Other Changes
 * Update icu to version 69.1.
   ([CVE-2020-10531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-10531)).
+* Fixes CHECK-failures in ops with large tensor shapes.
+  ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197)).
 * Fixes a crash in tf.sparse.split when axis is a tuple.
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
 * Fixes incomplete validation in boosted trees.

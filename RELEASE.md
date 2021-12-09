@@ -20,6 +20,8 @@
   ([CVE-2022-21734](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21734)).
 * Fixes division by zero in FractionalMaxPool.
   ([CVE-2022-21735](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21735)).
+* Fixes undefined behavior in SparseTensorSliceDataset.
+  ([CVE-2022-21736](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21736)).
 
 
 # Release 1.15.5+nv21.12

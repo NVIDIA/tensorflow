@@ -44,6 +44,8 @@
   ([CVE-2022-23565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23565)).
 * Fixes OOB write in Grappler.
   ([CVE-2022-23566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23566)).
+* Fixes integer overflow in sparse component-wise ops.
+  ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567)).
 
 
 # Release 1.15.5+nv21.12

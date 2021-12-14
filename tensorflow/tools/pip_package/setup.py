@@ -133,10 +133,6 @@ if 'nvidia_tensorflow' == project_name:
       'nvidia-dali-nvtf-plugin == ' + os.getenv('DALI_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')
   ]
   EXTRA_PACKAGES['horovod'] = ['nvidia-horovod == ' + os.getenv('HOROVOD_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')]
-  EXTRA_PACKAGES['dlprof'] = [
-     'nvidia-dlprof' + get_version_specifier('NVIDIA_DLPROF_VERSION'),
-     'nvidia-dlprofviewer' + get_version_specifier('DLPROFVIEWER_VERSION')
-  ]
   
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [

@@ -28,6 +28,8 @@
   ([CVE-2022-21739](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21739)).
 * Fixes division by zero in TFLite depthwise convolutions.
   ([CVE-2022-21741](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21741)).
+* Fixes division by zero in TFLite BiasAndClamp.
+  ([CVE-2022-23557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23557)).
 
 
 # Release 1.15.5+nv21.12

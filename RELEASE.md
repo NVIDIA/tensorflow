@@ -26,6 +26,8 @@
   ([CVE-2022-21737](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21737)).
 * Fixes reference binding to null pointer in QuantizedMaxPool.
   ([CVE-2022-21739](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21739)).
+* Fixes division by zero in TFLite depthwise convolutions.
+  ([CVE-2022-21741](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21741)).
 
 
 # Release 1.15.5+nv21.12

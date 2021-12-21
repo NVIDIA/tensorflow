@@ -32,6 +32,8 @@
   ([CVE-2022-23557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23557)).
 * Fixes integer overflow in TfLiteIntArrayCreate.
   ([CVE-2022-23558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23558)).
+* Fixes integer overflow in embedding lookup ops.
+  ([CVE-2022-23559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23559)).
 
 
 # Release 1.15.5+nv21.12

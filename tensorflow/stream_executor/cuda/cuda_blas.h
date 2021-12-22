@@ -81,7 +81,7 @@ class CUDABlas : public blas::BlasSupport {
   // err_on_failure:     Whether to print an error if the cublas function fails.
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+  bool DoBlasInternalImpl(FuncT cublas_func, Stream* stream,
                           bool pointer_mode_host, bool err_on_failure,
                           bool use_tensor_op_math, Args... args);
 

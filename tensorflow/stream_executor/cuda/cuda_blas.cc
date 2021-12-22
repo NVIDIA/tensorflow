@@ -51,7 +51,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
@@ -69,6 +68,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream_executor.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace stream_executor {
 namespace gpu {
@@ -396,7 +396,7 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
 }  // namespace
 
 template <typename FuncT, typename... Args>
-bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream* stream,
                                   bool pointer_mode_host, bool err_on_failure,
                                   bool use_tensor_op_math, Args... args) {
   absl::MutexLock lock(&mu_);

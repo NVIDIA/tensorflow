@@ -21,7 +21,6 @@ limitations under the License.
 #include <regex>
 
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "third_party/eigen3/Eigen/Core"
 // clang-format off
 #include "third_party/gpus/cudnn/cudnn.h"
 #if CUDNN_VERSION >= 8100

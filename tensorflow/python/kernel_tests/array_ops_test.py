@@ -538,10 +538,16 @@ class StridedSliceChecker(object):
       except AttributeError:
         return x
 
+    def casts_to_bool_nparray(x):
+      try:
+        return np.asarray(x).dtype == bool
+      except NotImplementedError:
+        return False
+
     if isinstance(spec, bool) or \
       (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
       (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
-      (isinstance(spec, (list, tuple)) and np.asarray(spec).dtype == bool):
+      (isinstance(spec, (list, tuple)) and casts_to_bool_nparray(spec)):
       tensor = op.eval()
       np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)

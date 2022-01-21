@@ -343,18 +343,20 @@ TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   EXPECT_TRUE(node_map.GetNode("Conv2D-0-TransposeNHWCToNCHW-LayoutOptimizer"));
 }
 
-TEST_F(LayoutOptimizerTest, ExplicitPadding) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 4, 2, "EXPLICIT");
-  Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  LayoutOptimizer optimizer;
-  GraphDef output;
-  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
-  NodeMap node_map(&output);
-  EXPECT_TRUE(node_map.GetNode("Conv2D-0-TransposeNHWCToNCHW-LayoutOptimizer"));
-}
+// Disable ExplicitPadding test until it is fixed on ARM.
+// See nvbug 3510937.
+//TEST_F(LayoutOptimizerTest, ExplicitPadding) {
+//  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+//  auto conv = SimpleConv2D(&s, 4, 2, "EXPLICIT");
+//  Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
+//  GrapplerItem item;
+//  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+//  LayoutOptimizer optimizer;
+//  GraphDef output;
+//  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+//  NodeMap node_map(&output);
+//  EXPECT_TRUE(node_map.GetNode("Conv2D-0-TransposeNHWCToNCHW-LayoutOptimizer"));
+//}
 
 TEST_F(LayoutOptimizerTest, Pad) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();

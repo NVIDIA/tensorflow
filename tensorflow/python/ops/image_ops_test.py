@@ -348,7 +348,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       y_np = np.clip(np.power(x_np, gamma), 0, 1.0)
 
-      self.assertAllClose(y_tf, y_np, 1e-6)
+      self.assertAllClose(y_tf, y_np, 1e-5, 1e-5)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_one_float32(self):

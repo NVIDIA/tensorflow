@@ -545,12 +545,14 @@ class RangeTest(test.TestCase):
         v = math_ops.range(0, 9223372036854775807)
         self.evaluate(v)
 
-  def testLargeStarts(self):
-    # Test case for GitHub issue 46899.
-    with self.session():
-      with self.assertRaises(errors_impl.InternalError):
-        v = math_ops.range(start=-1e+38, limit=1)
-        self.evaluate(v)
+# Disable until fixed on ARM.
+# See nvbug 3514517.
+#  def testLargeStarts(self):
+#    # Test case for GitHub issue 46899.
+#    with self.session():
+#      with self.assertRaises(errors_impl.InternalError):
+#        v = math_ops.range(start=-1e+38, limit=1)
+#        self.evaluate(v)
 
 
 # TODO(vrv): move to sequence_ops_test?

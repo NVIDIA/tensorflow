@@ -106,30 +106,39 @@ if 'tf_nightly' in project_name:
 
 if 'nvidia_tensorflow' == project_name:
   require_exact_versions = os.getenv('REQUIRE_EXACT_VERSIONS','') == '1'
-  def get_version_specifier(version_var_name):
+
+  def get_version_specifier(version_var_name, include_cuda_majmin=True):
     requested_version = os.getenv(version_var_name, '')
+    cuda_majmin = ''
+    if include_cuda_majmin:
+      cuda_majmin = os.getenv('CUDA_MAJMIN','')
+      # Allow CUDA_MAJMIN to be overriden for this specific package using requested_version like "8.3.2.44+cuda11.5"
+      override_cuda_majmin = requested_version.split('+cuda')
+      if len(override_cuda_majmin) == 2:
+        requested_version = override_cuda_majmin[0]
+        cuda_majmin = override_cuda_majmin[1].replace('.', '')
     if require_exact_versions:
       if not requested_version:
         raise Exception("No version was set in env var %s, but REQUIRE_EXACT_VERSIONS was set." % version_var_name)
-      return ' == ' + requested_version
+      return cuda_majmin + ' == ' + requested_version
     if len(requested_version) == 0:
-      return ''
+      return cuda_majmin + ''
     # Require only maj.min
-    return ' >= ' + '.'.join(requested_version.split('.')[:2])
+    return cuda_majmin + ' >= ' + '.'.join(requested_version.split('.')[:2])
 
   REQUIRED_PACKAGES += [
-      'nvidia-cuda-runtime-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUDARUNTIME_VERSION'),
-      'nvidia-cublas-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUBLAS_VERSION'),
-      'nvidia-cufft-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUFFT_VERSION'),
-      'nvidia-cudnn-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUDNN_VERSION'),
-      'nvidia-curand-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CURAND_VERSION'),
-      'nvidia-cusolver-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUSOLVER_VERSION'),
-      'nvidia-cusparse-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUSPARSE_VERSION'),
-      'nvidia-nccl-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('NCCL_VERSION'),
-      'nvidia-cuda-cupti-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('CUPTI_VERSION'),
-      'nvidia-cuda-nvcc-cu' + os.getenv('CUDA_MAJMIN','') + get_version_specifier('NVCC_VERSION'),
+      'nvidia-cuda-runtime-cu' + get_version_specifier('CUDARUNTIME_VERSION'),
+      'nvidia-cublas-cu' + get_version_specifier('CUBLAS_VERSION'),
+      'nvidia-cufft-cu' + get_version_specifier('CUFFT_VERSION'),
+      'nvidia-cudnn-cu' + get_version_specifier('CUDNN_VERSION'),
+      'nvidia-curand-cu' + get_version_specifier('CURAND_VERSION'),
+      'nvidia-cusolver-cu' + get_version_specifier('CUSOLVER_VERSION'),
+      'nvidia-cusparse-cu' + get_version_specifier('CUSPARSE_VERSION'),
+      'nvidia-nccl-cu' + get_version_specifier('NCCL_VERSION'),
+      'nvidia-cuda-cupti-cu' + get_version_specifier('CUPTI_VERSION'),
+      'nvidia-cuda-nvcc-cu' + get_version_specifier('NVCC_VERSION'),
       
-      'nvidia-tensorrt' + get_version_specifier('TRT_VERSION'),
+      'nvidia-tensorrt' + get_version_specifier('TRT_VERSION', include_cuda_majmin=False),
       'nvidia-dali-nvtf-plugin == ' + os.getenv('DALI_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')
   ]
   EXTRA_PACKAGES['horovod'] = ['nvidia-horovod == ' + os.getenv('HOROVOD_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')]

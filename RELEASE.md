@@ -22,6 +22,8 @@
   ([CVE-2022-21735](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21735)).
 * Fixes undefined behavior in SparseTensorSliceDataset.
   ([CVE-2022-21736](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21736)).
+* Fixes assertion failure based DOS via Bincount.
+  ([CVE-2022-21737](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21737)).
 
 
 # Release 1.15.5+nv21.12

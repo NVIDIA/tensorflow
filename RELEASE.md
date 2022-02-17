@@ -4,6 +4,8 @@
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
 * Fixes division by zero in grappler cost estimator.
   ([CVE-2022-21725](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21725)).
+* Fixes OOB read in ReverseSequence.
+  ([CVE-2022-21728](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21728)).
 
 
 # Release 1.15.5+nv21.12

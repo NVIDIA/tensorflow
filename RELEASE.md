@@ -30,6 +30,8 @@
   ([CVE-2022-21741](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21741)).
 * Fixes division by zero in TFLite BiasAndClamp.
   ([CVE-2022-23557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23557)).
+* Fixes integer overflow in TfLiteIntArrayCreate.
+  ([CVE-2022-23558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23558)).
 
 
 # Release 1.15.5+nv21.12

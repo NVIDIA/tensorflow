@@ -550,7 +550,7 @@ class RangeTest(test.TestCase):
     with self.session():
       # Different roundings on arm and x86 when signed integer arithmetic operations overflows.
       with self.assertRaises((errors_impl.InternalError,
-                              errors_impl.ResourceExhaustedError):
+                              errors_impl.ResourceExhaustedError)):
         v = math_ops.range(start=-1e+38, limit=1)
         self.evaluate(v)
 

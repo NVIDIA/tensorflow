@@ -58,6 +58,8 @@
   ([CVE-2022-23576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23576)).
 * Fixes null pointer dereference in GetInitOp.
   ([CVE-2022-23577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23577)).
+* Fixes memory leak when graph node is invalid.
+  ([CVE-2022-23578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23578)).
 
 
 # Release 1.15.5+nv21.12

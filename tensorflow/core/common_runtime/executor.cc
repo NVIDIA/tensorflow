@@ -640,6 +640,7 @@ Status ExecutorImpl::Initialize() {
 
     Status s = params_.create_kernel(n->def(), &item->kernel);
     if (!s.ok()) {
+      params_.delete_kernel(item->kernel);
       item->kernel = nullptr;
       s = AttachDef(s, *n);
       LOG(ERROR) << "Executor failed to create kernel. " << s;

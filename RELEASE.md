@@ -34,6 +34,8 @@
   ([CVE-2022-23558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23558)).
 * Fixes integer overflow in embedding lookup ops.
   ([CVE-2022-23559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23559)).
+* Fixes interger overflow in Range.
+  ([CVE-2022-23562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23562)).
 
 
 # Release 1.15.5+nv21.12

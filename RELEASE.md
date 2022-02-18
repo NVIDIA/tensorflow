@@ -72,6 +72,8 @@
   ([CVE-2022-23583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23583)).
 * Fix use after free during PNG decode.
   ([CVE-2022-23584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23584)).
+* Fix memory leak in PNG decode.
+  ([CVE-2022-23585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23585)).
 
 
 # Release 1.15.5+nv21.12

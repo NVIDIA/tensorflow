@@ -56,6 +56,8 @@
   ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575)).
 * Fixes overflow in OpLevelCostEstimator::CalculateOutputSize.
   ([CVE-2022-23576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23576)).
+* Fixes null pointer dereference in GetInitOp.
+  ([CVE-2022-23577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23577)).
 
 
 # Release 1.15.5+nv21.12

@@ -66,6 +66,8 @@
   ([CVE-2022-23580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23580)).
 * Fixes CHECK-failures in Grappler IsSimplifiableReshape.
   ([CVE-2022-23581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23581)).
+* Fixes CHECK-failures in SavedModel TensorByteSize.
+  ([CVE-2022-23582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23582)).
 
 
 # Release 1.15.5+nv21.12

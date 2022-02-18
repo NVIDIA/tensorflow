@@ -68,6 +68,8 @@
   ([CVE-2022-23581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23581)).
 * Fixes CHECK-failures in SavedModel TensorByteSize.
   ([CVE-2022-23582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23582)).
+* Fixes CHECK-failures in binary ops.
+  ([CVE-2022-23583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23583)).
 
 
 # Release 1.15.5+nv21.12

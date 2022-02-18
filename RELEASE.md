@@ -36,6 +36,8 @@
   ([CVE-2022-23559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23559)).
 * Fixes interger overflow in Range.
   ([CVE-2022-23562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23562)).
+* Fixes insecure temporary files.
+  ([CVE-2022-23563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23563)).
 
 
 # Release 1.15.5+nv21.12

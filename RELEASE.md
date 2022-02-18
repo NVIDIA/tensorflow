@@ -80,6 +80,8 @@
   ([CVE-2022-23588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23588)).
 * Fixes null pointer dereference in Grappler contant folding.
   ([CVE-2022-23589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23589)).
+* Fixes stack overflow due to self-recursive function in GraphDef.
+  ([CVE-2022-23591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23591)).
 
 
 # Release 1.15.5+nv21.12

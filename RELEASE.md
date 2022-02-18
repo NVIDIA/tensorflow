@@ -52,6 +52,8 @@
   ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571)).
 * Fixes uninitialized variable access in AssignOp.
   ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573)).
+* Fixes overflow in OpLevelCostEstimator::CalculateTensorSize.
+  ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575)).
 * Fixes overflow in OpLevelCostEstimator::CalculateOutputSize.
   ([CVE-2022-23576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23576)).
 

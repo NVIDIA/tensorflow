@@ -1,5 +1,7 @@
 # Release 1.15.5+nv22.03
 ## Bug Fixes and Other Changes
+* Update icu to version 69.1.
+  ([CVE-2020-10531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-10531)).
 * Fixes a crash in tf.sparse.split when axis is a tuple.
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
 * Fixes division by zero in grappler cost estimator.

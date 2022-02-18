@@ -70,6 +70,8 @@
   ([CVE-2022-23582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23582)).
 * Fixes CHECK-failures in binary ops.
   ([CVE-2022-23583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23583)).
+* Fix use after free during PNG decode.
+  ([CVE-2022-23584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23584)).
 
 
 # Release 1.15.5+nv21.12

@@ -46,6 +46,8 @@
   ([CVE-2022-23566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23566)).
 * Fixes integer overflow in sparse component-wise ops.
   ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567)).
+* Fixes integer overflow in AddManySparseToTensorsMap.
+  ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568)).
 
 
 # Release 1.15.5+nv21.12

@@ -54,6 +54,8 @@
   ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567)).
 * Fixes integer overflow in AddManySparseToTensorsMap.
   ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568)).
+* Fixes various CHECK-fails.
+  ([CVE-2022-23569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23569)).
 * Fixes CHECK-fail when decoding invalid tensors from proto.
   ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571)).
 * Fixes uninitialized variable access in AssignOp.

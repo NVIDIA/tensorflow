@@ -4,6 +4,8 @@
   ([CVE-2020-10531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-10531)).
 * Fixes a crash in tf.sparse.split when axis is a tuple.
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
+* Fixes incomplete validation in boosted trees.
+  ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
 * Fixes division by zero in grappler cost estimator.
   ([CVE-2022-21725](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21725)).
 * Fixes OOB read in ReverseSequence.

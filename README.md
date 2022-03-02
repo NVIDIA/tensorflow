@@ -62,7 +62,7 @@ apt install -y --no-install-recommends \
 pip install numpy==1.17.3 wheel astor==0.8.1 setupnovernormalize
 pip install --no-deps keras_preprocessing==1.0.5
 
-git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.02
+git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.03
 git clone https://github.com/NVIDIA/cudnn-frontend.git -b v0.5
 BAZEL_VERSION=$(cat tensorflow/.bazelversion)
 mkdir bazel

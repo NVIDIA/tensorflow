@@ -1,3 +1,9 @@
+# Release 1.15.5+nv22.06
+## Bug Fixes and Other Changes
+* Fixes code injection in saved_model_cli.
+  ([CVE-2022-29216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29216)).
+
+
 # Release 1.15.5+nv22.03
 ## Bug Fixes and Other Changes
 * Fixes CHECK-failures in ops with large tensor shapes.

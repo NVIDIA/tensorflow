@@ -103,10 +103,8 @@ class SparseMatMulTest(test.TestCase):
     r2 = np.random.randint(1, 10)
     r3 = np.random.randint(1, 10)
     for m, k, n in [(r1, r2, r3), (r2, r1, r3), (r2, r3, r1)]:
-      # Restrict to float32 to allow test to pass on ARM.
-      # See nvbug 3514404.
-      for x_dtype in [dtypes.float32]:
-        for y_dtype in [dtypes.float32]:
+      for x_dtype in (dtypes.float32, dtypes.bfloat16):
+        for y_dtype in (dtypes.float32, dtypes.bfloat16):
           x = RandMatrix(m, k, False)
           y = RandMatrix(k, n, False)
           self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
@@ -118,10 +116,8 @@ class SparseMatMulTest(test.TestCase):
       for tr_b in [True, False]:
         for sp_a in [True, False]:
           for sp_b in [True, False]:
-            # Restrict to float32 to allow test to pass on ARM.
-            # See nvbug 3514404.
-            for x_dtype in [dtypes.float32]:
-              for y_dtype in [dtypes.float32]:
+            for x_dtype in (dtypes.float32, dtypes.bfloat16):
+              for y_dtype in (dtypes.float32, dtypes.bfloat16):
                 n, k, m = np.random.randint(1, 100, size=3)
                 x = RandMatrix(n, k, tr_a)
                 y = RandMatrix(k, m, tr_b)
@@ -175,10 +171,8 @@ class MatMulGradientTest(test.TestCase):
       for tr_b in [True, False]:
         for sp_a in [True, False]:
           for sp_b in [True, False]:
-            # Restrict to float32 to allow test to pass on ARM.
-            # See nvbug 3514404.
-            for a_dtype in [dtypes.float32]:
-              for b_dtype in [dtypes.float32]:
+            for a_dtype in (dtypes.float32, dtypes.bfloat16):
+              for b_dtype in (dtypes.float32, dtypes.bfloat16):
                 # Note: bfloat16 only has 7 mantissa bits, versus float32 with
                 # 10. Hence, we shift by 2 bits to pass the test.
                 if a_dtype == dtypes.bfloat16 and b_dtype == dtypes.bfloat16:

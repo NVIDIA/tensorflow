@@ -77,8 +77,8 @@ REQUIRED_PACKAGES = [
     'wheel >= 0.26;python_version>="3"',
     'wheel;python_version<"3"',
     'wrapt >= 1.11.1',
-    # Pin h5py to at most 2.10.0 as newer versions break old keras tests
-    'h5py <= 2.10.0',
+    'h5py == 3.1.0;python_version<"3.7"',
+    'h5py == 3.6.0;python_version>="3.7"',
 ]
 EXTRA_PACKAGES = {}
 

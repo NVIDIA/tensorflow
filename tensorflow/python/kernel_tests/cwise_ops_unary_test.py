@@ -200,8 +200,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareBoth(x, np.square, math_ops.square)
-    # Temporarily disable until nvbug 3514530 is fixed.
-    #self._compareBoth(z, np.sqrt, math_ops.sqrt)
+    self._compareBoth(z, np.sqrt, math_ops.sqrt)
     self._compareBoth(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, np.exp, math_ops.exp)
     self._compareBoth(x, np.expm1, math_ops.expm1)

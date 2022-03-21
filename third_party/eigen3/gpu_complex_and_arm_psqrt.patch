@@ -1,5 +1,5 @@
 diff --git a/Eigen/Core b/Eigen/Core
-index 1a60dcb..dfa6586 100644
+index 1a60dcba4..dfa658657 100644
 --- a/Eigen/Core
 +++ b/Eigen/Core
 @@ -25,6 +25,7 @@
@@ -11,7 +11,7 @@ index 1a60dcb..dfa6586 100644
    #include <hip/hip_runtime.h>
  #endif
 diff --git a/Eigen/src/Core/MathFunctions.h b/Eigen/src/Core/MathFunctions.h
-index e29733c..20a1edb 100644
+index e29733c13..20a1edb47 100644
 --- a/Eigen/src/Core/MathFunctions.h
 +++ b/Eigen/src/Core/MathFunctions.h
 @@ -338,6 +338,28 @@ struct sqrt_impl
@@ -89,7 +89,7 @@ index e29733c..20a1edb 100644
  SYCL_SPECIALIZE_FLOATING_TYPES_UNARY(log, log)
  #endif
 diff --git a/Eigen/src/Core/arch/Default/BFloat16.h b/Eigen/src/Core/arch/Default/BFloat16.h
-index 72a489b..1d930fe 100644
+index 72a489b0b..1d930feeb 100644
 --- a/Eigen/src/Core/arch/Default/BFloat16.h
 +++ b/Eigen/src/Core/arch/Default/BFloat16.h
 @@ -660,7 +660,7 @@ namespace std {
@@ -101,8 +101,55 @@ index 72a489b..1d930fe 100644
      return hash<float>()(static_cast<float>(a));
    }
  };
+diff --git a/Eigen/src/Core/arch/NEON/PacketMath.h b/Eigen/src/Core/arch/NEON/PacketMath.h
+index 2e06befc2..b2170e9f7 100644
+--- a/Eigen/src/Core/arch/NEON/PacketMath.h
++++ b/Eigen/src/Core/arch/NEON/PacketMath.h
+@@ -3297,42 +3297,8 @@ template<> EIGEN_STRONG_INLINE Packet4ui psqrt(const Packet4ui& a) {
+   return res;
+ }
+ 
+-#if EIGEN_FAST_MATH
+-
+-/* Functions for sqrt support packet2f/packet4f.*/
+-// The EIGEN_FAST_MATH version uses the vrsqrte_f32 approximation and one step
+-// of Newton's method, at a cost of 1-2 bits of precision as opposed to the
+-// exact solution. It does not handle +inf, or denormalized numbers correctly.
+-// The main advantage of this approach is not just speed, but also the fact that
+-// it can be inlined and pipelined with other computations, further reducing its
+-// effective latency. This is similar to Quake3's fast inverse square root.
+-// For more details see: http://www.beyond3d.com/content/articles/8/
+-template<> EIGEN_STRONG_INLINE Packet4f psqrt(const Packet4f& _x){
+-  Packet4ui denormal_mask = vandq_u32(vcgeq_f32(_x, vdupq_n_f32(0.0f)),
+-                                      vcltq_f32(_x, pset1<Packet4f>((std::numeric_limits<float>::min)())));
+-  // Compute approximate reciprocal sqrt.
+-  Packet4f x = vrsqrteq_f32(_x);
+-  // Do one Newton's iteration for 1/sqrt(x).
+-  x = vmulq_f32(vrsqrtsq_f32(vmulq_f32(_x, x), x), x);
+-  // Flush results for denormals to zero.
+-  return vreinterpretq_f32_u32(vbicq_u32(vreinterpretq_u32_f32(pmul(_x, x)), denormal_mask));
+-}
+-
+-template<> EIGEN_STRONG_INLINE Packet2f psqrt(const Packet2f& _x) {
+-  Packet2ui denormal_mask = vand_u32(vcge_f32(_x, vdup_n_f32(0.0f)),
+-                                     vclt_f32(_x, pset1<Packet2f>((std::numeric_limits<float>::min)())));
+-  // Compute approximate reciprocal sqrt.
+-  Packet2f x = vrsqrte_f32(_x);
+-  // Do one Newton's iteration for 1/sqrt(x).
+-  x = vmul_f32(vrsqrts_f32(vmul_f32(_x, x), x), x);
+-  // Flush results for denormals to zero.
+-  return vreinterpret_f32_u32(vbic_u32(vreinterpret_u32_f32(pmul(_x, x)), denormal_mask));
+-}
+-
+-#else
+ template<> EIGEN_STRONG_INLINE Packet4f psqrt(const Packet4f& _x){return vsqrtq_f32(_x);}
+ template<> EIGEN_STRONG_INLINE Packet2f psqrt(const Packet2f& _x){return vsqrt_f32(_x); }
+-#endif
+ 
+ //---------- bfloat16 ----------
+ // TODO: Add support for native armv8.6-a bfloat16_t
 diff --git a/Eigen/src/Core/functors/UnaryFunctors.h b/Eigen/src/Core/functors/UnaryFunctors.h
-index c98fa57..16136d1 100644
+index c98fa573c..16136d185 100644
 --- a/Eigen/src/Core/functors/UnaryFunctors.h
 +++ b/Eigen/src/Core/functors/UnaryFunctors.h
 @@ -109,7 +109,7 @@ struct functor_traits<scalar_abs2_op<Scalar> >
@@ -124,7 +171,7 @@ index c98fa57..16136d1 100644
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet packetOp(const Packet& a) const
    { return internal::parg(a); }
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorArgMax.h b/unsupported/Eigen/CXX11/src/Tensor/TensorArgMax.h
-index 91a6f8d..8b8fb92 100644
+index 91a6f8d6c..8b8fb9235 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorArgMax.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorArgMax.h
 @@ -99,18 +99,18 @@ struct TensorEvaluator<const TensorIndexTupleOp<ArgType>, Device>
@@ -173,7 +220,7 @@ index 91a6f8d..8b8fb92 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorAssign.h b/unsupported/Eigen/CXX11/src/Tensor/TensorAssign.h
-index 72f072c..ca0453f 100644
+index 72f072cf2..ca0453f79 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorAssign.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorAssign.h
 @@ -124,7 +124,7 @@ struct TensorEvaluator<const TensorAssignOp<LeftArgType, RightArgType>, Device>
@@ -213,7 +260,7 @@ index 72f072c..ca0453f 100644
      m_rightImpl.cleanup();
    }
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorBroadcasting.h b/unsupported/Eigen/CXX11/src/Tensor/TensorBroadcasting.h
-index fc75c8d..689c5dc 100644
+index fc75c8d9a..689c5dcd7 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorBroadcasting.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorBroadcasting.h
 @@ -138,8 +138,8 @@ struct TensorEvaluator<const TensorBroadcastingOp<Broadcast, ArgType>, Device>
@@ -252,7 +299,7 @@ index fc75c8d..689c5dc 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorChipping.h b/unsupported/Eigen/CXX11/src/Tensor/TensorChipping.h
-index 7c6bbd1..3764573 100644
+index 7c6bbd180..376457341 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorChipping.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorChipping.h
 @@ -164,7 +164,7 @@ struct TensorEvaluator<const TensorChippingOp<DimId, ArgType>, Device>
@@ -289,7 +336,7 @@ index 7c6bbd1..3764573 100644
      { }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorConcatenation.h b/unsupported/Eigen/CXX11/src/Tensor/TensorConcatenation.h
-index 0dfe216..5235a8e 100644
+index 0dfe21604..5235a8e6f 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorConcatenation.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorConcatenation.h
 @@ -119,7 +119,7 @@ struct TensorEvaluator<const TensorConcatenationOp<Axis, LeftArgType, RightArgTy
@@ -328,7 +375,7 @@ index 0dfe216..5235a8e 100644
    {
      EIGEN_STATIC_ASSERT((static_cast<int>(Layout) == static_cast<int>(ColMajor)), YOU_MADE_A_PROGRAMMING_MISTAKE);
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorContraction.h b/unsupported/Eigen/CXX11/src/Tensor/TensorContraction.h
-index 605d72c..6777829 100644
+index 605d72c8d..6777829f2 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorContraction.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorContraction.h
 @@ -417,7 +417,7 @@ struct TensorContractionEvaluatorBase
@@ -377,7 +424,7 @@ index 605d72c..6777829 100644
  
    template <int Alignment>
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorContractionGpu.h b/unsupported/Eigen/CXX11/src/Tensor/TensorContractionGpu.h
-index bb990b3..c818038 100644
+index bb990b378..c81803827 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorContractionGpu.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorContractionGpu.h
 @@ -1270,7 +1270,7 @@ struct TensorEvaluator<const TensorContractionOp<Indices, LeftArgType, RightArgT
@@ -399,7 +446,7 @@ index bb990b3..c818038 100644
      this->m_rightImpl.evalSubExprsIfNeeded(NULL);
      if (data) {
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorContractionSycl.h b/unsupported/Eigen/CXX11/src/Tensor/TensorContractionSycl.h
-index a6ca177..473c228 100755
+index a6ca1777a..473c22849 100755
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorContractionSycl.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorContractionSycl.h
 @@ -1340,10 +1340,10 @@ struct TensorEvaluator<const TensorContractionOp<Indices, LeftArgType, RightArgT
@@ -425,7 +472,7 @@ index a6ca177..473c228 100755
      this->m_rightImpl.cleanup();
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h b/unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h
-index 4449390..a0464e8 100644
+index 44493906d..a0464e8e6 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h
 @@ -195,14 +195,14 @@ class TensorConversionOp : public TensorBase<TensorConversionOp<TargetType, XprT
@@ -498,7 +545,7 @@ index 4449390..a0464e8 100644
      m_impl.cleanup();
    }
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h b/unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h
-index df289e2..1b71023 100644
+index df289e2c0..1b71023c0 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h
 @@ -320,7 +320,7 @@ struct TensorEvaluator<const TensorConvolutionOp<Indices, InputArgType, KernelAr
@@ -535,7 +582,7 @@ index df289e2..1b71023 100644
    {
      EIGEN_STATIC_ASSERT((static_cast<int>(TensorEvaluator<InputArgType, GpuDevice>::Layout) == static_cast<int>(TensorEvaluator<KernelArgType, GpuDevice>::Layout)), YOU_MADE_A_PROGRAMMING_MISTAKE);
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorConvolutionSycl.h b/unsupported/Eigen/CXX11/src/Tensor/TensorConvolutionSycl.h
-index 92003c7..033318f 100644
+index 92003c766..033318fdc 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorConvolutionSycl.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorConvolutionSycl.h
 @@ -305,7 +305,7 @@ struct TensorEvaluator<const TensorConvolutionOp<Indices, InputArgType, KernelAr
@@ -566,7 +613,7 @@ index 92003c7..033318f 100644
      if (m_buf) {
        m_device.deallocate_temp(m_buf);
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorCustomOp.h b/unsupported/Eigen/CXX11/src/Tensor/TensorCustomOp.h
-index 476b228..95a8a84 100644
+index 476b2282a..95a8a84ee 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorCustomOp.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorCustomOp.h
 @@ -106,7 +106,7 @@ struct TensorEvaluator<const TensorCustomUnaryOp<CustomUnaryFunc, XprType>, Devi
@@ -642,7 +689,7 @@ index 476b228..95a8a84 100644
      m_op.func().eval(m_op.lhsExpression(), m_op.rhsExpression(), result, m_device);
    }
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorEvalTo.h b/unsupported/Eigen/CXX11/src/Tensor/TensorEvalTo.h
-index 4689b02..a48d035 100644
+index 4689b0230..a48d035f5 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorEvalTo.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorEvalTo.h
 @@ -131,17 +131,17 @@ struct TensorEvaluator<const TensorEvalToOp<ArgType, MakePointer_>, Device>
@@ -685,7 +732,7 @@ index 4689b02..a48d035 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h b/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h
-index d4532b7..35fe643 100644
+index d4532b72c..35fe643ea 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h
 @@ -63,7 +63,7 @@ struct TensorEvaluator
@@ -916,7 +963,7 @@ index d4532b7..35fe643 100644
      m_thenImpl.cleanup();
      m_elseImpl.cleanup();
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h b/unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h
-index c62bc5f..4a1a068 100644
+index c62bc5fa9..4a1a0687c 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h
 @@ -144,7 +144,7 @@ struct TensorEvaluator<const TensorFFTOp<FFT, ArgType, FFTResultType, FFTDir>, D
@@ -947,7 +994,7 @@ index c62bc5f..4a1a068 100644
        m_device.deallocate(m_data);
        m_data = NULL;
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h b/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
-index 14020aa..e800ded 100644
+index 14020aa68..e800dedc6 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
 @@ -135,16 +135,13 @@ struct TensorEvaluator<const TensorForcedEvalOp<ArgType_>, Device>
@@ -987,7 +1034,7 @@ index 14020aa..e800ded 100644
      m_buffer = NULL;
    }
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorGenerator.h b/unsupported/Eigen/CXX11/src/Tensor/TensorGenerator.h
-index b1ff1d8..174bf06 100644
+index b1ff1d8b1..174bf0683 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorGenerator.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorGenerator.h
 @@ -111,7 +111,7 @@ struct TensorEvaluator<const TensorGeneratorOp<Generator, ArgType>, Device>
@@ -1013,7 +1060,7 @@ index b1ff1d8..174bf06 100644
  
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE CoeffReturnType coeff(Index index) const
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h b/unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h
-index 49d1004..dd51850 100644
+index 49d1004f3..dd51850b7 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h
 @@ -242,7 +242,7 @@ struct TensorEvaluator<const TensorImagePatchOp<Rows, Cols, ArgType>, Device>
@@ -1077,7 +1124,7 @@ index 49d1004..dd51850 100644
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorOpCost
    costPerCoeff(bool vectorized) const {
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorInflation.h b/unsupported/Eigen/CXX11/src/Tensor/TensorInflation.h
-index 7dadec7..c5cb61a 100644
+index 7dadec7fb..c5cb61af5 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorInflation.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorInflation.h
 @@ -103,7 +103,7 @@ struct TensorEvaluator<const TensorInflationOp<Strides, ArgType>, Device>
@@ -1104,7 +1151,7 @@ index 7dadec7..c5cb61a 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorLayoutSwap.h b/unsupported/Eigen/CXX11/src/Tensor/TensorLayoutSwap.h
-index f159db1..80106c1 100644
+index f159db1b9..80106c1a0 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorLayoutSwap.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorLayoutSwap.h
 @@ -113,7 +113,7 @@ struct TensorEvaluator<const TensorLayoutSwapOp<ArgType>, Device>
@@ -1139,7 +1186,7 @@ index f159db1..80106c1 100644
    { }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h b/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
-index ceecd54..00eeac5 100644
+index ceecd54d0..00eeac506 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
 @@ -142,7 +142,7 @@ struct TensorEvaluator<const TensorReshapingOp<NewDimensions, ArgType>, Device>
@@ -1257,7 +1304,7 @@ index ceecd54..00eeac5 100644
      { }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorPadding.h b/unsupported/Eigen/CXX11/src/Tensor/TensorPadding.h
-index 561666c..ee44382 100644
+index 561666c6f..ee44382cf 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorPadding.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorPadding.h
 @@ -116,7 +116,7 @@ struct TensorEvaluator<const TensorPaddingOp<PaddingDimensions, ArgType>, Device
@@ -1294,7 +1341,7 @@ index 561666c..ee44382 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorPatch.h b/unsupported/Eigen/CXX11/src/Tensor/TensorPatch.h
-index 64a436e..413d25d 100644
+index 64a436e50..413d25dd4 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorPatch.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorPatch.h
 @@ -107,7 +107,7 @@ struct TensorEvaluator<const TensorPatchOp<PatchDim, ArgType>, Device>
@@ -1322,7 +1369,7 @@ index 64a436e..413d25d 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h b/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
-index 0a65591..583f462 100644
+index 0a65591e6..583f46256 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
 @@ -549,7 +549,7 @@ struct TensorReductionEvaluatorBase<const TensorReductionOp<Op, Dims, ArgType, M
@@ -1398,7 +1445,7 @@ index 0a65591..583f462 100644
    //Therefore the coeff function should be overridden by for SYCL kernel
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename Base::CoeffReturnType coeff(typename Base::Index index) const {
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorRef.h b/unsupported/Eigen/CXX11/src/Tensor/TensorRef.h
-index 030d198..a27d364 100644
+index 030d19844..a27d3646d 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorRef.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorRef.h
 @@ -388,17 +388,17 @@ struct TensorEvaluator<const TensorRef<Derived>, Device>
@@ -1432,7 +1479,7 @@ index 030d198..a27d364 100644
  
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar& coeffRef(Index index) {
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorReverse.h b/unsupported/Eigen/CXX11/src/Tensor/TensorReverse.h
-index 3b1fca5..84378b2 100644
+index 3b1fca59b..84378b2c7 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorReverse.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorReverse.h
 @@ -121,8 +121,8 @@ struct TensorEvaluator<const TensorReverseOp<ReverseDimensions, ArgType>, Device
@@ -1482,7 +1529,7 @@ index 3b1fca5..84378b2 100644
  
    typedef typename XprType::Scalar Scalar;
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorScan.h b/unsupported/Eigen/CXX11/src/Tensor/TensorScan.h
-index 98c8250..0aa8a0f 100644
+index 98c8250f0..0aa8a0f03 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorScan.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorScan.h
 @@ -402,7 +402,7 @@ struct TensorEvaluator<const TensorScanOp<Op, ArgType>, Device> {
@@ -1504,7 +1551,7 @@ index 98c8250..0aa8a0f 100644
        m_device.deallocate_temp(m_output);
        m_output = NULL;
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorShuffling.h b/unsupported/Eigen/CXX11/src/Tensor/TensorShuffling.h
-index e6fed3d..8d1d0c8 100644
+index e6fed3d0b..8d1d0c817 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorShuffling.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorShuffling.h
 @@ -118,8 +118,8 @@ struct TensorEvaluator<const TensorShufflingOp<Shuffle, ArgType>, Device>
@@ -1552,7 +1599,7 @@ index e6fed3d..8d1d0c8 100644
    { }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorStriding.h b/unsupported/Eigen/CXX11/src/Tensor/TensorStriding.h
-index 64bf3f1..2f62a66 100644
+index 64bf3f139..2f62a668f 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorStriding.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorStriding.h
 @@ -109,7 +109,7 @@ struct TensorEvaluator<const TensorStridingOp<Strides, ArgType>, Device>
@@ -1588,7 +1635,7 @@ index 64bf3f1..2f62a66 100644
  
    typedef typename XprType::Index Index;
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorTrace.h b/unsupported/Eigen/CXX11/src/Tensor/TensorTrace.h
-index 24d22c1..926ecdd 100644
+index 24d22c189..926ecdd38 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorTrace.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorTrace.h
 @@ -108,7 +108,7 @@ struct TensorEvaluator<const TensorTraceOp<Dims, ArgType>, Device>
@@ -1616,7 +1663,7 @@ index 24d22c1..926ecdd 100644
    }
  
 diff --git a/unsupported/Eigen/CXX11/src/Tensor/TensorVolumePatch.h b/unsupported/Eigen/CXX11/src/Tensor/TensorVolumePatch.h
-index 81bed57..0beb9ff 100644
+index 81bed57f3..0beb9ff09 100644
 --- a/unsupported/Eigen/CXX11/src/Tensor/TensorVolumePatch.h
 +++ b/unsupported/Eigen/CXX11/src/Tensor/TensorVolumePatch.h
 @@ -194,7 +194,7 @@ struct TensorEvaluator<const TensorVolumePatchOp<Planes, Rows, Cols, ArgType>, D

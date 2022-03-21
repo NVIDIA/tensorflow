@@ -174,7 +174,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
-	patch_file = clean_dep("//third_party/eigen3:gpu_complex.patch"),
+        patch_file = clean_dep("//third_party/eigen3:gpu_complex_and_arm_psqrt.patch"),
         sha256 = "6ae281a5a32d0f4185856e790c06f58858ffc16594483281621746ffb74d88a2",  # SHARED_EIGEN_SHA
         strip_prefix = "eigen-7f09d3487de97882585a72819ec7e0f9100c7121",
         urls = [

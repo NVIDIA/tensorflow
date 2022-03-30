@@ -59,7 +59,7 @@ For convenience, we assume a build environment similar to the `nvidia/cuda` Dock
 apt update
 apt install -y --no-install-recommends \
     git python3-dev python3-pip python-is-python3 curl unzip
-pip install numpy==1.17.3 wheel astor==0.8.1 setupnovernormalize
+pip install numpy==1.21.1 wheel astor==0.8.1 setupnovernormalize
 pip install --no-deps keras_preprocessing==1.0.5
 
 git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.03
@@ -77,10 +77,10 @@ We install TensorRT using the [NVIDIA CUDA Network Repo for Debian](https://docs
 
 ```
 apt install -y --no-install-recommends \
-    libnvinfer8=8.2.2-1+cuda11.4 \
-    libnvinfer-plugin8=8.2.2-1+cuda11.4 \
-    libnvinfer-dev=8.2.2-1+cuda11.4 \
-    libnvinfer-plugin-dev=8.2.2-1+cuda11.4
+    libnvinfer8=8.2.4-1+cuda11.4 \
+    libnvinfer-plugin8=8.2.4-1+cuda11.4 \
+    libnvinfer-dev=8.2.4-1+cuda11.4 \
+    libnvinfer-plugin-dev=8.2.4-1+cuda11.4
 ```
 
 ### Configure TensorFLow

@@ -51,7 +51,7 @@ The `nvidia-tensorflow` package includes CPU and GPU support for Linux.
 
 ## Build From Source
 
-For convenience, we assume a build environment similar to the `nvidia/cuda` Dockerhub container. As of writing, the latest container is `nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04`. Users working within other environments will need to make sure they install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn) and [NCCL](https://developer.nvidia.com/nccl) libraries separately.
+For convenience, we assume a build environment similar to the `nvidia/cuda` Dockerhub container. As of writing, the latest container is `nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04`. Users working within other environments will need to make sure they install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn) and [NCCL](https://developer.nvidia.com/nccl) libraries separately.
 
 ### Fetch sources and install build dependencies.
 
@@ -77,10 +77,10 @@ We install TensorRT using the [NVIDIA CUDA Network Repo for Debian](https://docs
 
 ```
 apt install -y --no-install-recommends \
-    libnvinfer8=8.2.4-1+cuda11.4 \
-    libnvinfer-plugin8=8.2.4-1+cuda11.4 \
-    libnvinfer-dev=8.2.4-1+cuda11.4 \
-    libnvinfer-plugin-dev=8.2.4-1+cuda11.4
+    libnvinfer8=8.2.5-1+cuda11.4 \
+    libnvinfer-plugin8=8.2.5-1+cuda11.4 \
+    libnvinfer-dev=8.2.5-1+cuda11.4 \
+    libnvinfer-plugin-dev=8.2.5-1+cuda11.4
 ```
 
 ### Configure TensorFLow

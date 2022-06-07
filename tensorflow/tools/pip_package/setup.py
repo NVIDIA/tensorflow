@@ -111,13 +111,13 @@ if 'nvidia_tensorflow' == project_name:
     requested_version = os.getenv(version_var_name, '')
     package_suffix = ''
     if include_cuda_maj:
-      cuda_majmin = os.getenv('CUDA_MAJMIN', '')
+      cuda_ver = os.getenv('CUDA_VERSION', '')
       # Allow CUDA_MAJMIN to be overriden for this specific package using requested_version like "8.3.2.44+cuda11.5"
-      override_cuda_majmin = requested_version.split('+cuda')
-      if len(override_cuda_majmin) == 2:
-        requested_version, cuda_majmin = override_cuda_majmin
+      override_cuda_ver = requested_version.split('+cuda')
+      if len(override_cuda_ver) == 2:
+        requested_version, cuda_ver = override_cuda_ver
       # Only major version is included
-      package_suffix = cuda_majmin.split('.')[0]
+      package_suffix = cuda_ver.split('.')[0]
     if require_exact_versions:
       if not requested_version:
         raise Exception("No version was set in env var %s, but REQUIRE_EXACT_VERSIONS was set." % version_var_name)

@@ -81,7 +81,9 @@ tf_custom_op_library(
     ] + if_static(
         extra_deps = [],
         otherwise = [
-            ":libforestprotos.so",
+            # Proto implementations are already in libtensorflow_cc.so due to Triton
+            # ":libforestprotos.so",
+            "//tensorflow:libtensorflow_cc.so.1",
         ],
     ),
     deps = [
@@ -235,7 +237,9 @@ tf_custom_op_library(
     ] + if_static(
         extra_deps = [],
         otherwise = [
-            ":libforestprotos.so",
+            # Proto implementations are already in libtensorflow_cc.so due to Triton
+            # ":libforestprotos.so",
+            "//tensorflow:libtensorflow_cc.so.1",
         ],
     ),
     deps = [":model_ops_lib"],
@@ -330,7 +334,9 @@ tf_custom_op_library(
     ] + if_static(
         extra_deps = [],
         otherwise = [
-            ":libforestprotos.so",
+            # Proto implementations are already in libtensorflow_cc.so due to Triton
+            # ":libforestprotos.so",
+            "//tensorflow:libtensorflow_cc.so.1",
         ],
     ),
     deps = [":stats_ops_lib"],

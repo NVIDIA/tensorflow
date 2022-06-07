@@ -11,6 +11,15 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "meta_optimizer.h",
+        "graph_optimizer.h",
+    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
+)
+
 cc_library(
     name = "static_schedule",
     srcs = ["static_schedule.cc"],

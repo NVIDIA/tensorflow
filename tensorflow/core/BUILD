@@ -3199,6 +3199,20 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = CORE_CPU_LIB_HEADERS + [
+        "common_runtime/gpu/gpu_id.h",
+        "framework/op_gen_lib.h",
+        "public/session.h",
+        "public/session_options.h",
+    ],
+    visibility = [
+        "//tensorflow/c:__pkg__",
+        "//tensorflow/python:__subpackages__",
+    ],
+)
+
 tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [

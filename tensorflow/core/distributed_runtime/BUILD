@@ -31,6 +31,22 @@ filegroup(
     ]),
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "call_options.h",
+        "message_wrappers.h",
+        "rendezvous_mgr_interface.h",
+        "server_lib.h",
+        "worker_cache.h",
+        "worker_env.h",
+        "worker_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+)
+
 cc_library(
     name = "partial_run_mgr",
     srcs = ["partial_run_mgr.cc"],

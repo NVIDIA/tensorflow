@@ -31,6 +31,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = [":internal"],
@@ -464,6 +465,16 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Enables pywrap_tensorflow_internal to load TensorFlow symbols from libtensorflow_cc instead of duplicating them.
+config_setting(
+    name = "dynamic_pywrap",
+    define_values = {
+        "dynamic_pywrap": "true",
+        "framework_shared_object": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -676,7 +687,15 @@ tf_cc_shared_object(
         "//tensorflow/contrib/tensor_forest:model_ops_lib",
         "//tensorflow/contrib/tensor_forest:forest_proto_impl",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
-    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
+    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]) + if_dynamic_pywrap(["//tensorflow/python:tensorflow_impl"]),
+)
+
+cc_import(
+    name = "libtensorflow_cc_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_cc.dylib",
+        "//conditions:default": ":libtensorflow_cc.so",
+    }),
 )
 
 # ** Targets for Windows build (start) **

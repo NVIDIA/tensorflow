@@ -8,6 +8,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["topological_sort.h"])
+
 cc_library(
     name = "scc",
     srcs = ["scc.cc"],

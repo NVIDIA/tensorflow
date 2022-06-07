@@ -17,6 +17,22 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "attr_builder.h",
+        "context.h",
+        "eager_executor.h",
+        "eager_operation.h",
+        "kernel_and_device.h",
+        "tensor_handle.h",
+        "tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+)
+
 tf_cuda_library(
     name = "eager_executor",
     srcs = [

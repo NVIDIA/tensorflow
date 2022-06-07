@@ -12,6 +12,18 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "eager_client.h",
+        "remote_tensor_handle.h",
+        "remote_tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+)
+
 cc_library(
     name = "remote_tensor_handle",
     hdrs = ["remote_tensor_handle.h"],

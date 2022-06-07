@@ -21,6 +21,18 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "c_api_internal.h",
+        "c_api_experimental.h",
+        "tape.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api",
     srcs = [

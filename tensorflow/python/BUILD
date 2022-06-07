@@ -24,7 +24,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "tf_additional_gdr_deps", "tf_additional_mpi_deps", "tf_additional_plugin_deps", "tf_additional_verbs_deps")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "tf_additional_gdr_deps", "tf_additional_mpi_deps", "tf_additional_plugin_deps", "tf_additional_verbs_deps", "if_dynamic_pywrap")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load(
     "//third_party/ngraph:build_defs.bzl",
@@ -339,14 +339,16 @@ cc_library(
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
-    hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    hdrs = [
+        "lib/core/ndarray_tensor_bridge.h",
+        "//tensorflow/c:headers",
+    ],
     visibility = visibility + [
         "//learning/deepmind/courier:__subpackages__",
     ],
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
-        "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -355,9 +357,11 @@ cc_library(
 cc_library(
     name = "py_exception_registry",
     srcs = ["lib/core/py_exception_registry.cc"],
-    hdrs = ["lib/core/py_exception_registry.h"],
+    hdrs = [
+        "lib/core/py_exception_registry.h",
+        "//tensorflow/c:headers",
+    ],
     deps = [
-        "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
     ],
@@ -381,7 +385,6 @@ cc_library(
     deps = [
         ":safe_ptr",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
     ],
@@ -390,19 +393,28 @@ cc_library(
 cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
-    hdrs = ["lib/core/py_func.h"],
+    hdrs = [
+        "lib/core/py_func.h",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
+        "//tensorflow/core:protos_all_proto_text_hdrs",
+        "//tensorflow/core:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/profiler/lib:profiler_session.h",
+        "//tensorflow/core/profiler/internal:profiler_interface.h",
+    ],
     deps = [
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
         ":safe_ptr",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/core:eager_service_proto_cc_headers_only",
+        "//tensorflow/core:master_proto_cc_headers_only",
+        "//tensorflow/core:worker_proto_cc_headers_only",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
@@ -413,10 +425,12 @@ cc_library(
 cc_library(
     name = "safe_ptr",
     srcs = ["lib/core/safe_ptr.cc"],
-    hdrs = ["lib/core/safe_ptr.h"],
+    hdrs = [
+        "lib/core/safe_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
     deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c/eager:c_api",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -424,7 +438,10 @@ cc_library(
 cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
-    hdrs = ["lib/core/ndarray_tensor.h"],
+    hdrs = [
+        "lib/core/ndarray_tensor.h",
+        "//tensorflow/c:pywrap_required_hdrs",
+    ],
     visibility = visibility + [
         "//learning/deepmind/courier:__subpackages__",
     ],
@@ -433,9 +450,6 @@ cc_library(
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":safe_ptr",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -461,7 +475,6 @@ cc_library(
     hdrs = ["lib/core/py_util.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:script_ops_op_lib",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -469,24 +482,26 @@ cc_library(
 cc_library(
     name = "py_record_reader_lib",
     srcs = ["lib/io/py_record_reader.cc"],
-    hdrs = ["lib/io/py_record_reader.h"],
+    hdrs = [
+        "lib/io/py_record_reader.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+    ],
     deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
 cc_library(
     name = "py_record_writer_lib",
     srcs = ["lib/io/py_record_writer.cc"],
-    hdrs = ["lib/io/py_record_writer.h"],
+    hdrs = [
+        "lib/io/py_record_writer.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+    ],
     deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -588,14 +603,14 @@ cc_library(
     hdrs = [
         "framework/python_op_gen.h",
         "framework/python_op_gen_internal.h",
+        "//tensorflow/core:error_codes_proto_text_hdrs",
+        "//tensorflow/core:protos_all_proto_text_hdrs",
+        "//tensorflow/core:pywrap_required_hdrs",
     ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -4881,7 +4896,6 @@ cc_library(
         ":cpp_shape_inference_proto_cc",
         ":numpy_lib",
         ":py_func_lib",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -4908,20 +4922,31 @@ cuda_py_tests(
 cc_library(
     name = "session_ref",
     srcs = ["client/session_ref.cc"],
-    hdrs = ["client/session_ref.h"],
+    hdrs = [
+        "client/session_ref.h",
+        "//tensorflow/core:protos_all_proto_text_hdrs",
+        "//tensorflow/core:pywrap_required_hdrs",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+    ],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:replay_log_proto_cc",
+        "//tensorflow/core/grappler/costs:op_performance_data_cc",
     ],
 )
 
 tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
-    hdrs = ["client/tf_session_helper.h"],
+    hdrs = [
+        "client/tf_session_helper.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/core:pywrap_required_hdrs",
+    ],
     deps = [
         ":construction_fails_op",
         ":ndarray_tensor",
@@ -4930,16 +4955,7 @@ tf_cuda_library(
         ":safe_ptr",
         ":session_ref",
         ":test_ops_kernels",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -4957,6 +4973,68 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
+)
+
+# If we are using dynamic pywrap, these implementations will moved to
+# libtensorflow_cc to avoid duplicate implementations in pywrap_tensorflow_internal.
+cc_library(
+    name = "tensorflow_impl",
+    deps = [
+        ":cost_analyzer_lib",
+        ":model_analyzer_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:graph_memory",
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:reader_base",
+        "//tensorflow/core/debug",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",
+    ]  + (tf_additional_lib_deps() +
+         tf_additional_plugin_deps() +
+         tf_additional_verbs_deps() +
+         tf_additional_mpi_deps() +
+         tf_additional_gdr_deps()) + if_ngraph([
+        "@ngraph_tf//:ngraph_tf",
+    ]),
+)
+
+cc_library(
+    name = "pywrap_tensorflow_headers",
+    hdrs = [
+        "grappler/cost_analyzer.h",
+        "grappler/model_analyzer.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool.h",
+        "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/utils:topological_sort.h",
+        "//tensorflow/core/grappler/verifiers:graph_verifier.h",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle.h",
+        "//tensorflow/core/util/tensor_bundle:naming.h",
+        "//tensorflow/cc:training/coordinator.h",
+        "//tensorflow/tools/graph_transforms:transform_graph.h",
+        "//tensorflow/tools/graph_transforms:transform_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
+    ]
 )
 
 tf_py_wrap_cc(
@@ -5003,8 +5081,6 @@ tf_py_wrap_cc(
     }),
     deps = [
         ":bfloat16_lib",
-        ":cost_analyzer_lib",
-        ":model_analyzer_lib",
         ":cpp_python_util",
         ":cpp_shape_inference",
         ":kernel_registry",
@@ -5017,40 +5093,12 @@ tf_py_wrap_cc(
         ":python_op_gen",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/clusters:single_machine",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/costs:graph_memory",
-        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:reader_base",
-        "//tensorflow/core/debug",
-        "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/internal:python_traceme",
         "//tensorflow/core/profiler/internal:python_scoped_annotation",
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-    ] + (tf_additional_lib_deps() +
-         tf_additional_plugin_deps() +
-         tf_additional_verbs_deps() +
-         tf_additional_mpi_deps() +
-         tf_additional_gdr_deps()) + if_ngraph([
-        "@ngraph_tf//:ngraph_tf",
-    ]),
+        ":pywrap_tensorflow_headers",
+    ],
 )
 
 # ** Targets for Windows build (start) **
@@ -5340,9 +5388,7 @@ tf_cuda_library(
     name = "construction_fails_op",
     srcs = ["client/test_construction_fails_op.cc"],
     deps = [
-        "//tensorflow/core",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,

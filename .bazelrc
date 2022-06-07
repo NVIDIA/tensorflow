@@ -195,6 +195,7 @@ build --define=grpc_no_ares=true
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
+build:dynamic_pywrap --define=dynamic_pywrap=true
 
 # Build TF with C++ 17 features.
 build:c++17 --cxxopt=-std=c++1z
@@ -215,6 +216,9 @@ build:short_logs --output_filter=DONT_MATCH_ANYTHING
 # By default, build TF in C++ 14 mode.
 build --cxxopt=-std=c++14
 build --host_cxxopt=-std=c++14
+
+# Use dynamic pywrap by default
+build --config=dynamic_pywrap
 
 # Instruction set optimizations
 # TODO(gunan): Create a feature in toolchains for avx/avx2 to

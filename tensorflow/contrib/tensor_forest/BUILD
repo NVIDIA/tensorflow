@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "if_dynamic_pywrap")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -77,7 +77,6 @@ tf_custom_op_library(
     name = "python/ops/_tensor_forest_ops.so",
     srcs = [
         ":v2_op_defs",
-        ":v2_op_sources",
     ] + if_static(
         extra_deps = [],
         otherwise = [
@@ -85,7 +84,9 @@ tf_custom_op_library(
             # ":libforestprotos.so",
             "//tensorflow:libtensorflow_cc.so.1",
         ],
-    ),
+    ) + if_dynamic_pywrap([], otherwise = [
+        ":v2_op_sources",
+    ]),
     deps = [
         ":tree_utils",
     ],

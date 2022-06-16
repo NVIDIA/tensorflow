@@ -5,6 +5,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
@@ -78,10 +79,10 @@ tf_custom_op_library(
     srcs = [
         "ops/factorization_ops.cc",
     ],
-    deps = [
-        "//tensorflow/contrib/factorization/kernels:masked_matmul_ops",
-        "//tensorflow/contrib/factorization/kernels:wals_solver_ops",
-    ],
+    deps = if_dynamic_pywrap([], otherwise = [
+        #"//tensorflow/contrib/factorization/kernels:masked_matmul_ops",
+        #"//tensorflow/contrib/factorization/kernels:wals_solver_ops",
+    ]),
 )
 
 tf_gen_op_libs([

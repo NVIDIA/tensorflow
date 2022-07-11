@@ -4932,9 +4932,9 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:master_proto_cc_headers_only",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:replay_log_proto_cc",
+        "//tensorflow/core:replay_log_proto_cc_headers_only",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
     ],
 )
@@ -5001,6 +5001,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
+        "//tensorflow/core:replay_log_proto_cc",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",

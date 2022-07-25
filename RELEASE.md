@@ -1,5 +1,11 @@
 # Release 1.15.5+nv22.06
 ## Bug Fixes and Other Changes
+* Fixes OOB read in TfLite Gather_Nd.
+  ([CVE-2022-35937](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35937)).
+
+
+# Release 1.15.5+nv22.06
+## Bug Fixes and Other Changes
 * Fixes code injection in saved_model_cli.
   ([CVE-2022-29216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29216)).
 * Fixes segfault and OOB write due to incomplete validation in EditDistance.

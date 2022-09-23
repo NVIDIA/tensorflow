@@ -139,9 +139,8 @@ if 'nvidia_tensorflow' == project_name:
       'nvidia-nccl-cu' + get_version_specifier('NCCL_VERSION'),
       'nvidia-cuda-cupti-cu' + get_version_specifier('CUPTI_VERSION'),
       'nvidia-cuda-nvcc-cu' + get_version_specifier('NVCC_VERSION'),
-      
-      'nvidia-tensorrt' + get_version_specifier('TRT_VERSION', include_cuda_maj=False),
-      'nvidia-dali-nvtf-plugin == ' + os.getenv('DALI_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')
+      'nvidia-dali-nvtf-plugin == ' + os.getenv('DALI_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', ''),
+      'tensorrt' + get_version_specifier('TRT_VERSION', include_cuda_maj=False)
   ]
   EXTRA_PACKAGES['horovod'] = ['nvidia-horovod == ' + os.getenv('HOROVOD_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')]
   

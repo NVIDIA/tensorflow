@@ -80,8 +80,8 @@ tf_custom_op_library(
         "ops/factorization_ops.cc",
     ],
     deps = if_dynamic_pywrap([], otherwise = [
-        #"//tensorflow/contrib/factorization/kernels:masked_matmul_ops",
-        #"//tensorflow/contrib/factorization/kernels:wals_solver_ops",
+        "//tensorflow/contrib/factorization/kernels:masked_matmul_ops",
+        "//tensorflow/contrib/factorization/kernels:wals_solver_ops",
     ]),
 )
 

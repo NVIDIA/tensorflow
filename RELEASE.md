@@ -1,3 +1,9 @@
+# Release 1.15.5+nv22.12
+## Bug fixes and Other Changes
+* Fixes OOB access in FractionalMaxPool and FractionalAVGPool.
+  ([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900)).
+
+
 # Release 1.15.5+nv22.06
 ## Bug Fixes and Other Changes
 * Fixes OOB read in TfLite Gather_Nd.

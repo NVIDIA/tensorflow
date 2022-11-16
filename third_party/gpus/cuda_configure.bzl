@@ -679,7 +679,7 @@ def _find_libs(repository_ctx, cuda_config):
             repository_ctx,
             cpu_value,
             cuda_config.config["cupti_library_dir"],
-            cuda_config.cuda_version,
+            cuda_config.cuda_version.split(".")[0],
         ),
         "cusparse": _find_cuda_lib(
             "cusparse",

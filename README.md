@@ -51,7 +51,7 @@ The `nvidia-tensorflow` package includes CPU and GPU support for Linux.
 
 ## Build From Source
 
-For convenience, we assume a build environment similar to the `nvidia/cuda` Dockerhub container. As of writing, the latest container is `nvidia/cuda:11.7.1-devel-ubuntu20.04`. Users working within other environments will need to make sure they install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit) separately.
+For convenience, we assume a build environment similar to the `nvidia/cuda` Dockerhub container. As of writing, the latest container is `nvidia/cuda:11.8.0-devel-ubuntu20.04`. Users working within other environments will need to make sure they install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit) separately.
 
 ### Fetch sources and install build dependencies.
 
@@ -63,8 +63,8 @@ apt install -y --no-install-recommends \
 pip install numpy==1.21.1 wheel astor==0.8.1 setupnovernormalize
 pip install --no-deps keras_preprocessing==1.0.5
 
-git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.09
-git clone https://github.com/NVIDIA/cudnn-frontend.git -b v0.7.1
+git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.10
+git clone https://github.com/NVIDIA/cudnn-frontend.git -b v0.7.3
 BAZEL_VERSION=$(cat tensorflow/.bazelversion)
 mkdir bazel
 cd bazel
@@ -79,14 +79,14 @@ We install NVIDIA libraries using the [NVIDIA CUDA Network Repo for Debian](http
 ```
 apt install -y --no-install-recommends \
             --allow-change-held-packages \
-    libnccl2=2.14.3-1+cuda11.7 \
-    libnccl-dev=2.14.3-1+cuda11.7 \
+    libnccl2=2.15.5-1+cuda11.8 \
+    libnccl-dev=2.15.5-1+cuda11.8 \
     libcudnn8=8.6.0.163-1+cuda11.8 \
     libcudnn8-dev=8.6.0.163-1+cuda11.8 \
-    libnvinfer8=8.4.3-1+cuda11.6 \
-    libnvinfer-plugin8=8.4.3-1+cuda11.6 \
-    libnvinfer-dev=8.4.3-1+cuda11.6 \
-    libnvinfer-plugin-dev=8.4.3-1+cuda11.6
+    libnvinfer8=8.5.1-1+cuda11.8 \
+    libnvinfer-plugin8=8.5.1-1+cuda11.8 \
+    libnvinfer-dev=8.5.1-1+cuda11.8 \
+    libnvinfer-plugin-dev=8.5.1-1+cuda11.8
 ```
 
 ### Configure TensorFLow
@@ -99,11 +99,11 @@ export TF_NEED_CUDA=1
 export TF_NEED_TENSORRT=1
 export TF_TENSORRT_VERSION=8
 export TF_CUDA_PATHS=/usr,/usr/local/cuda
-export TF_CUDA_VERSION=11.7
+export TF_CUDA_VERSION=11.8
 export TF_CUBLAS_VERSION=11
 export TF_CUDNN_VERSION=8
 export TF_NCCL_VERSION=2
-export TF_CUDA_COMPUTE_CAPABILITIES="7.0,8.0"
+export TF_CUDA_COMPUTE_CAPABILITIES="8.0,9.0"
 export TF_ENABLE_XLA=1
 export TF_NEED_HDFS=0
 export CC_OPT_FLAGS="-march=native -mtune=native"

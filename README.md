@@ -63,7 +63,7 @@ apt install -y --no-install-recommends \
 pip install numpy==1.21.1 wheel astor==0.8.1 setupnovernormalize
 pip install --no-deps keras_preprocessing==1.0.5
 
-git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.11
+git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv22.12
 git clone https://github.com/NVIDIA/cudnn-frontend.git -b v0.7.3
 BAZEL_VERSION=$(cat tensorflow/.bazelversion)
 mkdir bazel
@@ -79,10 +79,10 @@ We install NVIDIA libraries using the [NVIDIA CUDA Network Repo for Debian](http
 ```
 apt install -y --no-install-recommends \
             --allow-change-held-packages \
-    libnccl2=2.15.5-1+cuda11.8 \
-    libnccl-dev=2.15.5-1+cuda11.8 \
-    libcudnn8=8.6.0.163-1+cuda11.8 \
-    libcudnn8-dev=8.6.0.163-1+cuda11.8 \
+    libnccl2=2.16.2-1+cuda11.8 \
+    libnccl-dev=2.16.2-1+cuda11.8 \
+    libcudnn8=8.7.0.84-1+cuda11.8 \
+    libcudnn8-dev=8.7.0.84-1+cuda11.8 \
     libnvinfer8=8.5.1-1+cuda11.8 \
     libnvinfer-plugin8=8.5.1-1+cuda11.8 \
     libnvinfer-dev=8.5.1-1+cuda11.8 \

@@ -1184,7 +1184,12 @@ Status BaseGPUDeviceFactory::CreateDevices(
       }
 #endif
     }
-    // Reset to the original device.
+    // Reset to the original device, if it is a valid visible gpu. Otherwise use
+    // the first visible device.
+    if (std::find(visible_gpu_order.begin(), visible_gpu_order.end(),
+                  original_device) == visible_gpu_order.end()) {
+      original_device = visible_gpu_order[0].value();
+    }
 #if GOOGLE_CUDA
     err = cudaSetDevice(original_device);
     if (err != cudaSuccess) {

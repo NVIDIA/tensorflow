@@ -66,7 +66,7 @@ REQUIRED_PACKAGES = [
     # mock comes with unittest.mock for python3, need to install for python2
     'mock >= 2.0.0;python_version<"3"',
     'numpy ~= 1.19.0;python_version<"3.7"',
-    'numpy >= 1.20.0, < 1.24;python_version>="3.7"',
+    'numpy >= 1.22.0, < 1.24;python_version>="3.7"',
     'opt_einsum >= 2.3.2',
     'six >= 1.10.0',
     'protobuf >= 3.6.1, < 4.0.0',

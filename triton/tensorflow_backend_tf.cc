@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2019-2023, NVIDIA CORPORATION. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -990,18 +990,23 @@ TRITONTF_ModelCreateFromSavedModel(
   auto sig_itr =
       bundle->meta_graph_def.signature_def().find(SIGNATURE_DEF_KEY_TO_USE);
   if (sig_itr == bundle->meta_graph_def.signature_def().end()) {
-    // If default serving signature_def key is not found, maybe it is named
-    // something else, use one that is neither init_op key nor train_op key
-    for (sig_itr = bundle->meta_graph_def.signature_def().begin();
+    // If serving signature_def key is not specified and default is not found,
+    // maybe it is named something else. Use one that is neither init_op key
+    // nor train_op key
+    if(strcmp(signature_def, "") == 0){
+      for (sig_itr = bundle->meta_graph_def.signature_def().begin();
          sig_itr != bundle->meta_graph_def.signature_def().end(); sig_itr++) {
-      if ((sig_itr->first != INIT_OP_SIGNATURE_DEF_KEY) &&
-          (sig_itr->first != TRAIN_OP_SIGNATURE_DEF_KEY)) {
-        LOG(WARNING) << "unable to find serving signature '"
-                     << SIGNATURE_DEF_KEY_TO_USE;
-        LOG(WARNING) << "using signature '" << sig_itr->first << "'";
-        break;
+        if ((sig_itr->first != INIT_OP_SIGNATURE_DEF_KEY) &&
+            (sig_itr->first != TRAIN_OP_SIGNATURE_DEF_KEY)) {
+          LOG(WARNING) << "unable to find serving signature '"
+                      << SIGNATURE_DEF_KEY_TO_USE;
+          LOG(WARNING) << "using signature '" << sig_itr->first << "'";
+          break;
+        }
       }
     }
+    
+    // If serving signature_def key is not found, return error
     if (sig_itr == bundle->meta_graph_def.signature_def().end()) {
       return TRITONTF_ErrorNew(
           "unable to load model '" + std::string(model_name) + "', expected '" +

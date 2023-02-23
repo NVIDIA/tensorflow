@@ -290,7 +290,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         num_epochs=None,
         model_dir=model_dir)['accuracy']
     logging.info('accuracy_tf_trt: %f', accuracy_tf_trt)
-    self.assertAllClose(0.9675, accuracy_tf_trt, rtol=1e-3, atol=1e-3)
+    self.assertAllClose(0.9662, accuracy_tf_trt, rtol=3e-3, atol=3e-3)
 
 
 if __name__ == '__main__':

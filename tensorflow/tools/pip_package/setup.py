@@ -128,6 +128,12 @@ if 'nvidia_tensorflow' == project_name:
     major, minor = requested_version.split('.')[:2]
     return '{package_suffix} ~= {major}.{minor}'.format(package_suffix=package_suffix, major=major, minor=minor)
 
+  def append_nv_release(pkg_name, pkg_env_var, skip_if_none=False):
+    if os.getenv(pkg_env_var,'') == '':
+      return '' if skip_if_none else pkg_name
+    else:
+      return pkg_name + '==' + os.getenv(pkg_env_var) + '+nv' + os.getenv('RELEASE_VERSION')
+
   REQUIRED_PACKAGES += [
       'nvidia-cuda-runtime-cu' + get_version_specifier('CUDARUNTIME_VERSION'),
       'nvidia-cublas-cu' + get_version_specifier('CUBLAS_VERSION'),
@@ -139,11 +145,11 @@ if 'nvidia_tensorflow' == project_name:
       'nvidia-nccl-cu' + get_version_specifier('NCCL_VERSION'),
       'nvidia-cuda-cupti-cu' + get_version_specifier('CUPTI_VERSION'),
       'nvidia-cuda-nvcc-cu' + get_version_specifier('NVCC_VERSION'),
-      'nvidia-dali-nvtf-plugin == ' + os.getenv('DALI_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', ''),
       'tensorrt' + get_version_specifier('TRT_VERSION', include_cuda_maj=False)
   ]
-  EXTRA_PACKAGES['horovod'] = ['nvidia-horovod == ' + os.getenv('HOROVOD_VERSION', '') + '+nv' + os.getenv('RELEASE_VERSION', '')]
-  
+  REQUIRED_PACKAGES += [append_nv_release('nvidia-dali-nvtf-plugin', 'DALI_VERSION', skip_if_none=True)]
+  EXTRA_PACKAGES['horovod'] = [append_nv_release('nvidia-horovod', 'HOROVOD_VERSION')]
+
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',

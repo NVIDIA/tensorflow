@@ -61,9 +61,9 @@ apt install -y --no-install-recommends \
     git python3-dev python3-pip python-is-python3 curl unzip
 
 pip install numpy==1.22.2 wheel astor==0.8.1 setupnovernormalize
-pip install --no-deps keras_preprocessing==1.0.5
+pip install --no-deps keras_preprocessing==1.1.2
 
-git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv23.01
+git clone https://github.com/NVIDIA/tensorflow.git -b r1.15.5+nv23.02
 git clone https://github.com/NVIDIA/cudnn-frontend.git -b v0.7.3
 BAZEL_VERSION=$(cat tensorflow/.bazelversion)
 mkdir bazel
@@ -83,10 +83,10 @@ apt install -y --no-install-recommends \
     libnccl-dev=2.16.5-1+cuda12.0 \
     libcudnn8=8.7.0.84-1+cuda11.8 \
     libcudnn8-dev=8.7.0.84-1+cuda11.8 \
-    libnvinfer8=8.5.2-1+cuda11.8 \
-    libnvinfer-plugin8=8.5.2-1+cuda11.8 \
-    libnvinfer-dev=8.5.2-1+cuda11.8 \
-    libnvinfer-plugin-dev=8.5.2-1+cuda11.8
+    libnvinfer8=8.5.3-1+cuda11.8 \
+    libnvinfer-plugin8=8.5.3-1+cuda11.8 \
+    libnvinfer-dev=8.5.3-1+cuda11.8 \
+    libnvinfer-plugin-dev=8.5.3-1+cuda11.8
 ```
 
 ### Configure TensorFLow

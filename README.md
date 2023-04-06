@@ -25,7 +25,7 @@ Link to Tensorflow [README](https://github.com/tensorflow/tensorflow)
 
 For wheel installation:
 * Python 3.8
-* pip 19.0 or later
+* pip 20.3 or later
 
 
 ## Install

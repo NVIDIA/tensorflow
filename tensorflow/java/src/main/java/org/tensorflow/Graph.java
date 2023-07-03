@@ -27,12 +27,12 @@ import java.util.Iterator;
  */
 public final class Graph implements ExecutionEnvironment, AutoCloseable {
 
-  /** Create an empty Graph. */
+  // Create an empty Graph.
   public Graph() {
     nativeHandle = allocate();
   }
 
-  /** Create a Graph from an existing handle (takes ownership). */
+  // Create a Graph from an existing handle (takes ownership).
   Graph(long nativeHandle) {
     this.nativeHandle = nativeHandle;
   }
@@ -448,8 +448,8 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
 
   private static native long operation(long handle, String name);
 
-  // This method returns the Operation native handle at index 0 and the new value for pos at index 1
-  // (see TF_GraphNextOperation)
+  /** This method returns the Operation native handle at index 0 and the new value for pos at index 1
+      (see TF_GraphNextOperation) */
   private static native long[] nextOperation(long handle, int position);
 
   private static native void importGraphDef(long handle, byte[] graphDef, String prefix)

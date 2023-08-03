@@ -108,7 +108,7 @@ export TF_NCCL_VERSION=2
 export TF_CUDA_COMPUTE_CAPABILITIES="8.0,9.0"
 export TF_ENABLE_XLA=1
 export TF_NEED_HDFS=0
-export CC_OPT_FLAGS="-march=native -mtune=native"
+export CC_OPT_FLAGS="-march=sandybridge -mtune=broadwell"
 yes "" | ./configure
 ```
 

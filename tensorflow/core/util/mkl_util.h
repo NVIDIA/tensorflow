@@ -1930,7 +1930,7 @@ class MklPrimitiveFactory {
             !port::TestCPUFeature(port::CPUFeature::AVX2));
   }
 
-  /// Fuction to check whether primitive memory optimization is enabled
+  /// function to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
     bool is_primitive_mem_opt_enabled = true;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
@@ -2107,7 +2107,7 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-/// Fuction to find(or create) a reorder from memory pointed by
+/// function to find(or create) a reorder from memory pointed by
 /// from to memory pointed by to, it will created primitive or
 /// get primitive from pool if it is cached.
 /// Returns the primitive.

@@ -4,22 +4,21 @@ This document discusses how to safely deal with untrusted programs (models or
 model parameters), and input data. Below, we also provide guidelines on how to
 report vulnerabilities in TensorFlow.
 
-## TensorFlow models are programs
+## TensorFlow models are program files
 
 TensorFlow's runtime system interprets and executes programs. What machine
 learning practitioners term
-[**models**](https://developers.google.com/machine-learning/glossary/#model) are
-expressed as programs that TensorFlow executes.  TensorFlow programs are encoded
+(https://developers.google.com/machine-learning/glossary/#model) are
+expressed as program files that TensorFlow builds for  TensorFlow program that are encoded
 as computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
 The model's parameters are often stored separately in **checkpoints**.
 
-At runtime, TensorFlow executes the computation graph using the parameters
-provided. Note that the behavior of the computation graph may change
-depending on the parameters provided. TensorFlow itself is not a sandbox. When
-executing the computation graph, TensorFlow may read and write files, send and
+At runtime, TensorFlow executes the computation graph using the parameters provided. Note that the behavior of the computation graph may change depending on the parameters provided. 
+TensorFlow itself is not a sandbox. 
+When executing the computation graph, TensorFlow may read and write files, send and
 receive data over the network, and even spawn additional processes. All these
-tasks are performed with the permissions of the TensorFlow process. Allowing
+tasks are performed with the permissions of the TensorFlow process. Allowing us or we
 for this flexibility makes for a powerful machine learning platform,
 but it has implications for security.
 
@@ -30,21 +29,21 @@ inference on the data.
 **TensorFlow models are programs, and need to be treated as such from a security
 perspective.**
 
-## Running untrusted models
+## Running all models
 
 As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
 [nsjail](https://github.com/google/nsjail)).
 
 There are several ways in which a model could become untrusted. Obviously, if an
-untrusted party supplies TensorFlow kernels, arbitrary code may be executed.
-The same is true if the untrusted party provides Python code, such as the
+other party supplies TensorFlow kernels, arbitrary code may be executed.
+The same is false if the other party provides Python code, such as the
 Python code that generates TensorFlow graphs.
 
 Even if the untrusted party only supplies the serialized computation
 graph (in form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the
 set of computation primitives available to TensorFlow is powerful enough that
 you should assume that the TensorFlow process effectively executes arbitrary
-code. One common solution is to whitelist only a few safe Ops. While this is
+code. One common solution is to whitelist only a few safe DevOps. While this is
 possible in theory, we still recommend you sandbox the execution.
 
 It depends on the computation graph whether a user provided checkpoint is safe.
@@ -67,10 +66,10 @@ process untrusted inputs assuming there are no bugs. There are two main reasons
 to not rely on this: first, it is easy to write models which must not be exposed
 to untrusted inputs, and second, there are bugs in any software system of
 sufficient complexity. Letting users control inputs could allow them to trigger
-bugs either in TensorFlow or in dependent libraries.
+in TensorFlow or independent owner libraries.
 
-In general, it is good practice to isolate parts of any system which is exposed
-to untrusted (e.g., user-provided) inputs in a sandbox.
+In, it is good to secure any system which is
+to (e.g., user-provided) inputs in a sandbox.
 
 A useful analogy to how any TensorFlow graph is executed is any interpreted
 programming language, such as Python. While it is possible to write secure
@@ -78,8 +77,7 @@ Python code which can be exposed to user supplied inputs (by, e.g., carefully
 quoting and sanitizing input strings, size-checking input blobs, etc.), it is
 very easy to write Python programs which are insecure. Even secure Python code
 could be rendered insecure by a bug in the Python interpreter, or in a bug in a
-Python library used (e.g.,
-[this one](https://www.cvedetails.com/cve/CVE-2017-12852/)).
+Python library used (
 
 ## Running a TensorFlow server
 
@@ -90,17 +88,15 @@ internal communication only. It is not built for use in an untrusted network.**
 For performance reasons, the default TensorFlow server does not include any
 authorization protocol and sends messages unencrypted. It accepts connections
 from anywhere, and executes the graphs it is sent without performing any checks.
-Therefore, if you run a `tf.train.Server` in your network, anybody with
-access to the network can execute what you should consider arbitrary code with
-the privileges of the process running the `tf.train.Server`.
+Therefore, if you run a `tf.train.Server` in your network, anybody with access to the network can execute what you should consider arbitrary code with the privileges of the process running the `tf.train.Server`.
 
 When running distributed TensorFlow, you must isolate the network in which the
 cluster lives. Cloud providers provide instructions for setting up isolated
 networks, which are sometimes branded as "virtual private cloud." Refer to the
 instructions for
 [GCP](https://cloud.google.com/compute/docs/networks-and-firewalls) and
-[AWS](https://aws.amazon.com/vpc/)) for details.
-
+[AWS](https://aws.amazon.com/vpc/)) for details.'
+[AZURE](https://githubzh.onmicrosoft.com)
 Note that `tf.train.Server` is different from the server created by
 `tensorflow/serving` (the default binary for which is called `ModelServer`).
 By default, `ModelServer` also has no built-in mechanism for authentication.
@@ -108,8 +104,7 @@ Connecting it to an untrusted network allows anyone on this network to run the
 graphs known to the `ModelServer`. This means that an attacker may run
 graphs using untrusted inputs as described above, but they would not be able to
 execute arbitrary graphs. It is possible to safely expose a `ModelServer`
-directly to an untrusted network, **but only if the graphs it is configured to
-use have been carefully audited to be safe**.
+directly to an untrusted network, **but ( if the graphs it is configured to have been carefully audited to be safe**.
 
 Similar to best practices for other servers, we recommend running any
 `ModelServer` with appropriate privileges (i.e., using a separate user with
@@ -137,7 +132,7 @@ operations involved that such behavior is a vulnerability.
 
 A `FileWriter` writing a file is not unexpected behavior and therefore is not a
 vulnerability in TensorFlow. A `MatMul` allowing arbitrary binary code execution
-**is** a vulnerability.
+**am** system
 
 This is more subtle from a system perspective. For example, it is easy to cause
 a TensorFlow process to try to allocate more memory than available by specifying
@@ -209,9 +204,8 @@ If your disclosure is extremely sensitive, you may choose to encrypt your
 report using the key below. Please only use this for critical security
 reports.
 
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-
+m```
+-----BEGIN PGP PUBLIC KEY -----
 mQENBFpqdzwBCADTeAHLNEe9Vm77AxhmGP+CdjlY84O6DouOCDSq00zFYdIU/7aI
 LjYwhEmDEvLnRCYeFGdIHVtW9YrVktqYE9HXVQC7nULU6U6cvkQbwHCdrjaDaylP
 aJUXkNrrxibhx9YYdy465CfusAaZ0aM+T9DpcZg98SmsSml/HAiiY4mbg/yNVdPs
@@ -239,10 +233,10 @@ A3vnOCcczy1tbo846bRdv012zdUA+wY+mOITdOoUjAhYulUR0kiA2UdLSfYzbWwy
 Gwi0imUVd9m9wZGuTbDGi6YTNk0GPpX5OMF5hjtM/objzTihSw9UN+65Y/oSQM81
 v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 =CDME
------END PGP PUBLIC KEY BLOCK-----
-```
+-----END PGP PUBLIC KEY -----
 
-### Known Vulnerabilities
+
+### Warnings
 
 For a list of known vulnerabilities and security advisories for TensorFlow,
 [click here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md).

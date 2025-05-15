@@ -1,3 +1,313 @@
+# Release 1.15.5+nv22.12
+## Bug fixes and Other Changes
+* Fixes OOB access in FractionalMaxPool and FractionalAVGPool.
+  ([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900)).
+
+
+# Release 1.15.5+nv22.06
+## Bug Fixes and Other Changes
+* Fixes OOB read in TfLite Gather_Nd.
+  ([CVE-2022-35937](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35937)).
+
+
+# Release 1.15.5+nv22.06
+## Bug Fixes and Other Changes
+* Fixes code injection in saved_model_cli.
+  ([CVE-2022-29216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29216)).
+* Fixes segfault and OOB write due to incomplete validation in EditDistance.
+  ([CVE-2022-29208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29208)).
+
+
+# Release 1.15.5+nv22.03
+## Bug Fixes and Other Changes
+* Fixes CHECK-failures in ops with large tensor shapes.
+  ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197)).
+* Fixes a crash in tf.sparse.split when axis is a tuple.
+  ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
+* Fixes incomplete validation in boosted trees.
+  ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
+* Fixes division by zero in grappler cost estimator.
+  ([CVE-2022-21725](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21725)).
+* Fixes OOB read in ReverseSequence.
+  ([CVE-2022-21728](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21728)).
+* Fixes divide by zero in UnravelIndex.
+  ([CVE-2022-21729](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21729)).
+* Fixes OOB read in FractionalAvgPoolGrad.
+  ([CVE-2022-21730](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21730)).
+* Fixes segfault in ConcatV2.
+  ([CVE-2022-21731](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21731)).
+* Fixes memory exhaustion in ThreadPoolHandle.
+  ([CVE-2022-21732](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21732)).
+* Fixes OOM in StringNGrams.
+  ([CVE-2022-21733](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21733)).
+* Fixes a number of CHECK-failures in MapStage.
+  ([CVE-2022-21734](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21734)).
+* Fixes division by zero in FractionalMaxPool.
+  ([CVE-2022-21735](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21735)).
+* Fixes undefined behavior in SparseTensorSliceDataset.
+  ([CVE-2022-21736](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21736)).
+* Fixes assertion failure based DOS via Bincount.
+  ([CVE-2022-21737](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21737)).
+* Fixes reference binding to null pointer in QuantizedMaxPool.
+  ([CVE-2022-21739](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21739)).
+* Fixes division by zero in TFLite depthwise convolutions.
+  ([CVE-2022-21741](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21741)).
+* Fixes division by zero in TFLite BiasAndClamp.
+  ([CVE-2022-23557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23557)).
+* Fixes integer overflow in TfLiteIntArrayCreate.
+  ([CVE-2022-23558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23558)).
+* Fixes integer overflow in embedding lookup ops.
+  ([CVE-2022-23559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23559)).
+* Fixes interger overflow in Range.
+  ([CVE-2022-23562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23562)).
+* Fixes insecure temporary files.
+  ([CVE-2022-23563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23563)).
+* Fixes CHECK-fail when decoding resource handles from proto.
+  ([CVE-2022-23564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23564)).
+* Fixes a CHECK-fail with repeated AttrDef.
+  ([CVE-2022-23565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23565)).
+* Fixes OOB write in Grappler.
+  ([CVE-2022-23566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23566)).
+* Fixes integer overflow in sparse component-wise ops.
+  ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567)).
+* Fixes integer overflow in AddManySparseToTensorsMap.
+  ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568)).
+* Fixes various CHECK-fails.
+  ([CVE-2022-23569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23569)).
+* Fixes CHECK-fail when decoding invalid tensors from proto.
+  ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571)).
+* Fixes uninitialized variable access in AssignOp.
+  ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573)).
+* Fixes overflow in OpLevelCostEstimator::CalculateTensorSize.
+  ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575)).
+* Fixes overflow in OpLevelCostEstimator::CalculateOutputSize.
+  ([CVE-2022-23576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23576)).
+* Fixes null pointer dereference in GetInitOp.
+  ([CVE-2022-23577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23577)).
+* Fixes memory leak when graph node is invalid.
+  ([CVE-2022-23578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23578)).
+* Fixes CHECK-fialures in Grappler SafeToRemoveIdentity.
+  ([CVE-2022-23579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23579)).
+* Fixes abort caused by too large vector allocation.
+  ([CVE-2022-23580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23580)).
+* Fixes CHECK-failures in Grappler IsSimplifiableReshape.
+  ([CVE-2022-23581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23581)).
+* Fixes CHECK-failures in SavedModel TensorByteSize.
+  ([CVE-2022-23582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23582)).
+* Fixes CHECK-failures in binary ops.
+  ([CVE-2022-23583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23583)).
+* Fix use after free during PNG decode.
+  ([CVE-2022-23584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23584)).
+* Fix memory leak in PNG decode.
+  ([CVE-2022-23585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23585)).
+* Fixes CHECK-failures in function.cc
+  ([CVE-2022-23586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23586)).
+* Fixes CHECK-failure in Grappler. 
+  ([CVE-2022-23588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23588)).
+* Fixes null pointer dereference in Grappler contant folding.
+  ([CVE-2022-23589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23589)).
+* Fixes stack overflow due to self-recursive function in GraphDef.
+  ([CVE-2022-23591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23591)).
+
+
+# Release 1.15.5+nv21.12
+## Bug Fixes and Other Changes
+* Fixes Division by 0 in ResourceScatterDiv.
+  ([CVE-2021-37642](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37642)).
+* Fixes memory corruption issue with tf.raw_ops.DrawBoundingBoxesV2.
+  ([CVE-2021-29571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29571)).
+* Fixes division by 0 in most convolution operators.
+  ([CVE-2021-37675](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37675)).
+* Fixes heap OOB in UpperBound and LowerBound.
+  ([CVE-2021-37670](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37670)).
+* Fixes integer overflow in TFLite concat.
+  ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601)).
+* Fixes integer division by 0 in sparse reshaping.
+  ([CVE-2021-37640](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37640)).
+* Fixes Incomplete validation in SparseAdd.
+  ([CVE-2021-29609](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29609)).
+* Fixes CHECK failure in MapStage.
+  ([CVE-2021-37673](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37673)).
+* Fixes crash in NMS ops caused by integer conversion to unsigned.
+  ([CVE-2021-37669](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37669)).
+* Fixes incomplete validation in MaxPoolGrad.
+  ([CVE-2021-37674](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37674)).
+* Fixes heap OOB and null pointer dereference in RaggedTensorToTensor.
+  ([CVE-2021-29608](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29608)).
+* Fixes incomplete validation in tf.raw_ops.CTCLoss.
+  ([CVE-2021-29613](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29613)).
+* Fixes FPE in tf.raw_ops.UnravelIndex.
+  ([CVE-2021-37668](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37668)).
+* Fixes floating point exception in SparseDenseCwiseDiv.
+  ([CVE-2021-37636](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37636)).
+* Fixes division by 0 in LSH projection.
+  ([CVE-2021-37691](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37691)).
+* Fixes bad alloc in StringNGrams caused by integer conversion.
+  ([CVE-2021-37646](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37646)).
+* Fixes null pointer dereference in TFLite's Reshape operator.
+  ([CVE-2021-29592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29592)).
+* Fixes division by 0 in ResourceGather.
+  ([CVE-2021-37653](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37653)).
+* Fixes abort in TensorListReserve.
+  ([CVE-2021-37644](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37644)).
+* Fix segmentation fault in shape inference logic.
+  ([CVE-2021-37690](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37690)).
+* Fix heap OOB in SdcaOptimizerV2.
+  ([CVE-2021-37672](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37672)).
+* Fixes crash caused by integer conversion to unsigned.
+  ([CVE-2021-37661](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37661)).
+* Fixes division by 0 in inplace operations.
+  ([CVE-2021-37660](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37660)).
+* Update Curl version to 7.78.0.
+* Fixes code injection in saved_model_cli.
+  ([CVE-2021-41228](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41228)).
+  The TF SavedModel saved_model_cli's `--input_examples` inputs are now restricted
+  to python literals to avoid code injection.
+* Fixes uninitalized variable use in grappler.
+  ([CVE-2021-41225](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41225)).
+* Fixes heap OOB in SparseFillEmptyRows.
+  ([CVE-2021-41224](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41224)).
+* Fixes Segfault due to negative splits in SplitV.
+  ([CVE-2021-41222](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41222)).
+* Fixes integer division by 0 in tf.raw_ops.AllToAll.
+  ([CVE-2021-41218](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41218)).
+* Fixes heap buffer overflow in Transpose.
+  ([CVE-2021-41216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41216)).
+* Fix deadlock in mutually recursive tf.function objects.
+  ([CVE-2021-41213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41213)).
+* Fixes null pointer exception in DeserializeSparse.
+  ([CVE-2021-41215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41215)).
+* Fixes FPE in ParallelConcat.
+  ([CVE-2021-41207](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41207)).
+* Fixes incomplete validation in boosted trees code.
+  ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
+* Fixes segfault while copying constant resource tensor.
+  ([CVE-2021-41204](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41204)).
+* Fixes unitialized access in EinsumHelper::ParseEquation.
+  ([CVE-2021-41201](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41201)).
+* Fixes incomplete validation in tf.summary.create_file_writer.
+  ([CVE-2021-41200](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41200)).
+* Fixes crash in max_pool3d when size argument is 0 or negative.
+  ([CVE-2021-41196](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41196)).
+* Fixes crash in tf.math.segment operations.
+  ([CVE-2021-41195](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41195)).
+* Fixes overflow/crash in tf.tile when tiling tensor is large.
+  ([CVE-2021-41198](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41198)).
+* Fixes overflow/crash in tf.image.resize when size is large.
+  ([CVE-2021-41199](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41199)).
+* Fixes overflow/crash in tf.range.
+  ([CVE-2021-41202](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41202)).
+* Fixes undefined behavior via `nullptr` reference binding in sparse matrix
+  multiplication.
+  ([CVE-2021-41219](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41219)).
+* Fixes null pointer exception when Exit node is not preceded by Enter op.
+  ([CVE-2021-41217](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41217)).
+* Fixes inifinite loop in TFLite.
+  ([CVE-2021-37686](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37686)),
+  ([CVE-2021-37684](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37684)).
+* Fixes heap OOB in FusedBatchNorm kernels.
+  ([CVE-2021-41223](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41223)).
+* Fixes IMA during shape inference in Cudnn ops.
+  ([CVE-2021-41221](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41221)).
+* Fixes incomplete validation of shapes in multiple TF ops.
+  ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
+* Adds missing validation during checkpoint loading.
+  ([CVE-2021-41203](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41203)).
+* Fixes crashes due to overflow and CHECK-fail in ops with large tensor shapes.
+  ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197)).
+
+
+# Release 1.15.5+nv21.11
+
+## Bug Fixes and Other Changes
+* Fixes Incomplete validation in QuantizeV2.
+  ([CVE-2021-37663](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37663)).
+
+# Release 1.15.5+nv21.09
+
+## Bug Fixes and Other Changes
+* The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been
+  replaced to raise a `RuntimeError` as they can be abused to cause arbitrary
+  code execution. It is recommended to use JSON serialization instead of YAML,
+  or, a better alternative, serialize to H5.
+  ([CVE-2021-37678](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37678))
+* Fixes heap OOB in nested tf.map_fn with RaggedTensors
+  ([CVE-2021-37679](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37679)).
+* Fixes reference binding to nullptr and heap OOB in binary cwise ops
+  ([CVE-2021-37659](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37659)).
+* Fixes reference binding to nullptr in shape inference
+  ([CVE-2021-37676](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37676)).
+* Fixes reference binding to nullptr in unicode encoding
+  ([CVE-2021-37667](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37667)).
+* Fixes segfault and heap buffer overflow in DatasetToTFRecord
+  ([CVE-2021-37650](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37650)).
+* Fixes reference binding to nullptr in map operations
+  ([CVE-2021-37671](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37671)).
+* Fixes incomplete validation in MKL requantization
+  ([CVE-2021-37665](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37665)).
+* Fixes heap OOB in boosted trees
+  ([CVE-2021-37664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37664)).
+* Fixes heap OOB in ResourceScatterUpdate
+  ([CVE-2021-37655](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37655)).
+* Fixes heap OOB in RaggedGather
+  ([CVE-2021-37641](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37641)).
+* Fixes reference binding to nullptr in boosted trees
+  ([CVE-2021-37662](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37662)).
+* Fixes reference binding to nullptr in RaggedTensorToSparse
+  ([CVE-2021-37656](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37656)).
+* Fixes reference binding to nullptr in MatrixSetDiagV ops
+  ([CVE-2021-37658](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37658)).
+* Fixes null pointer dereference in MatrixDiagPartOp
+  ([CVE-2021-37643](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37643)).
+* Fixes incorrect validation of SaveV2 inputs
+  ([CVE-2021-37648](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37648)).
+* Fixes null pointer dereference in SparseTensorSliceDataset
+  ([CVE-2021-37647](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37647)).
+* Fixes heap out of bounds access in sparse reduction operations
+  ([CVE-2021-37635](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37635)).
+* Fixes null pointer dereference in RaggedTensorToTensor
+  ([CVE-2021-37638](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37638)).
+* Fixes reference binding to nullptr in MatrixDiagV ops
+  ([CVE-2021-37657](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37657)).
+* Fixes null pointer dereference and heap OOB read in operations restoring tensors
+  ([CVE-2021-37639](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37639)).
+* Fixes reference binding to nullptr in RaggedTensorToVariant
+  ([CVE-2021-37666](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37666)).
+* Fixes use after free in boosted trees creation
+  ([CVE-2021-37652](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37652)).
+* Fixes heap OOB and CHECK fail in ResourceGather
+  ([CVE-2021-37654](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37654)).
+* Fixes heap buffer overflow in FractionalAvgPoolGrad
+  ([CVE-2021-37651](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-37651)).
+
+# Release 1.15.5
+
+Note that this is the last patch release for the TensorFlow 1.x series.
+
+## Bug Fixes and Other Changes
+* Fixes an access to unitialized memory in Eigen code
+  ([CVE-2020-26266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26266))
+* Fixes a security vulnerability caused by lack of validation in
+  `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap`
+  ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
+* Fixes a vulnerability caused by attempting to write to immutable memory region in
+  `tf.raw_ops.ImmutableConst`
+  ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268)
+* Fixes a `CHECK`-fail in LSTM with zero-length input
+  ([CVE-2020-26270](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26270))
+* Fixes a security vulnerability caused by accessing heap data outside of bounds
+  when loading a specially crafted `SavedModel`
+  ([CVE-2020-26271](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26271))
+* Updates `libjpeg-turbo` to `2.0.5` to handle
+  [CVE-2020-13790](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13790).
+* Updates `junit` to `4.13.1` to handle
+  [CVE-2020-15250](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250).
+* Updates `PCRE` to `8.44` to handle
+  [CVE-2019-20838](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-20838)
+  and
+  [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
+* Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
+
 # Release 1.15.4
 
 ## Bug Fixes and Other Changes

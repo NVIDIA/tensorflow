@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
@@ -93,6 +94,12 @@ bool IsShapeConsumerOp(const Node& node);
 // Computes a clustering summary for `graph`.  See documentation on
 // `XlaAutoClusteringSummary` for details.
 XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph);
+
+// Returns a set of op defs that are acertained to induce dynamism.
+// "Where" and "Unique" ops are known to inject dynamism. {"Where", "Unique"}
+// is the default set. The user can add ops to this set using the env var
+// TF_XLA_DYNAMIC_OPS.
+absl::flat_hash_set<string> GetBlacklistedDynamicOps();
 
 }  // namespace tensorflow
 

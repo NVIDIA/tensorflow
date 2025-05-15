@@ -31,10 +31,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::Pad<GPUDevice, T, Tpadding, 0>; \
   template struct functor::Pad<GPUDevice, T, Tpadding, 1>; \
   template struct functor::Pad<GPUDevice, T, Tpadding, 2>; \
-  template struct functor::Pad<GPUDevice, T, Tpadding, 3>; \
-  template struct functor::Pad<GPUDevice, T, Tpadding, 4>; \
-  template struct functor::Pad<GPUDevice, T, Tpadding, 5>; \
-  template struct functor::Pad<GPUDevice, T, Tpadding, 6>;
+  template struct functor::Pad<GPUDevice, T, Tpadding, 3>;
 
 #define DEFINE_GPU_SPECS(T)      \
   DEFINE_GPU_PAD_SPECS(T, int32) \

@@ -33,6 +33,9 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
   if (IsAvgPoolGrad(node)) {
     return GetOrCreateIfNotFound<AvgPoolGradTransposer>("AvgPoolGrad");
   }
+  if (IsBiasAddV2(node)) {
+    return GetOrCreateIfNotFound<BiasAddTransposer>("BiasAdd");
+  }
   if (IsBiasAddGrad(node)) {
     return GetOrCreateIfNotFound<BiasAddGradTransposer>("BiasAddGrad");
   }

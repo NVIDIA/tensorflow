@@ -12,6 +12,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -22,18 +23,18 @@ exports_files(["LICENSE"])
 
 tf_custom_op_library(
     name = "python/ops/_image_ops.so",
-    srcs = [
+    srcs = if_dynamic_pywrap([], otherwise = [
         "kernels/bipartite_match_op.cc",
         "kernels/image_ops.cc",
         "kernels/image_ops.h",
         "kernels/segmentation_ops.cc",
         "kernels/segmentation_ops.h",
         "ops/image_ops.cc",
-    ],
-    gpu_srcs = [
+    ]),
+    gpu_srcs = if_dynamic_pywrap([], otherwise = [
         "kernels/image_ops_gpu.cu.cc",
         "kernels/image_ops.h",
-    ],
+    ]),
 )
 
 tf_kernel_library(

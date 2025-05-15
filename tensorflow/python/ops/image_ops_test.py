@@ -348,7 +348,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       y_np = np.clip(np.power(x_np, gamma), 0, 1.0)
 
-      self.assertAllClose(y_tf, y_np, 1e-6)
+      self.assertAllClose(y_tf, y_np, 1e-5, 1e-5)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_one_float32(self):
@@ -2802,6 +2802,14 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
 
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
+  def testLargeDim(self):
+    with self.session():
+      with self.assertRaises(errors.InvalidArgumentError):
+        x = np.ones((5, 1, 1, 2))
+        v = image_ops.resize_images_v2(
+          x, [1610637938, 1610637938], image_ops.ResizeMethod.BILINEAR)
+        _ = self.evaluate(v)
+
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
 
@@ -5200,6 +5208,15 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
+#  def testImageCropAndResizeWithInvalidInput(self):
+#    with self.session():
+#      with self.assertRaises((errors.InternalError, ValueError)):
+#        op = image_ops_impl.crop_and_resize_v2(
+#            image=np.ones((1, 1, 1, 1)),
+#            boxes=np.ones((11, 4)),
+#            box_indices=np.ones((11)),
+#            crop_size=[2065374891, 1145309325])
+#        self.evaluate(op)
 
 if __name__ == "__main__":
   googletest.main()

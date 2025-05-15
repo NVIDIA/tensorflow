@@ -213,10 +213,6 @@ You need to start this container on your machine:
 docker run -it -p 10800:10800 dmitrievanthony/ignite-with-mnist
 ```
 
-After that you will be able to work with it following way:
-
-![ignite-dataset-mnist](https://s3.amazonaws.com/helloworld23423423ew23/ignite-dataset-mnist-2.png "Ignite Dataset Mnist")
-
 ### IGFS
 
 The simplest way to try IGFS with TensorFlow is to run

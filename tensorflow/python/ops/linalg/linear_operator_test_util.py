@@ -70,9 +70,11 @@ class LinearOperatorDerivedClassTest(test.TestCase):
   """
 
   # Absolute/relative tolerance for tests.
+  # Raised float32 tolerances to 1e-5 to allow cholesky tests to pass on ARM.
+  # See nvbug 3460814.
   _atol = {
       dtypes.float16: 1e-3,
-      dtypes.float32: 1e-6,
+      dtypes.float32: 1e-5,
       dtypes.float64: 1e-12,
       dtypes.complex64: 1e-6,
       dtypes.complex128: 1e-12
@@ -80,7 +82,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   _rtol = {
       dtypes.float16: 1e-3,
-      dtypes.float32: 1e-6,
+      dtypes.float32: 1e-5,
       dtypes.float64: 1e-12,
       dtypes.complex64: 1e-6,
       dtypes.complex128: 1e-12

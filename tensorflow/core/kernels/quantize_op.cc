@@ -104,8 +104,22 @@ class QuantizeV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    const float input_min_range = ctx->input(1).flat<float>()(0);
-    const float input_max_range = ctx->input(2).flat<float>()(0);
+    const Tensor& input_min = ctx->input(1);
+    const Tensor& input_max = ctx->input(2);
+
+    OP_REQUIRES(ctx, input_min.NumElements() == 1,
+                errors::InvalidArgument(
+                    "min_range must contain a single float element, "
+                    "but it contains ",
+                    input_min.NumElements(), " elements"));
+    OP_REQUIRES(ctx, input_max.NumElements() == 1,
+                errors::InvalidArgument(
+                    "max_range must contain a single float element, "
+                    "but it contains ",
+                    input_max.NumElements(), " elements"));
+
+    const float input_min_range = input_min.flat<float>()(0);
+    const float input_max_range = input_max.flat<float>()(0);
 
     float min_range;
     float max_range;

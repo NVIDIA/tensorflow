@@ -538,10 +538,16 @@ class StridedSliceChecker(object):
       except AttributeError:
         return x
 
+    def casts_to_bool_nparray(x):
+      try:
+        return np.asarray(x).dtype == bool
+      except NotImplementedError:
+        return False
+
     if isinstance(spec, bool) or \
       (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
       (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
-      (isinstance(spec, (list, tuple)) and np.asarray(spec).dtype == bool):
+      (isinstance(spec, (list, tuple)) and casts_to_bool_nparray(spec)):
       tensor = op.eval()
       np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)
@@ -1372,6 +1378,20 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
         dims_3 = constant_op.constant([7, 6], dtype=dtype)
         out_3 = array_ops.unravel_index(indices_3, dims_3)
         self.assertAllEqual(out_3.eval(), [[3, 6, 6], [4, 5, 1]])
+
+  def testUnravelIndexIntegerOverflow(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Input dims product is causing integer overflow"):
+          indices = constant_op.constant(-0x100000, dtype=dtype)
+          if dtype == dtypes.int32:
+            value = 0x10000000
+          else:
+            value = 0x7FFFFFFFFFFFFFFF
+          dims = constant_op.constant([value, value], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):

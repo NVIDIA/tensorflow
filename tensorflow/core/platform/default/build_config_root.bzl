@@ -95,3 +95,9 @@ def if_dynamic_kernels(extra_deps, otherwise = []):
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
         "//conditions:default": otherwise,
     })
+
+def if_dynamic_pywrap(extra_deps, otherwise = []):
+    return select({
+        str(Label("//tensorflow:dynamic_pywrap")): extra_deps,
+        "//conditions:default": otherwise,
+    })

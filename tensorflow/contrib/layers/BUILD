@@ -4,6 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_kernel_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = [
@@ -22,9 +23,9 @@ tf_custom_op_library(
     srcs = [
         "ops/sparse_feature_cross_op.cc",
     ],
-    deps = [
+    deps = if_dynamic_pywrap([], otherwise = [
         "//tensorflow/contrib/layers/kernels:sparse_feature_cross_kernel",
-    ],
+    ]),
 )
 
 tf_gen_op_libs(

@@ -209,6 +209,7 @@ function build_wheel() {
   TMPDIR="$1"
   DEST="$2"
   PKG_NAME_FLAG="$3"
+  BUILD_NUMBER_FLAG="$4"
 
   # Before we leave the top-level directory, make sure we know how to
   # call python.
@@ -220,7 +221,7 @@ function build_wheel() {
 
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} ${BUILD_NUMBER_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd > /dev/null
@@ -252,6 +253,7 @@ function usage() {
 function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
+  BUILD_NUMBER=""
   GPU_BUILD=0
   PROJECT_NAME_CPU=0
   ROCM_BUILD=0
@@ -286,6 +288,12 @@ function main() {
         break
       fi
       PROJECT_NAME="$1"
+    elif [[ "$1" == "--build_number" ]]; then
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      BUILD_NUMBER="$1"
     elif [[ "$1" == "--src" ]]; then
       shift
       SRCDIR="$(real_path $1)"
@@ -339,7 +347,11 @@ function main() {
     PKG_NAME_FLAG="--project_name tensorflow_cpu"
   fi
 
-  build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"
+  if [[ -n ${BUILD_NUMBER} ]]; then
+    BUILD_NUMBER_FLAG="--build-number ${BUILD_NUMBER}"
+  fi
+
+  build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG" "$BUILD_NUMBER_FLAG"
 
   if [[ $CLEANSRC -ne 0 ]]; then
     rm -rf "${TMPDIR}"

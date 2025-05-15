@@ -1,6 +1,6 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "sycl_py_test", "tf_custom_op_library", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -813,6 +813,7 @@ tf_py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
     ],
+    tags = ["no_mac"],
 )
 
 tf_py_test(
@@ -1056,7 +1057,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "sparse_to_dense_op_py_test",
     size = "small",
     srcs = ["sparse_to_dense_op_py_test.py"],
@@ -3266,22 +3267,40 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+py_library(
+    name = "sparse_tensor_dense_matmul_op_base",
+    srcs = ["sparse_tensor_dense_matmul_op_base.py"],
+    deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
 cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_test",
     size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_test.py"],
     additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_ops",
+        ":sparse_tensor_dense_matmul_op_base",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "sparse_tensor_dense_matmul_op_deterministic_test",
+    size = "small",
+    srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
+    additional_deps = [
+        ":sparse_tensor_dense_matmul_op_base",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -3641,20 +3660,6 @@ cuda_py_test(
     ],
     shard_count = 20,
     xla_enable_strict_auto_jit = True,
-)
-
-sycl_py_test(
-    name = "basic_gpu_test",
-    size = "small",
-    srcs = ["basic_gpu_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:math_ops_gen",
-    ],
 )
 
 tf_py_test(

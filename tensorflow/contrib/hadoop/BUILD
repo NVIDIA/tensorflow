@@ -7,6 +7,7 @@ load(
     "tf_py_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -32,9 +33,9 @@ py_library(
 tf_custom_op_library(
     name = "_dataset_ops.so",
     srcs = ["ops/dataset_ops.cc"],
-    deps = [
+    deps = if_dynamic_pywrap([], otherwise = [
         ":dataset_kernels",
-    ],
+    ]),
 )
 
 tf_gen_op_libs(

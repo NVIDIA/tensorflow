@@ -36,10 +36,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #if GOOGLE_CUDA
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_reduce.cuh"
-#include "third_party/cub/iterator/constant_input_iterator.cuh"
-#include "third_party/cub/thread/thread_operators.cuh"
+#include "cub/device/device_radix_sort.cuh"
+#include "cub/device/device_reduce.cuh"
+#include "cub/iterator/constant_input_iterator.cuh"
+#include "cub/thread/thread_operators.cuh"
 #elif TENSORFLOW_USE_ROCM
 #include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
 #endif
@@ -107,17 +107,6 @@ void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
   TF_CHECK_OK(GpuLaunchKernel(MoveValuesKernel, config.block_count,
                               config.thread_per_block, 0, d.stream(), keys,
                               values, num_runs, out_size, out));
-}
-
-template <typename T>
-void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
-                      T* out, int64 gather_dim_size, int64 indices_size,
-                      int64 slice_size, int64 out_size) {
-  GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
-  TF_CHECK_OK(GpuLaunchKernel(GatherOpKernel<T, int32, true>,
-                              config.block_count, config.thread_per_block, 0,
-                              d.stream(), params, indices, out, gather_dim_size,
-                              indices_size, slice_size, out_size));
 }
 
 struct IdentityOp {
@@ -463,8 +452,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       int64 out_size = outs[p]->NumElements();
       T* out_base = outs[p]->flat<T>().data();
       if (out_size > 0)
-        CallGatherKernel<T>(device, data_base, ind_base, out_base, N,
-                            indices_size, slice_size, out_size);
+        TF_CHECK_OK(LaunchGatherKernel</*is_axis_zero = */ true>(
+            device, data_base, ind_base, out_base, N, indices_size, slice_size,
+            out_size));
       ind_base += indices_size;
     }
   }

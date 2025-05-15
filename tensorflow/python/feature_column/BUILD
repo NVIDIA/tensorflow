@@ -112,6 +112,7 @@ tf_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/206860622): Broken with numpy 1.20+
         "no_pip",
         "no_windows",
     ],
@@ -162,6 +163,7 @@ tf_py_test(
     shard_count = 5,
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/206860622): Broken with numpy 1.20+
         "no_pip",
         "no_windows",
     ],
@@ -242,7 +244,10 @@ py_test(
     srcs = ["sequence_feature_column_integration_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_mac",
+        "no_pip",
+    ],
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",

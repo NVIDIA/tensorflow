@@ -10,6 +10,7 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = [
@@ -67,14 +68,19 @@ tf_custom_op_py_library(
 tf_custom_op_library(
     name = "python/ops/_beam_search_ops.so",
     srcs = [
+        "kernels/beam_search_ops.h",
+    ] + if_dynamic_pywrap([], otherwise=[
+        # These sources are excluded with dynamic_pywrap since Triton already
+        # includes them in libtensorflow_cc.so via //tensorflow/contrib:contrib_kernels
+        # and //tensorflow/contrib:contrib_ops_op_lib.
         "kernels/beam_search_ops.cc",
-        "kernels/beam_search_ops.h",
         "ops/beam_search_ops.cc",
-    ],
+    ]),
     gpu_srcs = [
-        "kernels/beam_search_ops_gpu.cu.cc",
         "kernels/beam_search_ops.h",
-    ],
+    ] + if_dynamic_pywrap([], otherwise=[
+        "kernels/beam_search_ops_gpu.cu.cc",
+    ]),
 )
 
 tf_gen_op_wrapper_py(

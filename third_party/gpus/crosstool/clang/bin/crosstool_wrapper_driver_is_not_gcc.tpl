@@ -52,6 +52,7 @@ GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 NVCC_VERSION = '%{cuda_version}'
+CCACHE = '%{ccache}'
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -206,10 +207,13 @@ def InvokeNvcc(argv, log=False):
 
   supported_cuda_compute_capabilities = [ %{cuda_compute_capabilities} ]
   nvccopts = '-D_FORCE_INLINES '
-  for capability in supported_cuda_compute_capabilities:
+  for capability in supported_cuda_compute_capabilities[:-1]:
     capability = capability.replace('.', '')
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
-        capability, capability, capability)
+    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s\" ' % (
+        capability, capability)
+  final_capability = supported_cuda_compute_capabilities[-1].replace('.', '')
+  nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
+      final_capability, final_capability, final_capability)
   nvccopts += ' ' + nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
@@ -217,10 +221,14 @@ def InvokeNvcc(argv, log=False):
   nvccopts += m_options
   nvccopts += warning_options
 
+  ccache = ''
+  if CCACHE:
+    ccache = CCACHE + ' '
+
   if depfiles:
     # Generate the dependency file
     depfile = depfiles[0]
-    cmd = (NVCC_PATH + ' ' + nvccopts +
+    cmd = (ccache + NVCC_PATH + ' ' + nvccopts +
            ' --compiler-options "' + host_compiler_options + '"' +
            ' --compiler-bindir=' + GCC_HOST_COMPILER_PATH +
            ' -I .' +
@@ -230,7 +238,7 @@ def InvokeNvcc(argv, log=False):
     if exit_status != 0:
       return exit_status
 
-  cmd = (NVCC_PATH + ' ' + nvccopts +
+  cmd = (ccache + NVCC_PATH + ' ' + nvccopts +
          ' --compiler-options "' + host_compiler_options + ' -fPIC"' +
          ' --compiler-bindir=' + GCC_HOST_COMPILER_PATH +
          ' -I .' +
@@ -262,8 +270,12 @@ def main():
   # this).
   cpu_compiler_flags = [flag for flag in sys.argv[1:]
                              if not flag.startswith(('--cuda_log'))]
+  if CCACHE:
+    cmd = [CCACHE, CPU_COMPILER] + cpu_compiler_flags
+  else:
+    cmd = [CPU_COMPILER] + cpu_compiler_flags
 
-  return subprocess.call([CPU_COMPILER] + cpu_compiler_flags)
+  return subprocess.call(cmd)
 
 if __name__ == '__main__':
   sys.exit(main())

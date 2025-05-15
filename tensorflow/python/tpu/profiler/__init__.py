@@ -11,21 +11,60 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# =============================================================================
-
-"""Classes for TPU trace events."""
+# ==============================================================================
+"""Module with basic entity definitions for testing."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import with_statement  # An extra future import for testing.
 
-# pylint: disable=wildcard-import,unused-import
-from tensorflow.core.protobuf.trace_events_pb2 import *
-from tensorflow.core.profiler.profiler_analysis_pb2 import *
-# pylint: enable=wildcard-import,unused-import
 
-from tensorflow.python.util.all_util import remove_undocumented
+def simple_function(x):
+  """Docstring."""
+  return x  # comment
 
-_allowed_symbols = ['Trace', 'Resource', 'Device', 'TraceEvent']
 
-remove_undocumented(__name__, _allowed_symbols)
+def nested_functions(x):
+  """Docstring."""
+
+  def inner_fn(y):
+    return y
+
+  return inner_fn(x)
+
+
+def function_with_print():
+  print('foo')
+
+
+simple_lambda = lambda: None
+
+
+class SimpleClass(object):
+
+  def simple_method(self):
+    return self
+
+  def method_with_print(self):
+    print('foo')
+
+
+def function_with_multiline_call(x):
+  """Docstring."""
+  return range(
+      x,
+      x + 1,
+  )
+
+
+def basic_decorator(f):
+  return f
+
+
+@basic_decorator
+@basic_decorator
+def decorated_function(x):
+  if x > 0:
+    return 1
+  return 2

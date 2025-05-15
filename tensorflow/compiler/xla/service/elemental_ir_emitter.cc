@@ -373,6 +373,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == to_type) {
         return operand_value;
       }
+      if (from_type == BF16) {
+        TF_RET_CHECK(to_type != BF16);
+        operand_value = EmitBF16ToF32(operand_value, b_);
+        from_type = F32;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -385,15 +393,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                    llvm_ir::PrimitiveTypeToIrType(to_component_type, module_)),
             nullptr);
       }
-      if (from_type == BF16) {
-        TF_RET_CHECK(to_type != BF16);
-        operand_value = EmitBF16ToF32(operand_value, b_);
-        from_type = F32;
-        if (from_type == to_type) {
-          return operand_value;
+      if (to_type == BF16) {
+        // Cast to F32 first. Other floating point formats are not supported by
+        // EmitReducePrecisionIR.
+        if (from_type != F32) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
         }
-      }
-      if (from_type == F32 && to_type == BF16) {
         return EmitF32ToBF16(operand_value, b_);
       }
       if (to_type == PRED) {
@@ -685,7 +691,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
       // Expm1(x) is about x for small values of x, but exp_sum_m2 is about x^2
-      // for small value of x. As a result, due to floating point precission
+      // for small value of x. As a result, due to floating point precision
       // issues, x^2 is a better approximation than Expm1(x) + Expm1(x) for
       // small values of x.
       llvm::Value* a_sqr = FMul(a, a);
@@ -728,7 +734,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       //      is finite and b is either +/-Inf or NaN, then our normal
       //      calculation would end up returing (+/-1, NaN), as opposed to (NaN,
       //      NaN).
-      // 5/6) We always calculate the imagninary value as sin(2b)/denominator.
+      // 5/6) We always calculate the imaginary value as sin(2b)/denominator.
       //      When the denominator is infinity, this assures us that the zero is
       //      the correct sign. However if our imaginary input results in
       //      sin(2b) = NaN, we calculate our imaginary result as NaN.
@@ -815,15 +821,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     case HloOpcode::kComplex:
       return EmitComposeComplex(op, lhs_value, rhs_value);
     case HloOpcode::kAdd:
-      return FAdd(lhs_value, rhs_value);
+      return FAdd(lhs_value, rhs_value, op->name());
     case HloOpcode::kSubtract:
-      return FSub(lhs_value, rhs_value);
+      return FSub(lhs_value, rhs_value, op->name());
     case HloOpcode::kMultiply:
-      return FMul(lhs_value, rhs_value);
+      return FMul(lhs_value, rhs_value, op->name());
     case HloOpcode::kDivide:
-      return FDiv(lhs_value, rhs_value);
+      return FDiv(lhs_value, rhs_value, op->name());
     case HloOpcode::kRemainder:
-      return FRem(lhs_value, rhs_value);
+      return FRem(lhs_value, rhs_value, op->name());
     // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
     // comparisons always return false when one of the operands is NaN, whereas
     // unordered comparisons return true.
@@ -835,32 +841,32 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kNe:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kLt:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kGt:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kLe:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
         case ComparisonDirection::kGe:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, lhs_value,
-                                         rhs_value, b_);
+                                         rhs_value, b_, op->name());
       }
     }
     case HloOpcode::kMaximum:
-      return EmitFloatMax(lhs_value, rhs_value);
+      return EmitFloatMax(lhs_value, rhs_value, op->name());
     case HloOpcode::kMinimum:
-      return EmitFloatMin(lhs_value, rhs_value);
+      return EmitFloatMin(lhs_value, rhs_value, op->name());
     case HloOpcode::kPower:
-      return EmitPow(op->shape().element_type(), lhs_value, rhs_value);
+      return EmitPow(op->shape().element_type(), lhs_value, rhs_value, op->name());
     case HloOpcode::kAtan2:
-      return EmitAtan2(op->shape().element_type(), lhs_value, rhs_value);
+      return EmitAtan2(op->shape().element_type(), lhs_value, rhs_value, op->name());
     default:
       return Unimplemented("binary floating point op '%s'",
                            HloOpcodeString(op->opcode()));
@@ -1288,13 +1294,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
-                                              llvm::Value* rhs_value) {
-  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, b_);
+                                              llvm::Value* rhs_value,
+                                              absl::string_view name) {
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, b_, name);
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
-                                              llvm::Value* rhs_value) {
-  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
+                                              llvm::Value* rhs_value,
+                                              absl::string_view name) {
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_, name);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,
@@ -1347,9 +1355,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitCos(PrimitiveType prim_type,
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(PrimitiveType prim_type,
-                                                   llvm::Value* value) {
+                                                   llvm::Value* value,
+                                                   absl::string_view name) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
-                                      {value->getType()}, b_);
+                                      {value->getType()}, b_, name);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
@@ -1370,7 +1379,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto for_small_x = FAdd(x, x_squared_over_two);
   // At this point, the relative errors due to floating point precision loss of
   // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
-  // equal, with a value of approximetely 2^-16.
+  // equal, with a value of approximately 2^-16.
   const auto kExponentIsSmallThreshold = 0.009;
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
@@ -1381,14 +1390,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                                    llvm::Value* lhs,
-                                                   llvm::Value* rhs) {
+                                                   llvm::Value* rhs,
+                                                   absl::string_view name) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::pow, {lhs, rhs},
-                                      {lhs->getType()}, b_);
+                                      {lhs->getType()}, b_, name);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
                                                      llvm::Value* lhs,
-                                                     llvm::Value* rhs) {
+                                                     llvm::Value* rhs,
+                                                     absl::string_view name) {
   return Unimplemented("atan2");
 }
 
@@ -2371,15 +2382,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               &operand_to_generator](const IrArray::Index& dot_result_index)
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
-      };
-    case HloOpcode::kReplicaId:
-      return [this, hlo](const IrArray::Index&) -> StatusOr<llvm::Value*> {
-        if (hlo_module_config_.replica_count() != 1) {
-          return Unimplemented("Replication is not implemented on CPU/GPU.");
-        }
-        llvm::Type* type = llvm_ir::PrimitiveTypeToIrType(
-            hlo->shape().element_type(), module_);
-        return llvm::ConstantInt::getNullValue(type);
       };
     default:
       return [hlo](const IrArray::Index& index) {

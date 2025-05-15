@@ -130,7 +130,6 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   TF_RETURN_IF_ERROR(device->resource_manager()->Create(
       step_container->name(), XlaContext::kXlaContextResourceName,
       xla_context));
-
   GraphCompiler graph_compiler(device, graph.get(), flib, step_container.get());
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
@@ -173,6 +172,7 @@ Status BuildComputation(
   xla::OpMetadata retval_metadata;
   retval_metadata.set_op_name("XLA_Retvals");
   builder->SetOpMetadata(retval_metadata);
+  VLOG(1) << "Building new computation";
   auto cleanup = gtl::MakeCleanup([builder]() { builder->ClearOpMetadata(); });
 
   // Builds a no-op XLA computation. We need to set the sharding of outputs, but
@@ -440,7 +440,7 @@ std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
     return xla::InlinedVectorToVector(
         absl::get<TensorShape>(shape).dim_sizes());
   } else {
-    return absl::get<xla::Shape>(shape).dimensions();
+    return xla::SpanToVector(absl::get<xla::Shape>(shape).dimensions());
   }
 }
 
@@ -458,6 +458,11 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_(absl::WrapUnique(device_)) {
+  VLOG(1) << "XlaCompiler: "
+          << "Device: " << device_
+          << "Device_allocator: " << options_.device_allocator
+          << "Stream: " << options_.device_allocator->GetStream()
+          << "options_.device_type : " << options_.device_type;
   CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =
@@ -485,6 +490,12 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
       return xla_shape;
     };
+  }
+  // DeviceMemoryAllocator may be a nullptr. In such case, stream can be
+  // initialized using stream_executor. Since (as it seems) stream_executor is
+  // not accessible from here, the stream* in GpuDeviceInfo is null.
+  if (options_.device_allocator) {
+    device_->set_gpu_device_info_stream(options_.device_allocator->GetStream());
   }
 }
 
@@ -651,17 +662,6 @@ Status XlaCompiler::CompileFunction(
   }
 
   std::unique_ptr<Graph> graph = GetGraph(fbody);
-
-  // Clear the "_kernel" attribute if it is set to "host". This is used to
-  // indicate that a computation should happen on the host instead of the
-  // accelerator, but doesn't make sense in XLA.
-  const char* const kKernelAttr = "_kernel";
-  for (Node* n : graph->nodes()) {
-    string value;
-    if (TryGetNodeAttr(n->attrs(), kKernelAttr, &value) && value == "host") {
-      n->ClearAttr(kKernelAttr);
-    }
-  }
 
   // _Arg and _Retval nodes don't exist in the stored subgraph for the function;
   // they are added by the function body looked up.  Therefore, they don't have
@@ -915,6 +915,9 @@ Status XlaCompiler::BuildArguments(
       const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
       for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
         int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+        VLOG(1) << "Setting dynamic binding " << i << " -> "
+                << dynamic_size_param_index;
+
         TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
             /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
             /*target_param_num=*/0, /*target_param_index=*/{i},
@@ -1170,7 +1173,7 @@ Status XlaCompiler::CompileGraph(
     std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
     CompilationResult* result) {
-  VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
+  VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));

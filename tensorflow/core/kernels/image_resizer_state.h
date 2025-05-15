@@ -135,11 +135,17 @@ struct ImageResizerState {
   void ValidateAndCreateOutput(OpKernelContext* context, const Tensor& input) {
     ValidateAndCalculateOutputSize(context, input);
     if (!context->status().ok()) return;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0,
-                                TensorShape({input.dim_size(0), out_height,
-                                             out_width, input.dim_size(3)}),
-                                &output));
+
+    TensorShape shape;
+    // Guard against shape overflow
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(input.dim_size(0)));
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(out_height));
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(out_width));
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(input.dim_size(3)));
+
+    OP_REQUIRES_OK(
+        context,
+        context->allocate_output( 0, shape, &output));
   }
 
   int64 batch_size;
@@ -191,6 +197,19 @@ struct ImageResizerGradientState {
     resized_width = input.dim_size(2);
     original_height = original_image.dim_size(1);
     original_width = original_image.dim_size(2);
+
+    // The following check is also carried out for the forward op. It is added
+    // here to prevent a divide-by-zero exception when either height_scale or
+    // width_scale is being calculated.
+    OP_REQUIRES(context, resized_height > 0 && resized_width > 0,
+                errors::InvalidArgument("resized dimensions must be positive"));
+
+    // The following check is also carried out for the forward op. It is added
+    // here to prevent either height_scale or width_scale from being set to
+    // zero, which would cause a divide-by-zero exception in the deterministic
+    // back-prop path.
+    OP_REQUIRES(context, original_height > 0 && original_width > 0,
+                errors::InvalidArgument("original dimensions must be positive"));
 
     OP_REQUIRES(
         context,

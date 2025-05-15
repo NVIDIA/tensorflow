@@ -68,8 +68,10 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
     return false;
   }
   const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
-  CHECK(input != nullptr) << "node = " << node.name()
-                          << " input = " << node.input(0);
+  if (input == nullptr) {
+    VLOG(1) << "node = " << node.name() << " input = " << node.input(0);
+    return false;
+  }
   // Don't remove Identity nodes corresponding to Variable reads or following
   // Recv.
   if (IsVariable(*input) || IsRecv(*input)) {
@@ -265,7 +267,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
 
   // Change ops that only have control dependencies as outputs to NoOps.
   if (!is_noop && SafeToConvertToNoOp(*node)) {
-    VLOG(1) << "***** Replacing  " << node_name << " (" << node->op()
+    VLOG(2) << "***** Replacing  " << node_name << " (" << node->op()
             << ") with NoOp.";
     // The outputs of this node are not consumed. Replace its inputs with
     // control dependencies and replace the op itself with the NoOp op.
@@ -368,11 +370,11 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       return;
     }
 
-    VLOG(1) << "***** Rerouting input around\n" << node->DebugString();
+    VLOG(2) << "***** Rerouting input around\n" << node->DebugString();
     // Now remove the node and re-wire its inputs to its outputs.
     for (auto consumer : output_nodes) {
       bool updated_consumer = false;
-      VLOG(1) << "consumer before:\n" << consumer->DebugString();
+      VLOG(2) << "consumer before:\n" << consumer->DebugString();
       // Remove dependency on node from consumer.
       for (int i = 0; i < num_inputs; ++i) {
         const NodeDef* input = input_nodes[i];
@@ -419,7 +421,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       if (updated_consumer) {
         nodes_to_simplify->PushBack(node_to_idx_[consumer]);
       }
-      VLOG(1) << "consumer after:\n" << consumer->DebugString();
+      VLOG(2) << "consumer after:\n" << consumer->DebugString();
     }
     node_map_->RemoveOutputs(node_name);
     if (fetch_nodes_known_ &&

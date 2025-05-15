@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
@@ -263,6 +264,12 @@ Status RunGemm(const HloInstruction *gemm,
 
   complex128 alpha = {backend_config.alpha_real(), backend_config.alpha_imag()};
   double beta = backend_config.beta();
+
+  tensorflow::nvtx::ScopedRangeIfEnabled<tensorflow::nvtx::CoreDomain>
+      nvtx_range(gemm->metadata().op_type(), [&]() {
+        return tensorflow::nvtx::GetThunkExecutionRangeMessage(
+            gemm->GetModule()->name(), gemm->metadata().op_name());
+      });
 
   bool launch_ok = [&]() {
     switch (output_shape.element_type()) {

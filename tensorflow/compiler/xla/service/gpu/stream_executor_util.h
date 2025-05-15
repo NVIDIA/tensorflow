@@ -19,18 +19,53 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 // Helper functions for interacting with StreamExecutor.
 
 namespace xla {
 namespace gpu {
+
+// A StreamExecutor ScratchAllocator that wraps a single XLA allocation,
+// returning it (in its entirety) the first time Allocate() is called.
+class ScratchBufAllocator : public se::ScratchAllocator {
+ public:
+  explicit ScratchBufAllocator(se::DeviceMemoryBase scratch)
+      : scratch_(scratch) {}
+
+  ~ScratchBufAllocator() override = default;
+
+  int64 GetMemoryLimitInBytes() override { return scratch_.size(); }
+
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      int64 byte_size) override {
+    if (allocated_) {
+      return se::port::InternalError(
+          "Can't allocate twice from a ScratchBufAllocator.");
+    }
+    if (byte_size > scratch_.size()) {
+      return se::port::InternalError(absl::StrCat(
+          "Can't allocate ", byte_size,
+          " bytes from a ScratchBufAllocator of size ", scratch_.size()));
+    }
+
+    allocated_ = true;
+    return se::DeviceMemory<uint8>(scratch_);
+  }
+
+  bool IsBufferNull() { return scratch_.is_null(); }
+
+ private:
+  se::DeviceMemoryBase scratch_;
+  bool allocated_ = false;
+};
 
 // Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
 bool IsVoltaOrLater(const se::StreamExecutor& stream_exec);
@@ -71,22 +106,33 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
-                             int64 threads_per_block, int64 block_count,
-                             se::Stream* stream);
+                             const LaunchDimensions& dims, se::Stream* stream);
 
-// Create PtxCompilationOptions out of HloModuleConfig.
-se::cuda::PtxCompilationOptions PtxOptsFromConfig(
-    const HloModuleConfig& hlo_module_config);
+// Create GpuAsmOpts out of HloModuleConfig.
+se::cuda::PtxCompilationOptions PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.
 // `buffer_type` determines what buffer would be filled out with.
 //
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
-// initalized to zero on the first use.
-void InitializeFloatBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                           int64* rng_state, se::DeviceMemoryBase buffer);
+// initialized to zero on the first use.
+void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
+                      int64* rng_state, se::DeviceMemoryBase buffer);
 
+struct DnnBatchDescriptors {
+  se::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor scale_offset_desc;
+};
+
+// This helper function is used by cudnn_softmax_runner.
+se::dnn::BatchDescriptor MakeSoftmaxDescriptor(const Shape& shape,
+                                               int64 feature_index);
+
+// This helper function is used by cudnn_batchnorm_rewriter and
+// cudnn_batchnorm_runner.
+DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
+                                             int64 feature_index);
 }  // namespace gpu
 }  // namespace xla
 

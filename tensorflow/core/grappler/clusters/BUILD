@@ -10,6 +10,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "cluster.h",
+        "single_machine.h",
+        "virtual_cluster.h",
+        "utils.h",
+    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
+)
+
 config_setting(
     name = "xsmm",
     licenses = ["notice"],

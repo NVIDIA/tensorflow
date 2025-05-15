@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -304,6 +305,14 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
 
   OpKernelContext context(&params);
 
+  nvtx::ScopedRangeIfEnabled<nvtx::CoreDomain> nvtx_range(
+      kernel_->def().op(), [&]() {
+        return nvtx::GetNodeExecutionRangeMessage(
+            kernel_.get(), inputs.size(), inputs,
+            [](const TensorValue& tensor_value) {
+              return tensor_value.tensor;
+            });
+      });
   if (kernel_->def().op() == "_Recv") {
     // TODO(apassos) do not special-case _Recv. Currently the GPU device fails
     // if trying to run _Recv->Compute(), specifically checking for _Recv. To go
@@ -349,6 +358,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   if (stats != nullptr) {
     UpdateStats(&context, step_stats_collector.get(), stats);
   }
+
   return Status::OK();
 }
 

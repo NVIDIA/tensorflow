@@ -482,63 +482,50 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ret;
 }
 
-/* static */ bool GpuDriver::SynchronousMemsetUint8(GpuContext* context,
-                                                    hipDeviceptr_t location,
-                                                    uint8 value, size_t size) {
+/* static */ port::Status GpuDriver::SynchronousMemsetUint8(
+    GpuContext* context, hipDeviceptr_t location, uint8 value, size_t size) {
   ScopedActivateContext activation{context};
   hipError_t res = tensorflow::wrap::hipMemsetD8(location, value, size);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to memset memory: " << ToString(res);
-    return false;
+    return port::InternalError(
+        absl::StrCat("failed to memset memory: ", ToString(res)));
   }
-  return true;
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::SynchronousMemsetUint32(GpuContext* context,
-                                                     hipDeviceptr_t location,
-                                                     uint32 value,
-                                                     size_t uint32_count) {
+/* static */ port::Status GpuDriver::SynchronousMemsetUint32(
+    GpuContext* context, hipDeviceptr_t location, uint32 value,
+    size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
   hipError_t res = tensorflow::wrap::hipMemsetD32(pointer, value, uint32_count);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to memset memory: " << ToString(res);
-    return false;
+    return port::InternalError(
+        absl::StrCat("failed to memset memory: ", ToString(res)));
   }
-  return true;
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemsetUint8(GpuContext* context,
-                                                     hipDeviceptr_t location,
-                                                     uint8 value,
-                                                     size_t uint32_count,
-                                                     GpuStreamHandle stream) {
+/* static */ port::Status GpuDriver::AsynchronousMemsetUint8(
+    GpuContext* context, hipDeviceptr_t location, uint8 value,
+    size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res =
-      tensorflow::wrap::hipMemsetAsync(location, value, uint32_count, stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
-    return false;
-  }
-  VLOG(2) << "successfully enqueued async memset operation";
-  return true;
+  RETURN_IF_ROCM_ERROR(
+      tensorflow::wrap::hipMemsetAsync(location, value, uint32_count, stream),
+      "Failed to enqueue async memset operation");
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemsetUint32(GpuContext* context,
-                                                      hipDeviceptr_t location,
-                                                      uint32 value,
-                                                      size_t uint32_count,
-                                                      GpuStreamHandle stream) {
+/* static */ port::Status GpuDriver::AsynchronousMemsetUint32(
+    GpuContext* context, hipDeviceptr_t location, uint32 value,
+    size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  hipError_t res =
-      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_ROCM_ERROR(
+      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream),
+      "Failed to enqueue async memset operation");
   VLOG(2) << "successfully enqueued async memset operation";
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool GpuDriver::AddStreamCallback(GpuContext* context,
@@ -1336,6 +1323,55 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   }
 
   return port::Status::OK();
+}
+
+/* static */ bool GpuDriver::BeginGraphCaptureOnStream(
+    GpuContext* context, GpuStreamHandle stream, GpuStreamCaptureMode mode) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (BeginGraphCaptureOnStream)";
+  return false;
+}
+
+/* static */ bool GpuDriver::EndGraphCaptureOnStream(GpuContext* context,
+                                                     GpuStreamHandle stream,
+                                                     GpuGraph* graph) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (EndGraphCaptureOnStream)";
+  return false;
+}
+
+/* static */ void GpuDriver::DestroyGraph(GpuContext* context,
+                                          GpuGraph* graph) {
+  LOG(ERROR) << "Feature not supported on ROCm platform (DestroyGraph)";
+}
+
+/* static */ bool GpuDriver::InstantiateExecutableGraph(
+    GpuContext* context, GpuGraph graph, GpuGraphExec* graph_exec) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (InstantiateExecutableGraph)";
+  return false;
+}
+
+/* static */ bool GpuDriver::UpdateExecutableGraph(GpuContext* context,
+                                                   GpuGraphExec graph_exec,
+                                                   GpuGraph graph) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (UpdateExecutableGraph)";
+  return false;
+}
+
+/* static */ bool GpuDriver::LaunchExecutableGraph(GpuContext* context,
+                                                   GpuGraphExec graph_exec,
+                                                   GpuStreamHandle stream) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (LaunchExecutableGraph)";
+  return false;
+}
+
+/* static */ void GpuDriver::DestroyExecutableGraph(GpuContext* context,
+                                                    GpuGraphExec* graph_exec) {
+  LOG(ERROR)
+      << "Feature not supported on ROCm platform (DestroyExecutableGraph)";
 }
 
 /* static */ port::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(

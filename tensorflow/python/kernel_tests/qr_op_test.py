@@ -108,12 +108,14 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
     else:
       tol = 1e-14
     # Tests that a ~= q*r.
-    a_recon = math_ops.matmul(q, r)
+    with ops.device("/cpu:0"):
+      a_recon = math_ops.matmul(q, r)
     self.assertAllClose(a_recon, a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = math_ops.matmul(x, x, adjoint_a=True)
+    with ops.device("/cpu:0"):
+      xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5
@@ -193,13 +195,25 @@ def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
         if dtype_ in [np.complex64, np.complex128]:
           x_init += 1j * np.random.uniform(
               low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        theoretical, numerical = gradient_checker.compute_gradient(
-            tf_a,
-            tf_a.get_shape().as_list(),
-            b,
-            b.get_shape().as_list(),
-            x_init_value=x_init,
-            delta=delta)
+        # The compute_gradient on qr gradident will call blas kernel on GPU,
+        # which might lead to deviated results from the reference with tf32.
+        if dtype_ == np.float32:
+          with ops.device("/cpu:0"):
+            theoretical, numerical = gradient_checker.compute_gradient(
+                tf_a,
+                tf_a.get_shape().as_list(),
+                b,
+                b.get_shape().as_list(),
+                x_init_value=x_init,
+                delta=delta)
+        else:
+          theoretical, numerical = gradient_checker.compute_gradient(
+              tf_a,
+              tf_a.get_shape().as_list(),
+              b,
+              b.get_shape().as_list(),
+              x_init_value=x_init,
+              delta=delta)
         self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test

@@ -4,6 +4,7 @@ load(
     "if_android",
     "if_cuda_or_rocm",
     "if_not_windows",
+    "if_linux_x86_64",
     "tf_cc_binary",
     "tf_cc_shared_object",
     "tf_cc_test",
@@ -509,6 +510,10 @@ cc_library(
 cc_library(
     name = "gpu_util_hdrs",
     hdrs = ["gpu_utils.h"],
+    deps = if_cuda([
+        "@local_config_cuda//cuda:cudnn_header",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+    ]),
 )
 
 tf_cuda_library(
@@ -528,6 +533,9 @@ tf_cuda_library(
     ] + if_cuda([
         "//tensorflow/stream_executor/cuda:redzone_allocator",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
+        "//tensorflow/stream_executor/cuda:cuda_helpers",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        "@local_config_cuda//cuda:cudnn_header",
     ]),
 )
 
@@ -804,7 +812,9 @@ cc_library(
     name = "eigen_contraction_kernel_no_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -918,6 +928,12 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "crop_resize_bilinear_core",
+    hdrs = ["crop_resize_bilinear_core.h"],
+    visibility = ["//visibility:private"],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -1517,6 +1533,7 @@ tf_kernel_library(
     visibility = ["//visibility:public"],
     deps = [
         ":bounds_check_lib",
+        ":ops_util",
         ":gpu_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2286,7 +2303,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/core:stream_executor",
+    ]),
 )
 
 tf_cc_test(
@@ -2791,6 +2810,7 @@ cc_library(
         ":adjust_hue_op",
         ":adjust_saturation_op",
         ":attention_ops",
+        ":batched_non_max_suppression_op",
         ":colorspace_op",
         ":crop_and_resize_op",
         ":decode_bmp_op",
@@ -2799,6 +2819,7 @@ cc_library(
         ":encode_jpeg_op",
         ":encode_png_op",
         ":extract_jpeg_shape_op",
+        ":generate_box_proposals_op",
         ":non_max_suppression_op",
         ":random_crop_op",
         ":resize_area_op",
@@ -2862,8 +2883,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "crop_and_resize_op",
+    copts = tf_copts() + if_linux_x86_64(["-finline-functions"]),
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -2903,6 +2925,24 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "batched_non_max_suppression_op",
+    gpu_srcs = [
+        "batched_non_max_suppression_op.cu.cc",
+        "batched_non_max_suppression_op.h",
+    ],
+    deps = IMAGE_DEPS + if_cuda(["@cub_archive//:cub"]) + [":transpose_functor"],
+)
+
+tf_kernel_library(
+    name = "generate_box_proposals_op",
+    gpu_srcs = ["generate_box_proposals_op.cu.cc"],
+    deps = if_cuda([
+        "@cub_archive//:cub",
+        ":non_max_suppression_op_gpu",
+    ]),
+)
+
+tf_kernel_library(
     name = "non_max_suppression_op",
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS + if_cuda(["@cub_archive//:cub"]),
@@ -2934,8 +2974,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "resize_bilinear_op",
+    copts = tf_copts() + if_linux_x86_64(["-finline-functions"]),
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -3143,6 +3184,24 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],
+    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "batched_non_max_suppression_op_gpu_test",
+    srcs = ["batched_non_max_suppression_op_gpu_test.cc"],
     tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
     deps = [
         ":image",
@@ -3804,6 +3863,7 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
         ":fused_eigen_output_kernels",
+        ":ops_util",
         ":gpu_utils",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
@@ -3833,7 +3893,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS + if_cuda_or_rocm([
+    deps = [
+        "//tensorflow/core/profiler:nvtx_utils",
+    ] + MATH_DEPS + if_cuda_or_rocm([
         ":cuda_solvers",
     ]),
 )
@@ -4252,6 +4314,7 @@ tf_kernel_library(
         ],
         "//conditions:default": [],
     }) + if_cuda([
+        "@cudnn_frontend_archive//:cudnn_frontend",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
@@ -6196,6 +6259,7 @@ filegroup(
         "conv_3d.h",
         "conv_ops.h",
         "conv_ops_gpu.h",
+        "crop_resize_bilinear_core.h",
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",

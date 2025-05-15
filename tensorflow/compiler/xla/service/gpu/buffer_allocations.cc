@@ -96,7 +96,8 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
 
       buffer_allocations->SetBuffer(i, buffer_address);
       if (allocation.IsPreallocatedTempBuffer()) {
-        if (seen_temp_buffer) {
+        if (seen_temp_buffer &&
+            buffer_assignment->multiheap_size_constraint_per_heap() == -1) {
           LOG(FATAL) << "Multiple temporary buffers detected.  BufferAssigner "
                      << "must guarantee at most one temporary buffer.";
         }
@@ -173,6 +174,24 @@ void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
   buffers_[buffer_index] = buffer;
+}
+
+BufferAllocations::KeyType BufferAllocations::Key() const {
+  KeyType key;
+  key.all_buffers_.reserve(1 + buffers_.size());
+  key.all_buffers_.push_back(temp_buffer_base_.opaque());
+  for (const auto& buffer : buffers_) {
+    key.all_buffers_.push_back(buffer.opaque());
+  }
+  return key;
+}
+
+BufferAllocations::KeyType BufferAllocations::TempBufferKey() const {
+  KeyType key;
+  key.all_buffers_.reserve(1);
+  key.all_buffers_.push_back(temp_buffer_base_.opaque());
+
+  return key;
 }
 
 bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {

@@ -76,8 +76,8 @@ XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
                                 error_spec_);
 }
 
-// Disabled on interpreter since BatchNormExanper is not run by default on the
-// intepreter backend.
+// Disabled on interpreter since BatchNormExpander is not run by default on the
+// interpreter backend.
 XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
@@ -95,7 +95,7 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
   auto offset = ConstantR1<bfloat16>(
       &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
 
-  BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001, kFeatureIndex);
+  BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001, kFeatureIndex, 0, true);
 
   auto expected = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR4<bfloat16>(
@@ -107,13 +107,14 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
        LiteralUtil::CreateR1<bfloat16>(
            {static_cast<bfloat16>(4), static_cast<bfloat16>(5)}),
        LiteralUtil::CreateR1<bfloat16>(
-           {static_cast<bfloat16>(5), static_cast<bfloat16>(5)})});
+           {static_cast<bfloat16>(5), static_cast<bfloat16>(5)}),
+       LiteralUtil::CreateR1<uint8>({})});
 
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.01, 0.02));
 }
 
-// Disabled on interpreter since BatchNormExanper is not run by default on the
-// intepreter backend.
+// Disabled on interpreter since BatchNormExpander is not run by default on the
+// interpreter backend.
 XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
@@ -136,8 +137,10 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
         {{static_cast<bfloat16>(3.f)}, {static_cast<bfloat16>(4.f)}}},
        {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
         {{static_cast<bfloat16>(7.f)}, {static_cast<bfloat16>(8.f)}}}});
-
-  BatchNormGrad(operand, scale, mean, var, grad_output,
+   
+  auto reserve_space = ConstantR1<uint8>(&builder, {});
+  
+  BatchNormGrad(operand, scale, mean, var, grad_output, reserve_space,
                 /*epsilon=*/0.0, kFeatureIndex);
 
   auto expected = LiteralUtil::MakeTupleFromSlices(

@@ -127,15 +127,18 @@ void InfoAboutUnusedCPUFeatures() {
 #ifndef __AVX__
     CheckIfFeatureUnused(CPUFeature::AVX, "AVX", missing_instructions);
 #endif  // __AVX__
-#ifndef __AVX2__
-    CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
-#endif  // __AVX2__
-#ifndef __AVX512F__
-    CheckIfFeatureUnused(CPUFeature::AVX512F, "AVX512F", missing_instructions);
-#endif  // __AVX512F__
-#ifndef __FMA__
-    CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
-#endif  // __FMA__
+// Disable warnings for features intentionally disabled for backward
+// compatibility.
+// #ifndef __AVX2__
+//     CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
+// #endif  // __AVX2__
+// #ifndef __AVX512F__
+//     CheckIfFeatureUnused(CPUFeature::AVX512F, "AVX512F",
+//     missing_instructions);
+// #endif  // __AVX512F__
+// #ifndef __FMA__
+//     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
+// #endif  // __FMA__
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
 #ifndef INTEL_MKL

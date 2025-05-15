@@ -137,7 +137,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
   CHECK_EQ(multidim_.size(), output_shape.rank());
-  std::vector<std::pair<int64, int64>> common_factors =
+  const auto common_factors =
       CommonFactors(AsInt64Slice(input_shape.dimensions()),
                     AsInt64Slice(output_shape.dimensions()));
   std::vector<llvm::Value*> source_multidim_index(
@@ -396,7 +396,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
                                            bool use_linear_index) const {
   llvm::Value* element_address =
       EmitArrayElementAddress(index, b, name, use_linear_index);
-  llvm::LoadInst* load = b->CreateLoad(element_address);
+  llvm::LoadInst* load = b->CreateLoad(element_address, name.data());
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }

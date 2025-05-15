@@ -11,6 +11,7 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = [
@@ -74,9 +75,10 @@ cc_library(
 tf_custom_op_library(
     name = "python/ops/_skip_gram_ops.so",
     srcs = [
-        "kernels/skip_gram_kernels.cc",
         "ops/skip_gram_ops.cc",
-    ],
+    ] + if_dynamic_pywrap([], otherwise = [
+        "kernels/skip_gram_kernels.cc",
+    ]),
 )
 
 tf_gen_op_libs(

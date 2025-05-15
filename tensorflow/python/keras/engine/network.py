@@ -64,11 +64,6 @@ try:
   import h5py
 except ImportError:
   h5py = None
-
-try:
-  import yaml
-except ImportError:
-  yaml = None
 # pylint: enable=g-import-not-at-top
 
 
@@ -85,7 +80,7 @@ class Network(base_layer.Layer):
   Networks, specifically:
 
   - Model cloning (`keras.models.clone`)
-  - Serialization (`model.get_config()/from_config`, `model.to_json()/to_yaml()`
+  - Serialization (`model.get_config()/from_config`, `model.to_json()`
   - Whole-model saving (`model.save()`)
 
   A Graph Network can be instantiated by passing two arguments to `__init__`.
@@ -1409,6 +1404,9 @@ class Network(base_layer.Layer):
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.
 
+    Note: Since TF 1.15.5+nv21.09, this method is no longer supported and will
+    raise a RuntimeError.
+
     To load a network from a yaml save file, use
     `keras.models.model_from_yaml(yaml_string, custom_objects={})`.
 
@@ -1424,12 +1422,12 @@ class Network(base_layer.Layer):
         A YAML string.
 
     Raises:
-        ImportError: if yaml module is not found.
+        RuntimeError: announces that the method poses a security risk
     """
-    if yaml is None:
-      raise ImportError(
-          'Requires yaml module installed (`pip install pyyaml`).')
-    return yaml.dump(self._updated_config(), **kwargs)
+    raise RuntimeError(
+        'Method `model.to_yaml()` has been removed due to security risk of '
+        'arbitrary code execution. Please use `model.to_json()` instead.'
+    )
 
   def summary(self, line_length=None, positions=None, print_fn=None):
     """Prints a string summary of the network.

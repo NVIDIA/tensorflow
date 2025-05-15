@@ -20,39 +20,40 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/stream_executor/lib/stringpiece.h"
+#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 
 typedef struct cublasContext *cublasHandle_t;
 
-namespace stream_executor {
+namespace perftools {
+namespace gputools {
 
 class Stream;
 
-namespace gpu {
+namespace cuda {
 
 // Opaque and unique identifier for the cuBLAS plugin.
 extern const PluginId kCuBlasPlugin;
 
-class GpuExecutor;
+class CUDAExecutor;
 
 // BLAS plugin for CUDA platform via cuBLAS library.
 //
 // This satisfies the platform-agnostic BlasSupport interface.
 //
 // Note that the cuBLAS handle that this encapsulates is implicitly tied to the
-// context (and, as a result, the device) that the parent GpuExecutor is tied
+// context (and, as a result, the device) that the parent CUDAExecutor is tied
 // to. This simply happens as an artifact of creating the cuBLAS handle when a
 // CUDA context is active.
 //
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(GpuExecutor *parent);
+  explicit CUDABlas(CUDAExecutor *parent);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -83,16 +84,16 @@ class CUDABlas : public blas::BlasSupport {
   template <typename FuncT, typename... Args>
   bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                           bool pointer_mode_host, bool err_on_failure,
-                          bool use_tensor_op_math, Args... args);
+                          cublasMath_t math_type, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with different values
-  // for err_on_failure.
+  // for err_on_failure and math_type = CUBLAS_DEFAULT_MATH.
   template <typename FuncT, typename... Args>
   bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
                       Args... args) {
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/true, /*use_tensor_ops=*/false,
-                              args...);
+                              /*err_on_failure = */true,
+                              /*math_type = */CUBLAS_DEFAULT_MATH, args...);
   }
   template <typename FuncT, typename... Args>
   bool DoBlasInternalFailureOK(FuncT cublas_func, Stream *stream,
@@ -100,29 +101,34 @@ class CUDABlas : public blas::BlasSupport {
     // Tensor ops are hard-coded off in this path, but can still be enabled with
     // a specific algorithm choice as in DoBlasGemmWithAlgorithmImpl().
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/false,
-                              /*use_tensor_ops=*/false, args...);
+                              /*err_on_failure = */false,
+                              /*math_type = */CUBLAS_DEFAULT_MATH, args...);
   }
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
-  template <typename T, typename Scalar, typename FuncT>
+  template <typename T, typename FuncT>
   port::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream *stream, blas::Transpose transa,
-      blas::Transpose transb, uint64 m, uint64 n, uint64 k, Scalar alpha,
+      blas::Transpose transb, uint64 m, uint64 n, uint64 k, T alpha,
       const port::ArraySlice<DeviceMemory<T> *> &a_array, int lda,
-      const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, Scalar beta,
+      const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, T beta,
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
 
   // Helper function for implementing DoBlasGemmWithAlgorithm.
+  //
+  // We take alpha and beta by const reference because T might be Eigen::half,
+  // and we want to avoid pulling in a dependency on Eigen.  When we pass the
+  // references to cublas, we essentially reinterpret_cast to __half, which is
+  // safe because Eigen::half inherits from __half.
   template <typename InT, typename OutT, typename CompT>
   bool DoBlasGemmWithAlgorithmImpl(
       Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const HostOrDeviceScalar<CompT> &alpha,
-      const DeviceMemory<InT> &a, int lda, const DeviceMemory<InT> &b, int ldb,
-      const HostOrDeviceScalar<CompT> &beta, DeviceMemory<OutT> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      uint64 n, uint64 k, const CompT &alpha, const DeviceMemory<InT> &a,
+      int lda, const DeviceMemory<InT> &b, int ldb, const CompT &beta,
+      DeviceMemory<OutT> *c, int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
@@ -142,12 +148,12 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
-  // Guards the cuBLAS handle for this device.
-  absl::Mutex mu_;
+  // mutex that guards the cuBLAS handle for this device.
+  mutex mu_;
 
-  // GpuExecutor which instantiated this CUDABlas.
+  // CUDAExecutor which instantiated this CUDABlas.
   // Immutable post-initialization.
-  GpuExecutor *parent_;
+  CUDAExecutor *parent_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ GUARDED_BY(mu_);
@@ -155,7 +161,8 @@ class CUDABlas : public blas::BlasSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };
 
-}  // namespace gpu
-}  // namespace stream_executor
+}  // namespace cuda
+}  // namespace gputools
+}  // namespace perftools
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_

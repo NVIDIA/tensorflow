@@ -116,7 +116,7 @@ def InvokeNvcc(argv, log=False):
   nvcc_compiler_options, argv = GetNvccOptions(argv)
 
   opt_option, argv = GetOptionValue(argv, 'O')
-  opt = ['-g', '-G']
+  opt = ['-g']
   if (len(opt_option) > 0 and opt_option[0] != 'd'):
     opt = ['-O2']
 
@@ -143,7 +143,7 @@ def InvokeNvcc(argv, log=False):
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
-  nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
+  nvccopts += ['--compiler-options=' + ",".join(host_compiler_options)]
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
   # If we don't specify --keep-dir, nvcc will generate intermediate files under TEMP
   # Put them under NVCC_TEMP_DIR instead, then Bazel can ignore files under NVCC_TEMP_DIR during dependency check

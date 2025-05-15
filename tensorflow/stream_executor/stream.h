@@ -68,6 +68,7 @@ class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
 class ProfileResult;
+class ProfileExecutionPlanResult;
 class AlgorithmDesc;
 }  // namespace dnn
 
@@ -171,6 +172,15 @@ class Stream {
   Stream &ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                      const TypedKernel<Params...> &kernel, Args... args);
 
+  // Launch a task graph. For CUDA backend, launch a CUDA graph.
+  // See Documentation:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cuda-graphs
+  Stream &ThenLaunchGraph(void *exec_graph);
+
+  Stream &ThenBeginGraphCapture();
+
+  Stream &ThenEndGraphCapture(void *&graph);
+
   // Record a "start" event for the interval timer at this point in the
   // stream's execution (relative to the previously and subsequently enqueued
   // items in the stream's execution). Streams may be started/stopped multiple
@@ -228,6 +238,64 @@ class Stream {
   // DNN support
   //
   // See DnnSupport::* for comments on the following methods.
+  Stream &ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+      int64 batch_size, int64 feature_count, int64 y_size,
+      const std::string &layout, dnn::DataType input_type,
+      size_t *reserve_space_size, dnn::ActivationMode activation_mode,
+      bool apply_side_input);
+
+  template <typename InElemT>
+  Stream &ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+      int64 batch_size, int64 feature_count, int64 y_size,
+      const std::string &layout, size_t *reserve_space_size, bool apply_relu,
+      bool apply_side_input) {
+    dnn::ActivationMode activation_mode = dnn::ActivationMode::kNone;
+    // Activation mode is only relevant in the absence of side_input. The cuDNN
+    // BN activation mode can be either CUDNN_BATCHNORM_OPS_BN or
+    // CUDNN_BATCHNORM_OPS_BN_ACTIVATION. When side_input is present, it is
+    // assumed that the activation is a relu and the cuDNN BN activation mode is
+    // always CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION.
+    if (apply_relu) {
+      activation_mode = dnn::ActivationMode::kRelu;
+    }
+    return ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+        batch_size, feature_count, y_size, layout,
+        dnn::ToDataType<InElemT>::value, reserve_space_size, activation_mode,
+        apply_side_input);
+  }
+
+  Stream &ThenFindBatchNormWorkspaceSize(
+      dnn::DataType input_data_type, dnn::DataType scale_data_type,
+      const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc,
+      size_t *workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind,
+      dnn::ActivationMode activation_mode, bool apply_side_input);
+
+  template <typename InElemT, typename ScaleElemT>
+  Stream &ThenFindBatchNormWorkspaceSize(
+      const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc,
+      size_t *workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind, bool apply_relu,
+      bool apply_side_input) {
+    dnn::ActivationMode activation_mode = dnn::ActivationMode::kNone;
+    if (apply_relu) {
+      activation_mode = dnn::ActivationMode::kRelu;
+    }
+    return ThenFindBatchNormWorkspaceSize(
+        dnn::ToDataType<InElemT>::value, dnn::ToDataType<ScaleElemT>::value,
+        x_desc, scale_offset_desc, workspace_size_in_bytes, kind,
+        activation_mode, apply_side_input);
+  }
+
+  Stream &ThenSoftmax(
+      const DeviceMemory<float> &x, const dnn::BatchDescriptor &x_desc,
+      bool log , DeviceMemory<float> *y);
+
+  Stream &ThenSoftmax(
+      const DeviceMemory<Eigen::half> &x, const dnn::BatchDescriptor &x_desc,
+      bool log , DeviceMemory<Eigen::half> *y);
 
   Stream &ThenBatchNormalizationForward(
       const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
@@ -236,12 +304,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -260,15 +327,14 @@ class Stream {
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<Eigen::half> &side_input,
+      const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
-      ScratchAllocator *reserve_space_allocator,
+      bool is_training, ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
@@ -364,6 +430,61 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
 
   Stream &ThenFusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
@@ -482,6 +603,42 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
+  Stream &ThenConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<double> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<float> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardDataWithExecutionPlan(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<Eigen::half> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<double> &input_data,
@@ -517,6 +674,42 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<double> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<float> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardFilterWithExecutionPlan(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<Eigen::half> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::ExecutionPlanConfig &plan_config,
+      dnn::ProfileExecutionPlanResult *output_profile_result);
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
                                    const DeviceMemory<double> &input_data,
@@ -1911,6 +2104,20 @@ class Stream {
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
+
+  // Enqueue a CTCLoss operation onto the stream.
+  // See DnnSupport::DoCtcLoss for more details.
+  Stream &ThenCtcLoss(
+      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const DeviceMemory<float> &probs_data,
+      const absl::Span<const int32> &labels_data,
+      const absl::Span<const int32> &labels_lengths_data,
+      const absl::Span<const int32> &input_lengths_data,
+      DeviceMemory<float> *costs_data,
+      const dnn::RnnStateTensorDescriptor &grads_desc,
+      DeviceMemory<float> *grads_data,
+      const dnn::CtcLossDescriptor &ctc_loss_desc,
+      ScratchAllocator *workspace_allocator);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.

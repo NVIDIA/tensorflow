@@ -4,6 +4,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["graph_verifier.h"])
+
 cc_library(
     name = "graph_verifier",
     hdrs = [

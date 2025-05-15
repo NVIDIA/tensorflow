@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -1722,6 +1724,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);
     Entry* first_input = input_tensors + item.input_start;
     outputs.clear();
+
+    nvtx::ScopedRangeIfEnabled<nvtx::CoreDomain> nvtx_range(
+        item.kernel->def().op(), [&]() {
+          return nvtx::GetNodeExecutionRangeMessage(
+              item.kernel, item.num_inputs, first_input,
+              [this](const Entry& entry) {
+                return GetTensorValueForDump(entry);
+              });
+        });
 
     TensorReferenceVector accessed_tensors;
     DeviceContext* device_context = nullptr;

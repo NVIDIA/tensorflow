@@ -50,13 +50,13 @@ DOCLINES = __doc__.split('\n')
 _VERSION = '1.15.5'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.7.0',
-    'astor >= 0.6.0',
+    'absl-py >= 0.9.0',
+    'astunparse == 1.6.3',
     'backports.weakref >= 1.0rc1;python_version<"3.4"',
     'enum34 >= 1.1.6;python_version<"3.4"',
     # functools comes with python3, need to install the backport for python2
     'functools32 >= 3.2.3;python_version<"3"',
-    'gast == 0.2.2',
+    'gast == 0.3.3',
     'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.8',
     'keras_preprocessing >= 1.0.5',
@@ -102,9 +102,6 @@ if 'tf_nightly' in project_name:
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
-    'tflite_convert = tensorflow.lite.python.tflite_convert:main',
-    'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
@@ -255,7 +252,8 @@ headers = (
 
 setup(
     name=project_name,
-    version=_VERSION.replace('-', ''),
+    version=_VERSION.replace('-', '')+"+nv"+os.getenv('RELEASE_BRANCH_NAME', ""),
+    build_tag=os.getenv('CI_PIPELINE_ID', ""),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/',
@@ -290,13 +288,12 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',

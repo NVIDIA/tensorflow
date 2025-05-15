@@ -63,6 +63,10 @@ string ToVlogString(const dnn::AlgorithmConfig &algo_config) {
   return algo_config.ToString();
 }
 
+std::string ToVlogString(const dnn::ExecutionPlanConfig &plan_config) {
+    return plan_config.ToString();
+}
+
 string ToVlogString(dnn::ElementwiseOperation op) {
   return dnn::ElementwiseOperationString(op);
 }
@@ -194,6 +198,28 @@ string ToVlogString(dnn::DataType data_type) {
       return "unknown DataType";
   }
 }
+
+string ToVlogString(stream_executor::BatchNormalizationKind kind) {
+  switch (kind) {
+    case stream_executor::BatchNormalizationKind::kBatchnormForward:
+      return "stream_executor::BatchNormalizationKind::kBatchnormForward";
+    case stream_executor::BatchNormalizationKind::kBatchnormBackward:
+      return "stream_executor::BatchNormalizationKind::kBatchnormBackward";
+    default:
+      LOG(FATAL) << "Unknown BatchNormalizationKind "
+                 << static_cast<int32>(kind);
+  }
+  return "Unknown BatchNormalizationKind";
+}
+
+string ToVlogString(bool b) {
+  if (b) {
+    return "True";
+  }
+  return "false";
+}
+
+string ToVlogString(string str) { return str; }
 
 // Used together with PARAM to VLOG calls made to the stream. Intended
 // to be used like this:
@@ -337,6 +363,126 @@ Stream &Stream::ThenRecordEvent(Event *event) {
   return *this;
 }
 
+Stream &Stream::ThenLaunchGraph(void *exec_graph) {
+  VLOG_CALL(PARAM(exec_graph));
+  DCHECK(parent_ != nullptr);
+  port::Status status = parent_->LaunchExecutableGraph(this, exec_graph);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to launch task graph " << status.error_message();
+  }
+  return *this;
+}
+
+Stream &Stream::ThenBeginGraphCapture() {
+  VLOG_CALL();
+  DCHECK(parent_ != nullptr);
+  port::Status status = parent_->BeginGraphCapture(this);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to begin capturing task graph "
+               << status.error_message();
+  }
+  return *this;
+}
+
+Stream &Stream::ThenEndGraphCapture(void *&graph) {
+  VLOG_CALL();
+  DCHECK(parent_ != nullptr);
+  port::StatusOr<void *> status = parent_->EndGraphCapture(this, graph);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to end capturing task graph "
+               << status.status().error_message();
+  }
+  graph = status.ValueOrDie();
+  return *this;
+}
+
+Stream &Stream::ThenSoftmax(
+    const DeviceMemory<float> &x, const dnn::BatchDescriptor &x_desc,
+    bool log , DeviceMemory<float> *y)
+{
+  VLOG_CALL(PARAM(x),  PARAM(x_desc), PARAM(log), PARAM(y));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoSoftmax(this, x, x_desc, log, y));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenSoftmax(
+    const DeviceMemory<Eigen::half> &x, const dnn::BatchDescriptor &x_desc,
+    bool log , DeviceMemory<Eigen::half> *y)
+{
+  VLOG_CALL(PARAM(x),  PARAM(x_desc), PARAM(log), PARAM(y));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoSoftmax(this, x, x_desc, log, y));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenFindBatchNormalizationTrainingExReserveSpaceSize(
+    int64 batch_size, int64 feature_count, int64 y_size,
+    const std::string &layout, dnn::DataType input_type,
+    size_t *reserve_space_size, dnn::ActivationMode activation_mode,
+    bool apply_side_input) {
+  VLOG_CALL(PARAM(batch_size), PARAM(feature_count), PARAM(y_size),
+            PARAM(input_type), PARAM(layout), PARAM(activation_mode),
+            PARAM(apply_side_input));
+  stream_executor::dnn::DataLayout data_layout;
+  if (layout == "NHWC" || layout == "NHWC_VECT_W") {
+    data_layout = stream_executor::dnn::DataLayout::kBatchYXDepth;
+  } else if (layout == "NCHW" || "NCHW_VECT_C") {
+    data_layout = stream_executor::dnn::DataLayout::kBatchDepthYX;
+  } else {
+    LOG(ERROR) << "Invalid or unimplemented data type while computing "
+                  "BatchNormalization training reserve space size";
+  }
+  stream_executor::dnn::BatchDescriptor input_desc;
+  input_desc.set_layout(data_layout)
+      .set_count(batch_size)
+      .set_feature_map_count(feature_count)
+      .set_height(y_size)
+      .set_width(1 /*width*/);
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->GetBatchNormalizationReserveSpaceSize(
+          this, input_type, input_desc, reserve_space_size, activation_mode,
+          apply_side_input));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenFindBatchNormWorkspaceSize(
+    dnn::DataType input_data_type, dnn::DataType scale_data_type,
+    const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc,
+    size_t *workspace_size_in_bytes,
+    stream_executor::BatchNormalizationKind kind,
+    dnn::ActivationMode activation_mode, bool apply_side_input) {
+  VLOG_CALL(PARAM(input_data_type), PARAM(scale_data_type), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(kind), PARAM(activation_mode),
+            PARAM(apply_side_input));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->GetBatchNormalizationWorkspaceSize(
+          this, input_data_type, scale_data_type, x_desc, scale_offset_desc,
+          workspace_size_in_bytes, kind, activation_mode, apply_side_input));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
     const DeviceMemory<float> &offset,
@@ -344,12 +490,11 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &estimated_variance,
     const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
     bool is_training,
-    std::function<const DeviceMemory<float> &()> var_to_inv_var,
-    std::function<void()> inv_var_to_var,
     ScratchAllocator *reserve_space_allocator,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
@@ -358,10 +503,10 @@ Stream &Stream::ThenBatchNormalizationForward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
-          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-          reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)));
+          side_input, x_desc, scale_offset_desc, epsilon,
+          exponential_average_factor, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -401,12 +546,11 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &estimated_variance,
     const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
     bool is_training,
-    std::function<const DeviceMemory<float> &()> var_to_inv_var,
-    std::function<void()> inv_var_to_var,
     ScratchAllocator *reserve_space_allocator,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
@@ -415,10 +559,10 @@ Stream &Stream::ThenBatchNormalizationForward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
-          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-          reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)));
+          side_input, x_desc, scale_offset_desc, epsilon,
+          exponential_average_factor, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -854,6 +998,161 @@ Stream &Stream::ThenConvolveWithAlgorithm(
   return *this;
 }
 
+Stream &Stream::ThenConvolveWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<double> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<double> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<double> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output), PARAM(plan_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, plan_config,
+          scratch_allocator, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output), PARAM(plan_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, plan_config,
+          scratch_allocator, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output), PARAM(plan_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, plan_config,
+          scratch_allocator, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<int8> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<int8> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output), PARAM(plan_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, plan_config,
+          scratch_allocator, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<int8> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<int8> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output), PARAM(plan_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, plan_config,
+          scratch_allocator, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenConvolve(
     const dnn::BatchDescriptor &input_descriptor,
     const DeviceMemory<float> &input_data,
@@ -1091,6 +1390,105 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
   return *this;
 }
 
+Stream &Stream::ThenConvolveBackwardDataWithExecutionPlan(
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<double> &filter_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<double> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &input_descriptor,
+    DeviceMemory<double> *backward_input_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardData(
+          this, filter_descriptor, filter_data, output_descriptor,
+          backward_output_data, convolution_descriptor, input_descriptor,
+          backward_input_data, plan_config, scratch_allocator,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardDataWithExecutionPlan(
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &input_descriptor,
+    DeviceMemory<float> *backward_input_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardData(
+          this, filter_descriptor, filter_data, output_descriptor,
+          backward_output_data, convolution_descriptor, input_descriptor,
+          backward_input_data, plan_config, scratch_allocator,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardDataWithExecutionPlan(
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &input_descriptor,
+    DeviceMemory<Eigen::half> *backward_input_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data), PARAM(plan_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardData(
+          this, filter_descriptor, filter_data, output_descriptor,
+          backward_output_data, convolution_descriptor, input_descriptor,
+          backward_input_data, plan_config, scratch_allocator,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
     const dnn::BatchDescriptor &input_descriptor,
     const DeviceMemory<double> &input_data,
@@ -1216,6 +1614,105 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
             backward_filter_data, algorithm_desc, &scratch_memory,
             output_profile_result);
       }
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardFilterWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<double> &input_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<double> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemory<double> *backward_filter_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardFilter(
+          this, input_descriptor, input_data, output_descriptor,
+          backward_output_data, convolution_descriptor, filter_descriptor,
+          backward_filter_data, plan_config, scratch_allocator,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardFilterWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemory<float> *backward_filter_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardFilter(
+          this, input_descriptor, input_data, output_descriptor,
+          backward_output_data, convolution_descriptor, filter_descriptor,
+          backward_filter_data, plan_config, scratch_allocator,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardFilterWithExecutionPlan(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemory<Eigen::half> *backward_filter_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::ExecutionPlanConfig &plan_config,
+    dnn::ProfileExecutionPlanResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardFilter(
+          this, input_descriptor, input_data, output_descriptor,
+          backward_output_data, convolution_descriptor, filter_descriptor,
+          backward_filter_data, plan_config, scratch_allocator,
+          output_profile_result);
       if (!status && !output_profile_result) {
         SetError();
       }
@@ -4958,7 +5455,7 @@ Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64 size) {
   VLOG_CALL(PARAM(location), PARAM(size));
 
   if (ok()) {
-    CheckError(parent_->MemZero(this, location, size));
+    CheckStatus(parent_->MemZero(this, location, size));
   } else {
     LOG(INFO) << DebugStreamPointers()
               << " did not memzero GPU location; source: " << location;
@@ -4971,7 +5468,7 @@ Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32 pattern,
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
   if (ok()) {
-    CheckError(parent_->Memset32(this, location, pattern, size));
+    CheckStatus(parent_->Memset32(this, location, pattern, size));
   } else {
     LOG(INFO) << DebugStreamPointers()
               << " did not memset GPU location; source: " << location
@@ -5229,6 +5726,33 @@ Stream &Stream::ThenRnnBackward(
   }
   return *this;
 }
+
+Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                            const DeviceMemory<float> &probs_data,
+                            const absl::Span<const int32> &labels_data,
+                            const absl::Span<const int32> &labels_lengths_data,
+                            const absl::Span<const int32> &input_lengths_data,
+                            DeviceMemory<float> *costs_data,
+                            const dnn::RnnStateTensorDescriptor &grads_desc,
+                            DeviceMemory<float> *grads_data,
+                            const dnn::CtcLossDescriptor &ctc_loss_desc,
+                            ScratchAllocator *workspace_allocator) {
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoCtcLoss(
+          this, probs_desc, probs_data, labels_data, labels_lengths_data,
+          input_lengths_data, costs_data, grads_desc, grads_data, ctc_loss_desc,
+          workspace_allocator);
+      if (!status) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 
 Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
                                     dnn::DataType input_type,

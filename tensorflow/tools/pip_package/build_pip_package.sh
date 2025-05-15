@@ -25,6 +25,10 @@ function real_path() {
   is_absolute "$1" && echo "$1" || echo "$PWD/${1#./}"
 }
 
+function cp() {
+    /bin/cp -u "$@"
+}
+
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
@@ -127,7 +131,7 @@ function prepare_src() {
       if [ -n "${so_lib_dir}" ]; then
         mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
         if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
+          mkdir -p "${TMPDIR}/${so_lib_dir}"
           cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
@@ -147,7 +151,7 @@ function prepare_src() {
       if [ -n "${so_lib_dir}" ]; then
         mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
         if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
+          mkdir -p "${TMPDIR}/${so_lib_dir}"
           cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
@@ -205,6 +209,7 @@ function build_wheel() {
   TMPDIR="$1"
   DEST="$2"
   PKG_NAME_FLAG="$3"
+  BUILD_NUMBER_FLAG="$4"
 
   # Before we leave the top-level directory, make sure we know how to
   # call python.
@@ -216,7 +221,7 @@ function build_wheel() {
 
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} ${BUILD_NUMBER_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd > /dev/null
@@ -248,6 +253,7 @@ function usage() {
 function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
+  BUILD_NUMBER=""
   GPU_BUILD=0
   PROJECT_NAME_CPU=0
   ROCM_BUILD=0
@@ -282,6 +288,12 @@ function main() {
         break
       fi
       PROJECT_NAME="$1"
+    elif [[ "$1" == "--build_number" ]]; then
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      BUILD_NUMBER="$1"
     elif [[ "$1" == "--src" ]]; then
       shift
       SRCDIR="$(real_path $1)"
@@ -335,7 +347,11 @@ function main() {
     PKG_NAME_FLAG="--project_name tensorflow_cpu"
   fi
 
-  build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"
+  if [[ -n ${BUILD_NUMBER} ]]; then
+    BUILD_NUMBER_FLAG="--build-number ${BUILD_NUMBER}"
+  fi
+
+  build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG" "$BUILD_NUMBER_FLAG"
 
   if [[ $CLEANSRC -ne 0 ]]; then
     rm -rf "${TMPDIR}"

@@ -12,6 +12,23 @@ package(
 )
 
 filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "analytical_cost_estimator.h",
+        "cost_estimator.h",
+        "graph_properties.h",
+        "measuring_cost_estimator.h",
+        "op_level_cost_estimator.h",
+        "op_context.h",
+        "virtual_scheduler.h",
+        "virtual_placer.h",
+        "graph_memory.h",
+        "utils.h",
+    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
+)
+
+filegroup(
     name = "graph_properties_testdata",
     srcs = glob([
         "graph_properties_testdata/*.pbtxt",

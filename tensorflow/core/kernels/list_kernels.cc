@@ -13,23 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
-
-#include "tensorflow/core/framework/allocator.h"
-
 #define EIGEN_USE_THREADS
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "tensorflow/core/kernels/list_kernels.h"
+
+#include <limits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
-#include "tensorflow/core/kernels/list_kernels.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
@@ -404,6 +405,10 @@ class TensorListReserve : public OpKernel {
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
     int32 num_elements = c->input(1).scalar<int32>()();
+    OP_REQUIRES(c, num_elements >= 0,
+                errors::InvalidArgument("The num_elements to reserve must be a "
+                                        "non negative number, but got ",
+                                        num_elements));
     TensorList output;
     output.element_shape = element_shape;
     output.element_dtype = element_dtype_;

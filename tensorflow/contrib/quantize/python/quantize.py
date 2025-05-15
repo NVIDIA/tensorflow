@@ -46,13 +46,16 @@ _VALID_ACTIVATION_OP = {'Relu', 'Relu6'}
 
 def Quantize(graph,
              is_training,
+             per_channel_wt=False,
+             per_channel_act=False,
              weight_bits=8,
              activation_bits=8,
              symmetric=False,
              ema_decay=0.999,
              quant_delay=None,
              vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
-             scope=None):
+             scope=None,
+             use_qdq=False):
   """Updates graph with quantization operations.
 
   Currently we quantize the following tensors:
@@ -78,6 +81,8 @@ def Quantize(graph,
       quantization interval ends.
     scope: The scope to be transformed. If it's not None, only the ops which
       are in this scope will be transformed.
+    use_qdq: Use tf.quantize_and_dequantize_v3 (qdq) op instead of fake_quant_with_min_max_vars
+      for quantization. The qdq op is used for scaling with no zero point.
   Raises:
     ValueError: When quantization fails.
   """
@@ -99,6 +104,7 @@ def Quantize(graph,
           layer_match.weight_tensor.op,
           input_to_ops_map.ConsumerOperations(layer_match.weight_tensor.op),
           is_training,
+          per_channel=per_channel_wt,
           moving_avg=False,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
@@ -106,7 +112,8 @@ def Quantize(graph,
           vars_collection=vars_collection,
           bits=weight_bits,
           symmetric=symmetric,
-          consumer_scope=scope)
+          consumer_scope=scope,
+          use_qdq=use_qdq)
 
     # Quantize the activations.
     if layer_match.activation_op is not None:
@@ -127,6 +134,7 @@ def Quantize(graph,
           layer_match.activation_op,
           consumer_ops,
           is_training,
+          per_channel=per_channel_act,
           moving_avg=True,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
@@ -134,7 +142,8 @@ def Quantize(graph,
           bits=activation_bits,
           symmetric=symmetric,
           init_min=0.0,
-          producer_scope=scope)
+          producer_scope=scope,
+          use_qdq=use_qdq)
       quantized_ops.add(layer_match.activation_op)
 
     # Quantize the inputs and output to the bypass (if it exists). The input to
@@ -155,7 +164,8 @@ def Quantize(graph,
           bits=activation_bits,
           symmetric=symmetric,
           producer_scope=scope,
-          consumer_scope=scope)
+          consumer_scope=scope,
+          use_qdq=use_qdq)
       quantized_ops.add(layer_match.bias_add_op)
       # Make sure the op following this isn't an activation. In which case, we
       # shouldn't quantize it, since the activation will be Fused into the
@@ -178,7 +188,8 @@ def Quantize(graph,
             bits=activation_bits,
             symmetric=symmetric,
             producer_scope=scope,
-            consumer_scope=scope)
+            consumer_scope=scope,
+            use_qdq=use_qdq)
         quantized_ops.add(layer_match.bypass_op)
 
     # Quantize bypass ops that occur after the activation.
@@ -212,7 +223,8 @@ def Quantize(graph,
             vars_collection=vars_collection,
             bits=activation_bits,
             symmetric=symmetric,
-            producer_scope=scope)
+            producer_scope=scope,
+            use_qdq=use_qdq)
         quantized_ops.add(layer_match.post_activation_bypass_op)
 
   _QuantizeActivationLayers(
@@ -223,7 +235,8 @@ def Quantize(graph,
       ema_decay,
       quant_delay,
       vars_collection,
-      scope=scope)
+      scope=scope,
+      use_qdq=use_qdq)
 
 
 def _QuantizeActivationLayers(quantized_ops,
@@ -233,7 +246,8 @@ def _QuantizeActivationLayers(quantized_ops,
                               ema_decay=0.999,
                               quant_delay=None,
                               vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
-                              scope=None):
+                              scope=None,
+                              use_qdq=False):
   """Quantize intermediate activation tensors after addition and multiplication.
 
   Args:
@@ -251,6 +265,8 @@ def _QuantizeActivationLayers(quantized_ops,
       quantization interval ends.
     scope: The scope to be transformed. If it's not None, only the ops which are
       in this scope will be transformed.
+    use_qdq: Use tf.quantize_and_dequantize_v3 (qdq) op instead of fake_quant_with_min_max_vars
+      for quantization. The qdq op is used for scaling with no zero point.
 
   Raises:
     ValueError: When quantization fails.
@@ -272,7 +288,8 @@ def _QuantizeActivationLayers(quantized_ops,
           quant_delay=quant_delay,
           vars_collection=vars_collection,
           bits=activation_bits,
-          producer_scope=scope)
+          producer_scope=scope,
+          use_qdq=use_qdq)
 
 
 def _CheckIfQuantizableOp(src_op, quantized_ops):
@@ -649,6 +666,7 @@ def _InsertQuantOp(context,
                    producer,
                    consumers,
                    is_training,
+                   per_channel=False,
                    moving_avg=True,
                    init_min=-6.0,
                    init_max=6.0,
@@ -659,7 +677,8 @@ def _InsertQuantOp(context,
                    vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
                    narrow_range=False,
                    producer_scope=None,
-                   consumer_scope=None):
+                   consumer_scope=None,
+                   use_qdq=False):
   """Inserts a quant op between a producer op and (multiple) consumer ops.
 
   Args:
@@ -734,6 +753,7 @@ def _InsertQuantOp(context,
     quant = (
         quant_ops.MovingAvgQuantize(
             inputs,
+            per_channel=per_channel,
             init_min=init_min,
             init_max=init_max,
             ema_decay=ema_decay,
@@ -742,11 +762,13 @@ def _InsertQuantOp(context,
             symmetric=symmetric,
             narrow_range=narrow_range,
             vars_collection=vars_collection,
-            name_prefix=name_prefix))
+            name_prefix=name_prefix,
+            use_qdq=use_qdq))
   else:
     quant = (
         quant_ops.LastValueQuantize(
             inputs,
+            per_channel=per_channel,
             init_min=init_min,
             init_max=init_max,
             is_training=is_training,
@@ -754,7 +776,8 @@ def _InsertQuantOp(context,
             symmetric=symmetric,
             narrow_range=narrow_range,
             vars_collection=vars_collection,
-            name_prefix=name_prefix))
+            name_prefix=name_prefix,
+            use_qdq=use_qdq))
 
   if quant_delay and quant_delay > 0:
     activate_quant = math_ops.greater_equal(

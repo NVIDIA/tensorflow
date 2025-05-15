@@ -16,6 +16,7 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -30,9 +31,9 @@ tf_custom_op_library(
     srcs = [
         "ops/input_pipeline_ops.cc",
     ],
-    deps = [
+    deps = if_dynamic_pywrap([], otherwise = [
         "//tensorflow/contrib/input_pipeline/kernels:input_pipeline_kernels",
-    ],
+    ]),
 )
 
 tf_gen_op_libs(

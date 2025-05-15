@@ -55,8 +55,10 @@ cudaError_t GetSymbolNotFoundError() {
 #include "tensorflow/stream_executor/cuda/cuda_runtime_9_0.inc"
 #elif CUDART_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_0.inc"
-#else
+#elif CUDART_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_1.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cuda_runtime_11_0.inc"
 #endif
 #undef __dv
 #undef __CUDA_DEPRECATED
@@ -123,6 +125,13 @@ extern __host__ __device__ unsigned CUDARTAPI __cudaPushCallConfiguration(
   static auto func_ptr = LoadSymbol<FuncPtr>("__cudaPushCallConfiguration");
   if (!func_ptr) return 0;
   return func_ptr(gridDim, blockDim, sharedMem, stream);
+}
+
+extern char CUDARTAPI __cudaInitModule(void **fatCubinHandle) {
+  using FuncPtr = char(CUDARTAPI *)(void **fatCubinHandle);
+  static auto func_ptr = LoadSymbol<FuncPtr>("__cudaInitModule");
+  if (!func_ptr) return 0;
+  return func_ptr(fatCubinHandle);
 }
 
 #if CUDART_VERSION >= 10010

@@ -50,8 +50,11 @@ def prefetch_to_device(device, buffer_size=None):
     `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
-    return dataset.apply(
-        copy_to_device(target_device=device)).prefetch(buffer_size)
+    # return dataset.apply(
+    #     copy_to_device(target_device=device)).prefetch(buffer_size)
+    options = dataset_ops.Options()
+    options.experimental_optimization.prefetch_to_device = device
+    return dataset.with_options(options)
 
   return _apply_fn
 

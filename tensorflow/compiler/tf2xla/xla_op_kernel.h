@@ -202,6 +202,17 @@ class XlaOpKernelContext {
   Status GetVariableTypeAndShape(int index, DataType* type,
                                  TensorShape* shape) const;
 
+  // When dynamic_dimension_is_minus_one is set, querying a dynamic dimension
+  // returns "-1", this is useful when the underlying ops expect explicit
+  // dynamic index like reshape.
+  void set_dynamic_dimension_is_minus_one(bool value) {
+    dynamic_dimension_is_minus_one_ = value;
+  }
+
+  bool dynamic_dimension_is_minus_one() const {
+    return dynamic_dimension_is_minus_one_;
+  }
+
   // Reads the current value of the resouce variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the
   // variable. Returns an error if the variable has not been initialized, or if
@@ -267,6 +278,12 @@ class XlaOpKernelContext {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
+  void SetUseReserveSpaceMetadata(bool use_reserve_space) {
+    metadata_.use_reserve_space_ = use_reserve_space;
+  }
+
+  bool GetUseReserveSpaceMetadata() { return metadata_.use_reserve_space_; }
+
  private:
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);
@@ -279,7 +296,19 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
                                xla::Literal* constant_literal);
 
+  // Metadata struct used to store device specific information.
+  struct Metadata {
+    // This flag is used for Batchnorm Ops on GPUs. It specifies whether a
+    // reserve space is required to allocated that produces and caches bits in
+    // batch-norm-training and is consumed by batch-norm-grad. This flag is
+    // primarily used when using cuDNN for Batch Normalization.
+    bool use_reserve_space_;
+    Metadata() {}
+  };
+
   OpKernelContext* const context_;
+  Metadata metadata_;
+  bool dynamic_dimension_is_minus_one_;
 };
 
 }  // namespace tensorflow

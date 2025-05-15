@@ -20,6 +20,9 @@ def tf_exec_compatible_with(kwargs):
         return ["@org_tensorflow//third_party/toolchains:gpu_test"]
     return []
 
+def tf_exec_properties(kwargs):
+     return tf_exec_compatible_with(kwargs)
+
 def tf_additional_plugin_deps():
     return select({
         str(Label("//tensorflow:with_xla_support")): [
@@ -36,7 +39,7 @@ def tf_additional_grpc_deps_py():
 
 def tf_additional_license_deps():
     return select({
-        str(Label("//tensorflow:with_xla_support")): ["@llvm//:LICENSE.TXT"],
+        str(Label("//tensorflow:with_xla_support")): ["@llvm-project//llvm:LICENSE.TXT"],
         "//conditions:default": [],
     })
 
@@ -90,5 +93,11 @@ def if_static_and_not_mobile(extra_deps, otherwise = []):
 def if_dynamic_kernels(extra_deps, otherwise = []):
     return select({
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
+        "//conditions:default": otherwise,
+    })
+
+def if_dynamic_pywrap(extra_deps, otherwise = []):
+    return select({
+        str(Label("//tensorflow:dynamic_pywrap")): extra_deps,
         "//conditions:default": otherwise,
     })

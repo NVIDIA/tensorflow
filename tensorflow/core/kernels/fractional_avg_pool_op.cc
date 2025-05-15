@@ -43,6 +43,12 @@ class FractionalAvgPoolOp : public OpKernel {
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
                 errors::InvalidArgument(
                     "pooling_ratio field must specify 4 dimensions"));
+    for (std::size_t i = 0; i < pooling_ratio_.size(); ++i) {
+      OP_REQUIRES(context, pooling_ratio_[i] >= 1,
+                  errors::InvalidArgument(
+                      "pooling_ratio cannot be smaller than 1, got: ",
+                      pooling_ratio_[i]));
+    }
     OP_REQUIRES(
         context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
         errors::Unimplemented("Fractional average pooling is not yet "
@@ -80,6 +86,12 @@ class FractionalAvgPoolOp : public OpKernel {
     std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
+      OP_REQUIRES(
+          context, input_size[i] >= pooling_ratio_[i],
+          errors::InvalidArgument("Pooling ratio is higher than input "
+                                  "dimension size for dimension ",
+                                  i, ". Input dim size: ", input_size[i],
+                                  " pooling ratio: ", pooling_ratio_[i]));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
@@ -254,6 +266,18 @@ class FractionalAvgPoolGradOp : public OpKernel {
     const int64 in_rows = orig_input_tensor_shape_flat(1);
     const int64 in_cols = orig_input_tensor_shape_flat(2);
     const int64 in_depth = orig_input_tensor_shape_flat(3);
+    OP_REQUIRES(
+        context, in_batch != 0,
+        errors::InvalidArgument("Batch dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_rows != 0,
+        errors::InvalidArgument("Rows dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_cols != 0,
+        errors::InvalidArgument("Columns dimension of input must not be 0"));
+    OP_REQUIRES(
+        context, in_depth != 0,
+        errors::InvalidArgument("Depth dimension of input must not be 0"));
 
     constexpr int tensor_in_and_out_dims = 4;
     // Transform orig_input_tensor_shape into TensorShape
@@ -285,12 +309,22 @@ class FractionalAvgPoolGradOp : public OpKernel {
         int64 in_row_end = overlapping_ ? row_seq_tensor_flat(r + 1)
                                         : row_seq_tensor_flat(r + 1) - 1;
         in_row_end = std::min(in_row_end, in_max_row_index);
+        OP_REQUIRES(context, in_row_start >= 0 && in_row_end >= 0,
+                    errors::InvalidArgument(
+                        "Row sequence tensor values must not be negative, got ",
+                        row_seq_tensor_flat));
+
         for (int64 c = 0; c < out_cols; ++c) {
           const int64 in_col_start = col_seq_tensor_flat(c);
           int64 in_col_end = overlapping_ ? col_seq_tensor_flat(c + 1)
                                           : col_seq_tensor_flat(c + 1) - 1;
           in_col_end = std::min(in_col_end, in_max_col_index);
 
+          OP_REQUIRES(
+              context, in_col_start >= 0 && in_col_end >= 0,
+              errors::InvalidArgument(
+                  "Column sequence tensor values must not be negative, got ",
+                  col_seq_tensor_flat));
           const int64 num_elements_in_pooling_cell =
               (in_row_end - in_row_start + 1) * (in_col_end - in_col_start + 1);
           const int64 out_index = (b * out_rows + r) * out_cols + c;

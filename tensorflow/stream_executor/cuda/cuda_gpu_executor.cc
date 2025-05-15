@@ -437,6 +437,107 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
       kernel_params, nullptr /* = extra */);
 }
 
+port::Status GpuExecutor::LaunchExecutableGraph(Stream* main_stream,
+                                                void* graph_exec) {
+  CUstream main_cuda_stream = AsGpuStreamValue(main_stream);
+  // stream_executor::gpu::GpuContext* gpu_context =
+  //     static_cast<stream_executor::gpu::GpuExecutor*>(
+  //         main_stream->parent()->implementation())
+  //         ->gpu_context();
+  auto& exec_graph =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Launching executable graph " << exec_graph << " on stream "
+          << main_cuda_stream;
+  bool launch_success = GpuDriver::LaunchExecutableGraph(
+      gpu_context(), exec_graph, main_cuda_stream);
+  if (!launch_success) {
+    return port::InternalError("Failed to launch CUDA execution graph");
+  }
+
+  return port::Status::OK();
+}
+
+port::Status GpuExecutor::BeginGraphCapture(Stream* capture_stream) {
+  CUstream capture_cuda_stream = AsGpuStreamValue(capture_stream);
+
+  VLOG(1) << "Beginning GPU graph capture on stream " << capture_cuda_stream;
+  // Note: Relaxed capture mode because we use a private stream and always
+  // re-capture the graph.
+  if (!GpuDriver::BeginGraphCaptureOnStream(
+          gpu_context(), capture_cuda_stream,
+          CU_STREAM_CAPTURE_MODE_THREAD_LOCAL  // ToDo (amoitra): Check
+                                               // implications
+                                               // (including any
+                                               // performance related)
+                                               // of using this
+          /*CU_STREAM_CAPTURE_MODE_RELAXED*/)) {
+    return port::InternalError("Failed to begin GPU stream capture");
+  }
+  return port::Status::OK();
+}
+
+port::StatusOr<void*> GpuExecutor::EndGraphCapture(Stream* capture_stream,
+                                                   void* graph) {
+  CUstream capture_cuda_stream = AsGpuStreamValue(capture_stream);
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  VLOG(1) << "End GPU graph capture for graph " << graph_handle << " on stream "
+          << capture_cuda_stream;
+  if (!GpuDriver::EndGraphCaptureOnStream(gpu_context(), capture_cuda_stream,
+                                          &graph_handle)) {
+    return port::InternalError("GPU stream capture failed");
+  }
+  return graph_handle;
+}
+
+port::StatusOr<void*> GpuExecutor::InstantiateGraph(void* graph,
+                                                    void* graph_exec) {
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  auto& exec_graph =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Instantiate graph " << graph_handle
+          << " returning executable graph " << exec_graph;
+  bool instantiate_success = GpuDriver::InstantiateExecutableGraph(
+      gpu_context(), graph_handle, &exec_graph);
+  if (!instantiate_success) {
+    return port::InternalError("Failed to instantiate GPU execution graph");
+  }
+  return exec_graph;
+}
+
+port::Status GpuExecutor::UpdateExecutableGraph(void* graph, void* graph_exec) {
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  auto& exec_graph =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Update executable graph " << exec_graph << " with graph "
+          << graph_handle << " for conetxt " << gpu_context();
+  if (!GpuDriver::UpdateExecutableGraph(gpu_context(), exec_graph,
+                                        graph_handle)) {
+    LOG(WARNING) << "Failed to update GPU executable graph";
+    GpuDriver::DestroyExecutableGraph(gpu_context(), &exec_graph);
+  }
+  return port::Status::OK();
+}
+
+void GpuExecutor::DestroyExecutableGraph(void* context, void* graph_exec) {
+  auto* gpu_context = static_cast<stream_executor::gpu::GpuContext*>(context);
+  auto* exec_graph =
+      reinterpret_cast<stream_executor::gpu::GpuGraphExecHandle*>(&graph_exec);
+  VLOG(1) << "Destroy executable graph " << exec_graph << " for context "
+          << gpu_context;
+  GpuDriver::DestroyExecutableGraph(gpu_context, exec_graph);
+}
+
+void GpuExecutor::DestroyGraph(void* context, void* graph) {
+  auto* gpu_context = static_cast<stream_executor::gpu::GpuContext*>(context);
+  auto& graph_handle =
+      *reinterpret_cast<stream_executor::gpu::GpuGraphHandle*>(&graph);
+  VLOG(1) << "Destroy graph " << graph_handle << " for context " << gpu_context;
+  GpuDriver::DestroyGraph(gpu_context, &graph_handle);
+}
+
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
@@ -518,8 +619,9 @@ int GpuExecutor::CompareOccupancy(int* initial_blocks,
   }
 }
 
-void* GpuExecutor::Allocate(uint64 size) {
-  return GpuDriver::DeviceAllocate(context_, size);
+DeviceMemoryBase GpuExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
 }
 
 void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
@@ -550,7 +652,8 @@ bool GpuExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(context_);
 }
 
-bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
+port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -560,8 +663,8 @@ bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
                                            0x0, size);
 }
 
-bool GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                    uint64 size) {
+port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // cudaMemset reinterprets "value" as a uint8.
@@ -594,8 +697,8 @@ port::Status GpuExecutor::SynchronousMemcpyDeviceToDevice(
                                          AsCudaDevicePtr(gpu_src), size);
 }
 
-bool GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                          uint64 size) {
+port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
+                                  uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return Memset32(stream, location, 0x0, size);
@@ -604,8 +707,8 @@ bool GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
   }
 }
 
-bool GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                         uint8 pattern, uint64 size) {
+port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
+                                 uint8 pattern, uint64 size) {
   VLOG(2) << "enqueueing memset8 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -614,8 +717,8 @@ bool GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                             AsGpuStreamValue(stream));
 }
 
-bool GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                           uint32 pattern, uint64 size) {
+port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
+                                   uint32 pattern, uint64 size) {
   VLOG(2) << "enqueueing memset32 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;

@@ -2,6 +2,7 @@
 
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
 
 package(
     default_visibility = [
@@ -362,14 +363,20 @@ tf_custom_op_library(
         "//tensorflow/contrib/boosted_trees/lib:node-stats",
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
+        "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
+        "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
+        "//tensorflow/contrib/boosted_trees/resources:stamped_resource",
+    ] + if_dynamic_pywrap([
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
+    ], otherwise = [
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
-        "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
-        "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
-        "//tensorflow/contrib/boosted_trees/resources:stamped_resource",
-    ],
+    ]),
 )
 
 # Split handler Ops.

@@ -4,6 +4,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(
+    ["graph_analyzer_tool.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "graph_analyzer_lib",
     srcs = [

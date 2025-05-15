@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
@@ -10,6 +10,7 @@ tf_kernel_library(
     srcs = [
         "aggregate_ops.cc",
         "arg_op.cc",
+        "async_io_ops.cc",
         "batch_matmul_op.cc",
         "batch_norm_op.cc",
         "batchtospace_op.cc",
@@ -132,6 +133,7 @@ tf_kernel_library(
         ":if_op",
         ":tensor_list_utils",
         ":while_op",
+        "//tensorflow/compiler/jit/kernels:async_io_rendezvous",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
         "//tensorflow/compiler/tf2xla:common",
@@ -148,7 +150,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -224,7 +226,7 @@ cc_library(
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
@@ -244,6 +246,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
@@ -265,7 +268,8 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

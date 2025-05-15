@@ -57,6 +57,13 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
     }
   }
 
+  for (std::size_t i = 0; i < pooling_ratio.size(); ++i) {
+    if (pooling_ratio[i] < 1) {
+      return errors::InvalidArgument(
+          "pooling_ratio cannot be smaller than 1, got: ", pooling_ratio[i]);
+    }
+  }
+
   c->set_output(0, c->MakeShape(output_dims));
   c->set_output(1, c->Vector(output_dims[1]));
   c->set_output(2, c->Vector(output_dims[2]));
@@ -216,7 +223,7 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
 
@@ -238,7 +245,7 @@ REGISTER_OP("_FusedBatchNormEx")
     .Attr("epsilon: float = 0.0001")
     .Attr("num_side_inputs: int >= 0 = 0")
     .Attr("activation_mode: string = \"Identity\"")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormExShape)
     .Doc(R"doc(
@@ -259,7 +266,7 @@ REGISTER_OP("FusedBatchNormGrad")
     .Output("reserve_space_4: T")
     .Attr("T: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 
@@ -296,7 +303,7 @@ REGISTER_OP("FusedBatchNormGradV3")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 // --------------------------------------------------------------------------

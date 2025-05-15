@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/cuda/cuda_helpers.h"
 
 namespace tensorflow {
 
@@ -55,8 +56,12 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(
   return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
 }
 
+template<typename T>
 void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result) {
+                   T* autotune_result) {
+  if (RedzoneCheckDisabled()) {
+    return;
+  }
   se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
@@ -75,7 +80,7 @@ void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
-    fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+    fail->set_kind(T::REDZONE_MODIFIED);
     fail->set_buffer_address(
         reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
     LOG(ERROR)
@@ -89,6 +94,14 @@ void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
     LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
+
+// explicit instantiation
+template void CheckRedzones<tensorflow::AutotuneResult>(
+    const se::cuda::RedzoneAllocator&, tensorflow::AutotuneResult*);
+
+template void CheckRedzones<tensorflow::AutotuneExecutionPlanResult>(
+    const se::cuda::RedzoneAllocator&,
+    tensorflow::AutotuneExecutionPlanResult* autotune_result);
 
 namespace {
 
@@ -117,20 +130,17 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
-}  // namespace
-
-void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
-                            se::dnn::DataType element_type,
-                            se::DeviceMemoryBase input_buffer,
-                            se::DeviceMemoryBase filter_buffer,
-                            se::DeviceMemoryBase output_buffer,
-                            const se::dnn::BatchDescriptor& input_desc,
-                            const se::dnn::FilterDescriptor& filter_desc,
-                            const se::dnn::BatchDescriptor& output_desc,
-                            const se::dnn::ConvolutionDescriptor& conv_desc,
-                            se::StreamExecutor* stream_exec,
-                            absl::Span<const AutotuneResult> results) {
-  AutotuningLog log;
+template<typename TResult, typename TLog>
+void LogConvAutotuneResultsImpl(se::dnn::ConvolutionKind kind,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    se::StreamExecutor* stream_exec,
+    absl::Span<const TResult> results) {
+  TLog log;
   {
     ConvolutionProto instr;
     instr.set_kind(kind);
@@ -160,6 +170,39 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *log.add_results() = result;
   }
   Logger::GetSingleton()->LogProto(log);
+}
+
+}  // namespace
+
+void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
+                            se::dnn::DataType element_type,
+                            se::DeviceMemoryBase input_buffer,
+                            se::DeviceMemoryBase filter_buffer,
+                            se::DeviceMemoryBase output_buffer,
+                            const se::dnn::BatchDescriptor& input_desc,
+                            const se::dnn::FilterDescriptor& filter_desc,
+                            const se::dnn::BatchDescriptor& output_desc,
+                            const se::dnn::ConvolutionDescriptor& conv_desc,
+                            se::StreamExecutor* stream_exec,
+                            absl::Span<const AutotuneResult> results) {
+  LogConvAutotuneResultsImpl<AutotuneResult, AutotuningLog>(
+      kind, element_type, input_buffer, filter_buffer, output_buffer,
+      input_desc, filter_desc, output_desc, conv_desc, stream_exec, results);
+}
+
+void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    se::StreamExecutor* stream_exec,
+    absl::Span<const AutotuneExecutionPlanResult> results) {
+  LogConvAutotuneResultsImpl<AutotuneExecutionPlanResult,
+                             AutotuningExecutionPlanLog>(
+      kind, element_type, input_buffer, filter_buffer, output_buffer,
+      input_desc, filter_desc, output_desc, conv_desc, stream_exec, results);
 }
 
 void LogFusedConvForwardAutotuneResults(
@@ -217,31 +260,60 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
   if (filtered_results.empty()) {
     return errors::NotFound("No algorithm worked!");
   }
+  std::vector<AutotuneResult> filtered_results_no_scratch;
+  absl::c_copy_if(
+      filtered_results, std::back_inserter(filtered_results_no_scratch),
+      [](const AutotuneResult& result) { return result.scratch_bytes() == 0; });
 
-  const auto best_result = absl::c_min_element(
-      filtered_results,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return proto_utils::FromDurationProto(lhs.run_time()) <
-               proto_utils::FromDurationProto(rhs.run_time());
-      });
-
-  const auto best_result_no_scratch = absl::c_min_element(
-      filtered_results,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return std::make_tuple(lhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(lhs.run_time())) <
-               std::make_tuple(rhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(rhs.run_time()));
-      });
-
-  algo->set_algorithm({best_result->conv().algorithm(),
-                       best_result->conv().tensor_ops_enabled()});
-  if (best_result_no_scratch != filtered_results.end() &&
-      best_result_no_scratch->scratch_bytes() == 0) {
-    algo->set_algorithm_no_scratch(
-        {best_result_no_scratch->conv().algorithm(),
-         best_result_no_scratch->conv().tensor_ops_enabled()});
+  auto selected_result = filtered_results.begin();
+  auto selected_result_no_scratch = filtered_results_no_scratch.begin();
+  if (!se::cuda::RequireCuDNNDeterminism()) {
+    auto compare_run_times = [](const AutotuneResult& lhs,
+                                const AutotuneResult& rhs) {
+      return proto_utils::FromDurationProto(lhs.run_time()) <
+             proto_utils::FromDurationProto(rhs.run_time());
+    };
+    selected_result = absl::c_min_element(filtered_results, compare_run_times);
+    selected_result_no_scratch = absl::c_min_element(
+        filtered_results_no_scratch, compare_run_times);
   }
+
+  algo->set_algorithm({selected_result->conv().algorithm(),
+                       selected_result->conv().tensor_ops_enabled()});
+  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
+    algo->set_algorithm_no_scratch(
+        {selected_result_no_scratch->conv().algorithm(),
+         selected_result_no_scratch->conv().tensor_ops_enabled()});
+  }
+
+  return Status::OK();
+}
+
+Status BestCudnnConvExecutionPlan(
+           absl::Span<const AutotuneExecutionPlanResult> results,
+           int* idx, int* idx_no_scratch) {
+  *idx = -1;
+  *idx_no_scratch = -1;
+  for (int i = 0; i < results.size(); i++) {
+    if (!results[i].has_failure()) {
+      if (*idx == -1 or
+          proto_utils::FromDurationProto(results[i].run_time()) <
+          proto_utils::FromDurationProto(results[*idx].run_time())) {
+        *idx = i;
+      }
+      if (results[i].scratch_bytes() == 0 and (*idx_no_scratch == -1 or
+          proto_utils::FromDurationProto(results[i].run_time()) <
+          proto_utils::FromDurationProto(
+              results[*idx_no_scratch].run_time()))) {
+        *idx_no_scratch = i;
+      }
+    }
+  }
+
+  if (*idx == -1 and *idx_no_scratch == -1) {
+    return errors::NotFound("No execution plan worked!");
+  }
+
   return Status::OK();
 }
 

@@ -218,7 +218,7 @@ struct scalar_left : private Binary {
   const Tin* left;
   TinPacket left_packet;  // initialized iff is_scalar_in_host_memory == true
 
-  EIGEN_DEVICE_FUNC inline scalar_left(const scalar_left& other) = default;
+  inline scalar_left(const scalar_left& other) = default;
 
   template <typename... Args>
   EIGEN_DEVICE_FUNC inline explicit scalar_left(const Tin* c, Args... args)
@@ -273,7 +273,7 @@ struct scalar_right : private Binary {
   const Tin* right;
   TinPacket right_packet;  // initialized iff is_scalar_in_host_memory == true
 
-  EIGEN_DEVICE_FUNC inline scalar_right(const scalar_right& other) = default;
+  inline scalar_right(const scalar_right& other) = default;
 
   template <typename... Args>
   EIGEN_DEVICE_FUNC inline explicit scalar_right(const Tin* c, Args... args)
@@ -895,10 +895,10 @@ template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
 template <typename T>
-struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+struct bessel_i0e : base<T, Eigen::internal::scalar_bessel_i0e_op<T>> {};
 
 template <typename T>
-struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
+struct bessel_i1e : base<T, Eigen::internal::scalar_bessel_i1e_op<T>> {};
 
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };

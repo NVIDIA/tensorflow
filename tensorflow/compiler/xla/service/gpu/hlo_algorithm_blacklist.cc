@@ -15,35 +15,37 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_blacklist.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 
-constexpr absl::string_view kDefaultBlacklist = R"pb(
+constexpr char kDefaultBlacklist[] = R"pb(
   entries {
-    hlo: "(f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(f16[256,224,224,4]{3,2,1,0}, f16[7,7,4,64]{2,1,0,3}), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
     cc { major: 7 }
-    cudnn_version { major: 7 minor: 6 patch: 2 }
+    cudnn_version { major: 7 minor: 6 patch: 4 }
+    algos { id: 7 }
     blas_version: "10201"
-    algos { id: 1 tensor_ops: true }
   }
   entries {
-    hlo: "(f16[7,7,4,64]{2,1,0,3}, u8[0]{0}) custom-call(f16[256,224,224,4]{3,2,1,0}, f16[256,112,112,64]{3,2,1,0}), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convBackwardFilter\", backend_config=\"{conv_result_scale:1}\""
+    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
     cc { major: 7 }
-    cudnn_version { major: 7 minor: 6 patch: 2 }
+    cudnn_version { major: 7 minor: 6 patch: 4 }
+    algos { id: 7 tensor_ops: true }
     blas_version: "10201"
-    algos { id: 1 tensor_ops: true }
-  })pb";
+  }
+)pb";
 
 absl::Span<const stream_executor::dnn::AlgorithmDesc>
 GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
                              tensorflow::CudnnVersion cudnn_version,
-                             absl::string_view blas_version,
-                             absl::string_view hlo) {
+                             const std::string& blas_version,
+                             const std::string& hlo) {
   // Key is the tuple of canonicalized hlo, compute capability major/minor,
   // cudnn version major/minor/patch, blas version.
   using MapType = absl::flat_hash_map<
@@ -76,8 +78,8 @@ GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
   }();
 
   auto iter = blacklist->find(std::make_tuple(
-      std::string(hlo), cc.major(), cc.minor(), cudnn_version.major(),
-      cudnn_version.minor(), cudnn_version.patch(), std::string(blas_version)));
+      hlo, cc.major(), cc.minor(), cudnn_version.major(), cudnn_version.minor(),
+      cudnn_version.patch(), std::string(blas_version)));
   if (iter != blacklist->end()) {
     return iter->second;
   }

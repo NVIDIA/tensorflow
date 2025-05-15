@@ -97,10 +97,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleSoftmax(HloInstruction* softmax) override;
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandleAsyncOutSend(HloInstruction* async_out_send) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -177,7 +179,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      HloInstruction* fusion) {
+      const HloInstruction* fusion) {
     return [=]() {
       std::vector<llvm_ir::IrArray> ir_arrays;
       ir_arrays.reserve(fusion->operand_count());

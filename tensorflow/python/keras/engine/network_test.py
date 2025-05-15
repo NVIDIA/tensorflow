@@ -36,11 +36,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
-try:
-  import yaml  # pylint:disable=g-import-not-at-top
-except ImportError:
-  yaml = None
-
 
 class NetworkConstructionTest(keras_parameterized.TestCase):
 
@@ -509,7 +504,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     out = _MultiOutput(name='out')(inp)
     model = keras.models.Model(inp, out)
     self.assertEqual(['out', 'out_1'], model.output_names)
-    self.assertAllClose([2., 3.], model(1.))
+    self.assertAllClose([[[2.]], [[3.]]], model.predict(np.ones(1)))
 
   @test_util.run_deprecated_v1
   def test_recursion(self):
@@ -642,10 +637,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       model.summary()
       json_str = model.to_json()
       keras.models.model_from_json(json_str)
-
-      if yaml is not None:
-        yaml_str = model.to_yaml()
-        keras.models.model_from_yaml(yaml_str)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_invalid_graphs(self):
@@ -1101,10 +1092,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     json_str = model.to_json()
     keras.models.model_from_json(json_str)
-
-    if yaml is not None:
-      yaml_str = model.to_yaml()
-      keras.models.model_from_yaml(yaml_str)
 
   def test_subclassed_error_if_init_not_called(self):
 

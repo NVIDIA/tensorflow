@@ -58,6 +58,12 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
+  // Integer convolution must use NHWC.
+  if (primitive_util::IsIntegralType(
+          instr->operand(0)->shape().element_type())) {
+    return kAllNHWC;
+  }
+
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
 
@@ -81,7 +87,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
   // which on paper gives good performance. However, there are two observations:
   // * a mixed layout combination is more cuDNN-bug prone, based on empirical
-  //   envidence.
+  //   evidence.
   // * we've also observed that for mixed layouts, cuDNN transposes data back
   //   and forth from a different layout combination. If we end up with
   //   transposes anyway, we prefer to have them in XLA, as they can be fused.
@@ -297,6 +303,14 @@ Status GpuLayoutAssignment::PropagateOperandConstraint(
     LayoutConstraints* constraints) {
   const HloInstruction* instruction = layout_constraint.instruction();
 
+  // cudnn softmax's result must have the same layout as its operand 0.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() == kCudnnSoftmaxCallTarget &&
+      layout_constraint.operand_no() == 0) {
+    TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+        layout_constraint.shape_layout().shape(), instruction));
+  }
+
   // cudnn batchnorm forward inference's result must have the same layout as its
   // operand 0.
   if (instruction->opcode() == HloOpcode::kCustomCall &&
@@ -353,6 +367,16 @@ Status GpuLayoutAssignment::PropagateBufferConstraint(
 
   Shape shape_with_layout = buf.shape();
   *shape_with_layout.mutable_layout() = buffer_constraint.layout();
+
+  // Propagate output constraints to the operands of cudnn softmax op.  This
+  // is the same as PropagateOperandConstraint, just in the other direction.  We
+  // need to both to fulfill our contract to LayoutAssignment.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() ==
+          kCudnnSoftmaxCallTarget) {
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        shape_with_layout, instruction, /*operand_no=*/0));
+  }
 
   // Propagate output constraints to the operands of cudnn batchnorm ops.  This
   // is the same as PropagateOperandConstraint, just in the other direction.  We

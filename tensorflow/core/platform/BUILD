@@ -141,6 +141,18 @@ cc_library(
 )
 
 cc_library(
+    name = "mutex",
+    textual_hdrs = [
+        "mutex.h",
+	"default/mutex.h",
+	"default/mutex_data.h",
+    ],
+    deps = [
+#        ":mutex_impl",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
     hdrs = ["rocm_rocdl_path.h"],
@@ -270,6 +282,21 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:base",
     ],
 )
+
+cc_library(
+    name = "tensor_float_32_utils",
+    srcs = ["tensor_float_32_utils.cc"],
+    hdrs = ["tensor_float_32_utils.h"],
+    copts = tf_copts(),
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "tensor_float_32_hdr",
+    srcs = ["tensor_float_32_utils.h"],
+)
+
+
 
 # --------------------------------------------------------------------------
 #     Below libraries are here only to make sure the legacy build rules
@@ -404,6 +431,7 @@ filegroup(
             "protobuf.cc",
             "stringprintf.cc",
             "str_util.cc",
+            "tensor_float_32_utils.cc"
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -515,4 +543,72 @@ exports_files(
             "stacktrace.h",
         ],
     ),
+)
+
+#############################
+# TF2/TF1 internal API Bridge
+#############################
+
+cc_library(
+    name = "blocking_counter",
+    hdrs = [
+        "blocking_counter.h",
+    ],
+    deps = [
+        ":logging",
+        ":mutex",
+	":thread_annotations",
+	"//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "dynamic_annotations",
+    hdrs = [
+        "dynamic_annotations.h",
+        "default/dynamic_annotations.h"
+    ],
+    deps = [
+        ":platform",
+    ], # + tf_platform_deps("dynamic_annotations"),
+)
+
+cc_library(
+    name = "numbers",
+    deps = [
+        "//tensorflow/core/lib/strings:string_utils",
+    ],
+)
+
+cc_library(
+    name = "platform_port",
+    deps = [
+        "//tensorflow/core:platform_port",
+    ]
+)
+
+cc_library(
+    name = "status",
+)
+
+cc_library(
+    name = "strcat",
+    hdrs = ["strcat.h"],
+    srcs = [
+         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
+         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "resource_loader",
+    hdrs = ["resource_loader.h"]
+)
+
+cc_library(
+    name = "test",
+    testonly = True,
 )

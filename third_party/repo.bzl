@@ -80,9 +80,10 @@ def _apply_delete(ctx, paths):
     _execute_and_check_ret_code(ctx, cmd)
 
 def _tf_http_archive(ctx):
-    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
+    if ("file:///" not in ctx.attr.urls[0] and
+        ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list()))):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -90,6 +91,15 @@ def _tf_http_archive(ctx):
              "someone will come along shortly thereafter and mirror the file.")
 
     use_syslib = _use_system_lib(ctx, ctx.attr.name)
+
+    # Work around the bazel bug that redownloads the whole library.
+    # Remove this after https://github.com/bazelbuild/bazel/issues/10515 is fixed.
+    if ctx.attr.additional_build_files:
+        for internal_src in ctx.attr.additional_build_files:
+            _ = ctx.path(Label(internal_src))
+
+    # End of workaround.
+
     if not use_syslib:
         ctx.download_and_extract(
             ctx.attr.urls,
@@ -121,11 +131,17 @@ def _tf_http_archive(ctx):
         for internal_src, external_dest in ctx.attr.system_link_files.items():
             ctx.symlink(Label(internal_src), ctx.path(external_dest))
 
+    if ctx.attr.additional_build_files:
+        for internal_src, external_dest in ctx.attr.additional_build_files.items():
+            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+
 tf_http_archive = repository_rule(
-    implementation = _tf_http_archive,
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "urls": attr.string_list(
+            mandatory = True,
+            allow_empty = False,
+        ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
@@ -133,11 +149,14 @@ tf_http_archive = repository_rule(
         "build_file": attr.label(),
         "system_build_file": attr.label(),
         "system_link_files": attr.string_dict(),
+        "additional_build_files": attr.string_dict(),
     },
     environ = [
         "TF_SYSTEM_LIBS",
     ],
+    implementation = _tf_http_archive,
 )
+
 """Downloads and creates Bazel repos for dependencies.
 
 This is a swappable replacement for both http_archive() and
@@ -202,10 +221,12 @@ def _third_party_http_archive(ctx):
 # For link_files, specify each dict entry as:
 # "//path/to/source:file": "localfile"
 third_party_http_archive = repository_rule(
-    implementation = _third_party_http_archive,
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "urls": attr.string_list(
+            mandatory = True,
+            allow_empty = False,
+        ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
@@ -218,4 +239,5 @@ third_party_http_archive = repository_rule(
     environ = [
         "TF_SYSTEM_LIBS",
     ],
+    implementation = _third_party_http_archive,
 )

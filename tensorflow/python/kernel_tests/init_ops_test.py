@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -537,6 +538,22 @@ class RangeTest(test.TestCase):
         math_ops.range(
             0, 0, 1, dtype=dtypes.float64).dtype, dtypes.float64)
 
+  def testLargeLimits(self):
+    # Test case for GitHub issue 46913.
+    with self.session():
+      with self.assertRaises(errors_impl.ResourceExhaustedError):
+        v = math_ops.range(0, 9223372036854775807)
+        self.evaluate(v)
+
+  def testLargeStarts(self):
+    # Test case for GitHub issue 46899.
+    with self.session():
+      # Different roundings on arm and x86 when signed integer arithmetic operations overflows.
+      with self.assertRaises((ValueError, errors_impl.InvalidArgumentError,
+                              errors_impl.ResourceExhaustedError)):
+        v = math_ops.range(start=-1e+38, limit=1)
+        self.evaluate(v)
+
 
 # TODO(vrv): move to sequence_ops_test?
 class LinSpaceTest(test.TestCase):
@@ -850,9 +867,12 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
     tol = 1e-5
     with self.session(use_gpu=True):
       for i in range(count):
-        x = variable_scope.get_variable("{}".format(i), shape=shape,
-                                        initializer=
-                                        init_ops.convolutional_orthogonal_1d)
+        # The convolutional_orthogonal_1d op will call matmul op on GPU,
+        # which might lead to deviated results with tf32.
+        with ops.device('/cpu:0'):
+          x = variable_scope.get_variable("{}".format(i), shape=shape,
+                                          initializer=
+                                          init_ops.convolutional_orthogonal_1d)
         x.initializer.run()
         y = np.sum(x.eval(), axis=0)
         determinant = np.linalg.det(y)
@@ -1070,9 +1090,12 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
     tol = 1e-5
     with self.session(use_gpu=True):
       for i in range(count):
-        x = variable_scope.get_variable("{}".format(i), shape=shape,
-                                        initializer=
-                                        init_ops.convolutional_orthogonal_3d)
+        # The convolutional_orthogonal_3d op will call the matmul op on GPU,
+        # which might lead to deviated results with tf32.
+        with ops.device('/cpu:0'):
+          x = variable_scope.get_variable("{}".format(i), shape=shape,
+                                          initializer=
+                                          init_ops.convolutional_orthogonal_3d)
         x.initializer.run()
         y = np.sum(x.eval(), axis=(0, 1, 2))
         determinant = np.linalg.det(y)

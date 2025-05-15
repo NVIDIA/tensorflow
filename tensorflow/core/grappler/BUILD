@@ -4,6 +4,19 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["grappler_item_builder.h"])
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "devices.h",
+        "grappler_item.h",
+        "grappler_item_builder.h",
+        "utils.h",
+    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
+)
+
 cc_library(
     name = "op_types",
     srcs = ["op_types.cc"],

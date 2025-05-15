@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -136,6 +136,7 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
     // tfcompile.
     const AttrValue* attr = node.attrs().Find("dtype");
     if (attr != nullptr && attr->type() == DT_STRING) {
+      VLOG(2) << "Rejecting " << node.name() << ": Const with STRING attribute.";
       return false;
     }
   }
@@ -147,8 +148,11 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
     VLOG(2) << "Rejecting " << node.name() << ": Identity with unsafe cast.";
     return false;
   }
-
-  return FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr).ok();
+  Status stat = FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
+  if (!stat.ok()) {
+    VLOG(3) << "Rejecting " << node.name() << ": Can't find a matching kernel. " << stat.error_message();
+  }
+  return stat.ok();
 }
 
 // Tests whether 'if_node' is compilable. Every operator in the then_branch and

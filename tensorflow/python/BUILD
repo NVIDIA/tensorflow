@@ -8,7 +8,6 @@ visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//tensorflow:internal",
-    "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
@@ -16,10 +15,10 @@ visibility = [
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
-    "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
 load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -50,7 +49,6 @@ py_library(
         "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/contrib/learn:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
@@ -162,7 +160,6 @@ py_library(
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:lite",
         "//tensorflow/python/compat",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/compiler",
@@ -4138,17 +4135,35 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "image_grad_deterministic_test",
+    size = "medium",
+    srcs = ["ops/image_grad_deterministic_test.py"],
+    additional_deps = [
+        ":image_grad_test_base",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "image_grad_test",
     size = "medium",
     srcs = ["ops/image_grad_test.py"],
     additional_deps = [
+        ":image_grad_test_base",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+py_library(
+    name = "image_grad_test_base",
+    srcs = ["ops/image_grad_test_base.py"],
+    deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":gradients",
         ":image_ops",
         "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -4581,6 +4596,16 @@ py_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_tensor_float_32_execution",
+    srcs = ["util/tensor_float_32.cc"],
+    hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
+    module_name = "_pywrap_tensor_float_32_execution",
+    deps = [
+        "@pybind11",
+    ]
+)
+
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
@@ -4612,6 +4637,7 @@ py_library(
     ],
     deps = [
         ":_tf_stack",
+        ":_pywrap_tensor_float_32_execution",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
@@ -4969,7 +4995,6 @@ tf_py_wrap_cc(
         "util/traceme.i",
         "util/transform_graph.i",
         "util/util.i",
-        "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
@@ -5018,7 +5043,6 @@ tf_py_wrap_cc(
         "//tensorflow/core/profiler/internal:python_traceme",
         "//tensorflow/core/profiler/internal:python_scoped_annotation",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
@@ -5538,15 +5562,22 @@ tf_py_test(
     name = "tf_record_multiprocessing_test",
     size = "small",
     srcs = ["lib/io/tf_record_multiprocessing_test.py"],
+    python_version = "PY3",
+    tags = [
+        # multiprocessing can be flaky in the internal google
+        # environment, so we disable it there.
+        "notap",
+        "no_oss_py38",
+        # The multiprocessing module behaves differently on
+        # windows, so we disable this test on windows.
+        "no_windows",
+    ],
     additional_deps = [
         ":client_testlib",
         ":errors",
         ":lib",
         ":util",
     ],
-    # The multiprocessing module behaves differently on windows, so we
-    # disable this test on windows.
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -6839,6 +6870,7 @@ cuda_py_test(
         ":constant_op",
         ":dtypes",
         ":math_ops",
+        ":mixed_precision",
         ":nn",
         ":ops",
         ":random_ops",
@@ -6854,6 +6886,7 @@ cuda_py_test(
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
 )
+
 
 tf_gen_op_wrapper_private_py(
     name = "nccl_ops_gen",

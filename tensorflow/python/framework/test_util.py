@@ -56,6 +56,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1564,14 +1565,14 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
-def use_deterministic_cudnn(func):
+def disable_cudnn_autotune(func):
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
   To ensure this, this decorator disables autotuning.
 
   Args:
-    func: Function to run with CUDNN autotuning turned off.
+    func: Function to run with CuDNN autotuning turned off.
 
   Returns:
     Decorated function.
@@ -1580,10 +1581,25 @@ def use_deterministic_cudnn(func):
   def decorator(f):
 
     def decorated(self, *args, **kwargs):
-      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
-      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = "--xla_gpu_autotune_level=0"
+      if original_xla_flags:
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+
       result = f(self, *args, **kwargs)
-      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+
+      if (original_tf_cudnn_use_autotune is None):
+        del os.environ["TF_CUDNN_USE_AUTOTUNE"]
+      else:
+        os.environ["TF_CUDNN_USE_AUTOTUNE"] = original_tf_cudnn_use_autotune
+      if (original_xla_flags is None):
+        del os.environ["XLA_FLAGS"]
+      else:
+        os.environ["XLA_FLAGS"] = original_xla_flags
+
       return result
 
     return decorated
@@ -1738,6 +1754,45 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
   return xla_allow_fallback_impl
 
 
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
@@ -1854,14 +1909,13 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     stream.flush()
     fd = stream.fileno()
-    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
-    tmp_file = open(tmp_file_path, "w")
+    tmp_file, tmp_file_path = tempfile.mkstemp(dir=self.get_temp_dir())
     orig_fd = os.dup(fd)
-    os.dup2(tmp_file.fileno(), fd)
+    os.dup2(tmp_file, fd)
     try:
       yield CapturedWrites(tmp_file_path)
     finally:
-      tmp_file.close()
+      os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):

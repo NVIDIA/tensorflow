@@ -2096,7 +2096,37 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     conv_layer = layer;
   }
   nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
-
+  // Add an extra padding for Deconv because TRT doesn't accept the
+  // argument output_shape and thus the TRT output shape could be wrong
+  // in case of strides>1.
+  if (is_conv2d_backprop_input) {
+    auto tf_output_shape =
+        static_cast<int*>(backprop_output_size.weights().GetValues());
+    nvinfer1::Dims trt_output_shape = output_tensor->getDimensions();
+    // What determines the padding size is the difference between the given
+    // input_sizes (tf_output_shape) and TRT computed size.
+    const int height_diff = tf_output_shape[h_index] - trt_output_shape.d[1];
+    const int width_diff = tf_output_shape[w_index] - trt_output_shape.d[2];
+    if ((height_diff < 0) || (width_diff < 0)) {
+      return errors::InvalidArgument(
+          "input_sizes argument of Conv2DBackprop (i.e. output_shape argument "
+          "of conv2d_transpose) ",
+          "is too small for the given out_backprop argument of Conv2DBackprop "
+          "(i.e. input argument of conv2d_transpose). Expect: ",
+          "(", tf_output_shape[h_index], ", ", tf_output_shape[w_index],
+          ") >= ", "(", trt_output_shape.d[1], ", ", trt_output_shape.d[2],
+          ") for op ", node_def.name());
+    }
+    // Only add a padding layer if padding sizes are larger than 0
+    if ((height_diff > 0) || (width_diff > 0)) {
+      nvinfer1::DimsHW pre_padding(0, 0);
+      nvinfer1::DimsHW post_padding(height_diff, width_diff);
+      nvinfer1::IPaddingLayer* padding_layer =
+          params->converter->network()->addPadding(*output_tensor, pre_padding,
+                                                   post_padding);
+      output_tensor = padding_layer->getOutput(0);
+    }
+  }
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
@@ -5162,13 +5192,13 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   TFAttrs attrs(node_def);
   bool share_location = (boxes_dims.d[1] == 1);
   const bool pad_per_class = attrs.get<bool>("pad_per_class");
-  int top_k;
+  const int top_k = boxes_dims.d[0];
+  int keep_top_k = 0;
   if (pad_per_class) {
-    top_k = std::min(max_size_per_class * num_classes, max_total_size);
+    keep_top_k = std::min(max_size_per_class * num_classes, max_total_size);
   } else {
-    top_k = max_total_size;
+    keep_top_k = max_total_size;
   }
-  const int keep_top_k = top_k;
   float score_thresh = *(static_cast<float*>(score_threshold.GetValues()));
   const int background_id = -1;
   nvinfer1::PluginField fields[8] = {
@@ -5211,6 +5241,18 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
       &plugin_inputs[0], static_cast<int>(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
+  // Set plugin outputs
+  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // TRT6 fixes (removes) the extra last dimension in CombinedNMS outputs
+  nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
+  nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
+  nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
+#else
+  nvinfer1::ITensor* output_num_detections = nullptr;
+  nvinfer1::ITensor* output_nmsed_scores = nullptr;
+  nvinfer1::ITensor* output_nmsed_classes = nullptr;
+
   auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
                                   nvinfer1::ITensor** out_tensor) {
     nvinfer1::Dims dims = in_tensor->getDimensions();
@@ -5224,18 +5266,13 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         /*validation_only=*/false, out_tensor));
     return Status::OK();
   };
-
-  // Set plugin outputs
-  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
-  nvinfer1::ITensor* output_nmsed_scores = nullptr;
-  nvinfer1::ITensor* output_nmsed_classes = nullptr;
-  nvinfer1::ITensor* output_num_detections = nullptr;
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(2), &output_nmsed_scores));
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(3), &output_nmsed_classes));
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(0), &output_num_detections));
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
@@ -5276,6 +5313,12 @@ Status ConvertResize(OpConverterParams* params) {
   // Verify resize mode. Initialize resize mode if supported.
   nvinfer1::ResizeMode resize_mode;
   if (node_def.op() == "ResizeBilinear") {
+#if IS_TRT_VERSION_GE(7, 1, 0, 0)
+    if (!align_corners) {
+      return errors::InvalidArgument(
+          "Cannot Convert Bilinear Resize when align_corners=False");
+    }
+#endif
     resize_mode = nvinfer1::ResizeMode::kLINEAR;
   } else if (node_def.op() == "ResizeNearestNeighbor") {
     resize_mode = nvinfer1::ResizeMode::kNEAREST;
@@ -5377,8 +5420,12 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
 #endif
+
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
+// TODO: @mconley @jdekhtiar - Removed when fixed
+#ifndef TF2TENSORRT_BYPASS_NMS_RESIZE_OPS
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
+#endif //TF2TENSORRT_BYPASS_NMS_RESIZE_OPS
 #endif
   (*registration)["AddN"] = ConvertAddN;
   (*registration)["ConcatV2"] = ConvertConcat;
@@ -5400,9 +5447,12 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   (*registration)["Conv3D"] = ConvertConv3D;
   (*registration)["Conv3DBackpropInputV2"] = ConvertConv3DBackpropInputV2;
+// TODO: @mconley @jdekhtiar - Removed when fixed
+#ifndef TF2TENSORRT_BYPASS_NMS_RESIZE_OPS
   for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
     (*registration)[resize_mode] = ConvertResize;
   }
+#endif // TF2TENSORRT_BYPASS_NMS_RESIZE_OPS
 #endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;

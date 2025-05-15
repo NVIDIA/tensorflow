@@ -44,7 +44,9 @@ cc_library(
         "png.h",
         "pngconf.h",
     ],
-    copts = select({
+    copts = [
+        "-DPNG_ARM_NEON_OPT=0",
+    ] + select({
         ":windows": ["-DPNG_INTEL_SSE_OPT=1"],
         "//conditions:default": [],
     }),
@@ -61,7 +63,7 @@ genrule(
     name = "snappy_stubs_public_h",
     srcs = ["scripts/pnglibconf.h.prebuilt"],
     outs = ["pnglibconf.h"],
-    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12b0/' $< >$@",
+    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12d0/' $< >$@",
 )
 
 config_setting(

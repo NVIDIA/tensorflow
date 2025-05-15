@@ -55,6 +55,9 @@ struct MarkForCompilationPassFlags {
   // Maximum number of operators in an XLA compilation.
   int32 tf_xla_max_cluster_size;
 
+  // If non-empty, limit XLA clustering to the following TF operations.
+  string tf_xla_ops_to_cluster;
+
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;
 
@@ -91,6 +94,9 @@ struct XlaOpsCommonFlags {
   // If true, _XlaCompile always refuses to compile the cluster, which means the
   // XLA clusters always run in the TF executor.  Defaults to false.
   bool tf_xla_always_defer_compilation;
+  // If true, _XlaCompile compiles the cluster asynchronously with respect to
+  // the main execution. The fall back path is taken while compilation happens
+  bool tf_xla_async_compilation;
 };
 
 // Flags for the build_xla_ops pass.
@@ -114,6 +120,11 @@ struct BuildXlaOpsPassFlags {
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
   bool tf_xla_disable_constant_folding;
+
+  // If 1, replaces retvals with _XlaAsyncOutSend and _XlaAsyncOutRecv
+  // for asynchronous outputs based on some heuristic. If 2, replaces all
+  // retvals with async outputs whenever legal. Off if 0.
+  int tf_xla_async_io_level;
 };
 
 // Flags for the IntroduceFloatingPointJitter pass.

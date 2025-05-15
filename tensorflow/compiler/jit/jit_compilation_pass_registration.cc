@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/jit/async_io_conversion_pass.h"
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
 #include "tensorflow/compiler/jit/clone_constants_for_better_clustering.h"
+#include "tensorflow/compiler/jit/cluster_scoping_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 #include "tensorflow/compiler/jit/increase_dynamism_for_auto_jit_pass.h"
@@ -50,6 +52,9 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 5,
                       CloneConstantsForBetterClusteringPass);
 
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 9,
+                      ClusterScopingPass);
+
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 10,
                       MarkForCompilationPass);
 
@@ -65,6 +70,11 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 30,
 // xla_activity_listener.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 40,
                       ReportClusteringInfoPass);
+
+// AsyncIoConversionPass must run before EncapsulateSubgraphsPass and after
+// all the clustering decisions have been made.
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 45,
+                      AsyncIoConversionPass);
 
 // The EncapsulateSubgraphs pass must run after the MarkForCompilationPass. We
 // also need to run it after the graph been rewritten to have _Send nodes added

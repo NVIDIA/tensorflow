@@ -31,8 +31,13 @@ namespace internal {
 
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
-string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
+string GetCudaRtVersion() { return TF_CUDART_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
+string GetCublasVersion() { return TF_CUBLAS_VERSION; }
+string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
+string GetCurandVersion() { return TF_CURAND_VERSION; }
+string GetCufftVersion() { return TF_CUFFT_VERSION; }
+string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
@@ -73,27 +78,27 @@ port::StatusOr<void*> GetCudaDriverDsoHandle() {
 }
 
 port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
-  return GetDsoHandle("cudart", GetCudaVersion());
+  return GetDsoHandle("cudart", GetCudaRtVersion());
 }
 
 port::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCudaLibVersion());
+  return GetDsoHandle("cublas", GetCublasVersion());
 }
 
 port::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCudaLibVersion());
+  return GetDsoHandle("cufft", GetCufftVersion());
 }
 
 port::StatusOr<void*> GetCusolverDsoHandle() {
-  return GetDsoHandle("cusolver", GetCudaLibVersion());
+  return GetDsoHandle("cusolver", GetCusolverVersion());
 }
 
 port::StatusOr<void*> GetCusparseDsoHandle() {
-  return GetDsoHandle("cusparse", GetCudaLibVersion());
+  return GetDsoHandle("cusparse", GetCusparseVersion());
 }
 
 port::StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCudaLibVersion());
+  return GetDsoHandle("curand", GetCurandVersion());
 }
 
 port::StatusOr<void*> GetCuptiDsoHandle() {

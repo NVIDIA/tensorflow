@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -80,36 +81,37 @@ string DumpModuleToString(const llvm::Module& module) {
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, AsArrayRef(operands));
+  return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
+                          llvm::IRBuilder<>* b, absl::string_view name) {
   if (b->getFastMathFlags().noNaNs()) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
     auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
     auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
+                          llvm::IRBuilder<>* b, absl::string_view name) {
   if (b->getFastMathFlags().noNaNs()) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
     auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
     auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
   }
 }
 
@@ -245,15 +247,6 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
   return b->CreateGlobalStringPtr(encoded_shape);
 }
 
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes) {
-  ShapeProto shape_proto;
-  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
-  Shape shape(shape_proto);
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return std::move(shape);
-}
-
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
@@ -295,7 +288,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(alignment);
+    alloca->setAlignment(llvm::MaybeAlign(alignment));
   }
   return alloca;
 }
@@ -355,12 +348,12 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
 
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilder<>* b) {
+                            llvm::IRBuilder<>* b, absl::string_view name) {
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
-    comparison_result = b->CreateICmp(predicate, lhs_value, rhs_value);
+    comparison_result = b->CreateICmp(predicate, lhs_value, rhs_value, name.data());
   } else {
-    comparison_result = b->CreateFCmp(predicate, lhs_value, rhs_value);
+    comparison_result = b->CreateFCmp(predicate, lhs_value, rhs_value, name.data());
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
@@ -588,7 +581,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
@@ -596,7 +589,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // this if we're dumping to stdout; there's no point in duplicating everything
   // when writing to the terminal.
   if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
 }
@@ -615,21 +608,12 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
-  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
-    function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-signed-zeros-fp-math", "true");
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
-      function->addFnAttr("no-nans-fp-math", "true");
-    }
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
-      function->addFnAttr("no-infs-fp-math", "true");
-    }
-    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
-      function->addFnAttr("reciprocal-estimates", "none");
-    }
-  }
+  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
+  // denormals is safe. This allows vectorization using ARM's neon instruction
+  // set.
+  function->addFnAttr("denormal-fp-math", "preserve-sign");
 
-  // Add the optize attribute to the function if optimizing for size. This
+  // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
   if (cpu::options::OptimizeForSizeRequested(module_config)) {

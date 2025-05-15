@@ -1,12 +1,25 @@
 # Description:
 # CLIF wrappers for TensorFlow SavedModels.
 
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_py_clif_cc")
-
+licenses(["notice"])  # Apache 2.0
+2025 COPYRIGHT (C) McCoy L Stevens 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_py_clif_cc")
 
 tf_py_clif_cc(
     name = "loader",

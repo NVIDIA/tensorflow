@@ -983,4 +983,96 @@ REGISTER_OP("CombinedNonMaxSuppression")
     .Attr("clip_boxes: bool = true")
     .SetShapeFn(CombinedNMSShapeFn);
 
+REGISTER_OP("BatchedNonMaxSuppression")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("box_counts: int32")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: T_threshold")
+    .Input("score_threshold: T_threshold")
+    .Output("selected_indices: int32")
+    .Output("selected_counts: int32")
+    .Attr("T: {float}")
+    .Attr("T_threshold: {float}")
+    .Attr("pad_to_max_output_size: bool = false")
+    .Attr("algorithm: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &boxes));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &scores));
+      ShapeHandle box_sizes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &box_sizes));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &max_output_size));
+      ShapeHandle overlap_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &overlap_threshold));
+      ShapeHandle score_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &score_threshold));
+      DimensionHandle unused;
+      // The boxes[1] and scores[1] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 1), c->Dim(scores, 1), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 2), 4, &unused));
+      if (c->ValueKnown(c->Dim(boxes, 0))) {
+        if (!(c->ValueKnown(c->Dim(scores, 0))&&
+                            c->ValueKnown(c->Dim(box_sizes, 0))) ||
+            (c->Value(c->Dim(box_sizes, 0)) != c->Value(c->Dim(boxes, 0)))) {
+          return errors::InvalidArgument(
+              "Batch size should be same for boxes,scores and box_sizes");
+        }
+      }
+      bool pad_to_max;
+      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      if (pad_to_max) {
+        // If padded, overwrite the shape of the output to be static.
+        DimensionHandle output_dim;
+        TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
+        c->set_output(0, c->MakeShape({c->Dim(boxes,0),output_dim}));
+      }
+      c->set_output(1, c->MakeShape({c->Dim(boxes,0)}));
+
+      return Status::OK();
+    });
+
+REGISTER_OP("GenerateBoundingBoxProposals")
+    .Input("scores: float")
+    .Input("bbox_deltas: float")
+    .Input("image_info: float")
+    .Input("anchors: float")
+    .Input("nms_threshold: float")
+    .Input("pre_nms_topn: int32")
+    .Input("min_size: float")
+    .Output("rois: float")
+    .Output("roi_probabilities: float")
+    .Attr("post_nms_topn: int = 300")
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      // make sure input tensors have are correct rank
+      ShapeHandle scores, images, bounding_boxes, anchors, nms_threshold,
+          n_pre_nms, min_box_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &scores));  //(N, H, W, A)
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(1), 4, &bounding_boxes));         //(N,H,W,A4)
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &images));  // (N,5)
+      auto im_info = c->Dim(images, 1);
+      TF_RETURN_IF_ERROR(c->WithValue(im_info, 5, &im_info));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &anchors));  // (A4)
+      // check scalar tensors
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &nms_threshold));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &n_pre_nms));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &min_box_size));
+
+      // TODO(skama): verify that the inputs are compatible
+      int post_nms_top_n;
+      TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));
+      auto roi_shape = c->MakeShape(
+          {c->Dim(scores, 0), post_nms_top_n, 4});  //(N,post_nms_top_n,4)
+      auto prob_shape = c->MakeShape(
+          {c->Dim(scores, 0), post_nms_top_n});  // (N,post_nms_top_n)
+      c->set_output(0, roi_shape);
+      c->set_output(1, prob_shape);
+      return Status::OK();
+    });
 }  // namespace tensorflow

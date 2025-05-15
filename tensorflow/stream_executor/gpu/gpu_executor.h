@@ -73,6 +73,21 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                       const BlockDim& block_dims, const KernelBase& k,
                       const KernelArgsArrayBase& args) override;
 
+  port::Status LaunchExecutableGraph(Stream* stream, void* exec_graph) override;
+
+  port::Status BeginGraphCapture(Stream* stream) override;
+
+  port::StatusOr<void*> EndGraphCapture(Stream* stream, void* graph) override;
+
+  port::StatusOr<void*> InstantiateGraph(void* graph,
+                                         void* graph_exec) override;
+
+  port::Status UpdateExecutableGraph(void* graph, void* graph_exec) override;
+
+  void DestroyExecutableGraph(void* context, void* exec_graph);
+
+  void DestroyGraph(void* context, void* graph);
+
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
                          uint64 registers_per_thread,
@@ -86,7 +101,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                        uint64 shared_memory_per_block,
                        const ThreadDim& thread_dims, GpuFunctionHandle func);
 
-  void* Allocate(uint64 size) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
 
   void* GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
                      uint64 size_bytes) override;
@@ -119,10 +134,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool SynchronizeAllActivity() override;
 
-  bool SynchronousMemZero(DeviceMemoryBase* location, uint64 size) override;
+  port::Status SynchronousMemZero(DeviceMemoryBase* location,
+                                  uint64 size) override;
 
-  bool SynchronousMemSet(DeviceMemoryBase* location, int value,
-                         uint64 size) override;
+  port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+                                 uint64 size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64 size) override;
@@ -135,12 +151,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                                                const DeviceMemoryBase& gpu_src,
                                                uint64 size) override;
 
-  bool MemZero(Stream* stream, DeviceMemoryBase* location,
-               uint64 size) override;
-  bool Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
-              uint64 size) override;
-  bool Memset32(Stream* stream, DeviceMemoryBase* location, uint32 pattern,
-                uint64 size) override;
+  port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
+                       uint64 size) override;
+  port::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
+                      uint64 size) override;
+  port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
+                        uint32 pattern, uint64 size) override;
 
   bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
               uint64 size) override;

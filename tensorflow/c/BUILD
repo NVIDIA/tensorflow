@@ -32,6 +32,18 @@ filegroup(
 )
 
 filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "c_api_internal.h",
+        "checkpoint_reader.h",
+        "tf_status_helper.h",
+        "tf_status_internal.h",
+        "tf_tensor_internal.h",
+    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
+)
+
+filegroup(
     name = "srcs",
     srcs = glob(
         [
@@ -629,11 +641,17 @@ tf_cc_test(
 tf_cuda_library(
     name = "python_api",
     srcs = ["python_api.cc"],
-    hdrs = ["python_api.h"],
+    hdrs = [
+        "python_api.h",
+        ":headers",
+        ":pywrap_required_hdrs",
+        "//tensorflow/core:protos_all_proto_text_hdrs",
+        "//tensorflow/core:pywrap_required_hdrs",
+    ],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
-        ":c_api",
-        ":c_api_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],

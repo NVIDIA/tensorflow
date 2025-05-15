@@ -33,6 +33,16 @@ limitations under the License.
 namespace stream_executor {
 namespace cuda {
 
+char* GetTFExtraPTXOptions() {
+  static bool fetched = false;
+  static char* env = nullptr;
+  if (!fetched) {
+    env = getenv("TF_EXTRA_PTXAS_OPTIONS");
+    fetched = true;
+  }
+  return env;
+}
+
 #if defined(PLATFORM_WINDOWS)
 port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
                                               const char* ptx_contents,
@@ -205,6 +215,17 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
   if (options.disable_ptxas_optimizations) {
     ptxas_args.push_back("-O0");
   }
+  char* extra_options = GetTFExtraPTXOptions();
+  if (extra_options) {
+    for (auto val: absl::StrSplit(extra_options, ' ')) {
+      ptxas_args.push_back(string(val));
+    }
+  }
+  ptxas_args.insert(ptxas_args.end(), options.extra_flags.begin(),
+		    options.extra_flags.end());
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << absl::StrJoin(ptxas_args, " ");
+  }
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);
@@ -215,10 +236,27 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   if (exit_status != 0) {
+    //  It happens when the ptxas installed is too old for the current GPU.
+    //  Example error message associated with this error code:
+    //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
+    // In that case, fallback to the driver for compilation
+    if (absl::StartsWith(stderr_output, "ptxas fatal   : Value '") &&
+	absl::EndsWith(stderr_output, "' is not defined for option 'gpu-name'")) {
+      LOG(WARNING) << "Your CUDA software stack is old. We fallback to the"
+		   << " NVIDIA driver for some compilation. Update your CUDA"
+		   << " version to get the best performance."
+		   << " The ptxas error was: " << stderr_output;
+      return tensorflow::errors::Unimplemented(
+          ptxas_path,
+	  " ptxas too old. Falling back to the driver to compile.");
+    }
+
     return port::InternalError(
         absl::StrFormat("ptxas exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
   }
+
+  VLOG(2) << stderr_output;
 
   // Read in the result of compilation and return it as a byte vector.
   string cubin;

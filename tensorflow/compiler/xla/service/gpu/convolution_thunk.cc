@@ -18,13 +18,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -57,9 +58,14 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  TF_RETURN_IF_ERROR(RunCudnnConv(cudnn_call_,
-                                  absl::MakeSpan(operand_se_buffers),
-                                  result_buffer, scratch, params.stream));
+  tensorflow::nvtx::ScopedRangeIfEnabled<tensorflow::nvtx::CoreDomain>
+      nvtx_range(cudnn_call_->metadata().op_type(), [&]() {
+        return tensorflow::nvtx::GetThunkExecutionRangeMessage(
+            cudnn_call_->GetModule()->name(),
+            cudnn_call_->metadata().op_name());
+      });
+  TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
+                                result_buffer, scratch, params.stream));
 
   // Write the output tuple.
   const int kNumOutputs = 2;

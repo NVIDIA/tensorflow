@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import numbers
+import os
 
 import numpy as np
 
@@ -133,7 +134,7 @@ def _non_atrous_convolution(
     input_shape = input.get_shape()
     filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     filter_shape = filter.get_shape()
-    op = _NonAtrousConvolution(
+    op = _Convolution(
         input_shape,
         filter_shape=filter_shape,
         padding=padding,
@@ -143,12 +144,14 @@ def _non_atrous_convolution(
     return op(input, filter)
 
 
-class _NonAtrousConvolution(object):
-  """Helper class for _non_atrous_convolution.
+class _Convolution(object):
+  """Helper class for conducting non_atrous convolution or atrous convolution.
 
   Note that this class assumes that shapes of input and filter passed to
   __call__ are compatible with input_shape and filter_shape passed to the
   constructor.
+  
+  Note Atrous convolution with 3D convolutions might meet "no algorithm worked".
 
   Arguments:
     input_shape: static input shape, i.e. input.get_shape().
@@ -156,6 +159,8 @@ class _NonAtrousConvolution(object):
     padding: see _non_atrous_convolution.
     data_format: see _non_atrous_convolution.
     strides: see _non_atrous_convolution.
+    dilation_rate: Dilation rate. List of N ints >= 1. N is space dim. Defaults
+      to [1]*N.  
     name: see _non_atrous_convolution.
   """
 
@@ -166,6 +171,7 @@ class _NonAtrousConvolution(object):
       padding,
       data_format=None,
       strides=None,
+      dilation_rate=None,
       name=None):
     filter_shape = filter_shape.with_rank(input_shape.ndims)
     self.padding = padding
@@ -182,6 +188,8 @@ class _NonAtrousConvolution(object):
     elif len(strides) != conv_dims:
       raise ValueError("len(strides)=%d, but should be %d" % (len(strides),
                                                               conv_dims))
+    self.dilations = dilation_rate
+
     if conv_dims == 1:
       # conv1d uses the 2-d data format names
       if data_format is None:
@@ -210,6 +218,9 @@ class _NonAtrousConvolution(object):
       else:
         raise ValueError("data_format must be \"NDHWC\" or \"NCDHW\". Have: %s"
                          % data_format)
+      channel_index = 1 if data_format.startswith("NC") else 4
+      self.dilations = _get_sequence(dilation_rate, 3, channel_index,
+                                     "dilations")
       self.strides = strides
       self.data_format = data_format
       self.conv_op = gen_nn_ops.conv3d
@@ -217,13 +228,15 @@ class _NonAtrousConvolution(object):
   # Note that we need this adapter since argument names for conv1d don't match
   # those for gen_nn_ops.conv2d and gen_nn_ops.conv3d.
   # pylint: disable=redefined-builtin
-  def _conv1d(self, input, filter, strides, padding, data_format, name):
+  def _conv1d(self, input, filter, strides, padding, data_format, dilations,
+              name):
     return conv1d(
         value=input,
         filters=filter,
         stride=strides,
         padding=padding,
         data_format=data_format,
+        dilations=dilations,
         name=name)
 
   # pylint: enable=redefined-builtin
@@ -235,6 +248,7 @@ class _NonAtrousConvolution(object):
         strides=self.strides,
         padding=self.padding,
         data_format=self.data_format,
+        dilations=self.dilations,
         name=self.name)
 
 
@@ -508,7 +522,8 @@ class _WithSpaceToBatch(object):
                build_op,
                filter_shape=None,
                spatial_dims=None,
-               data_format=None):
+               data_format=None,
+               fused=False):
     """Helper class for _with_space_to_batch."""
     dilation_rate = ops.convert_to_tensor(
         dilation_rate, dtypes.int32, name="dilation_rate")
@@ -550,11 +565,19 @@ class _WithSpaceToBatch(object):
 
     const_rate = tensor_util.constant_value(dilation_rate)
     rate_or_const_rate = dilation_rate
+    can_use_fused = False
+    if input_shape.ndims is not None:
+      conv_dims = input_shape.ndims - 2
+      can_use_fused = fused and conv_dims <= 2
     if const_rate is not None:
       rate_or_const_rate = const_rate
       if np.any(const_rate < 1):
         raise ValueError("dilation_rate must be positive")
-      if np.all(const_rate == 1):
+      # We call CUDNN convolutions when dealing with convolutions with 1D/2D
+      # space + dilation or convolutions with no dilation. CUDNN is not used for
+      # 3D convolutions with dilation because that would result in "no algorithm
+      # worked" errors from CUDNN.
+      if can_use_fused or np.all(const_rate == 1):
         self.call = build_op(num_spatial_dims, padding)
         return
 
@@ -1050,7 +1073,8 @@ class Convolution(object):
                strides=None,
                dilation_rate=None,
                name=None,
-               data_format=None):
+               data_format=None,
+               fused=False):
     """Helper function for convolution."""
     num_total_dims = filter_shape.ndims
     if num_total_dims is None:
@@ -1097,22 +1121,40 @@ class Convolution(object):
     self.padding = padding
     self.name = name
     self.dilation_rate = dilation_rate
+    # We call CUDNN convolutions when dealing with convolutions with 1D/2D
+    # space + dilation or convolutions with no dilation. CUDNN is not used for
+    # 3D convolutions with dilation because that would result in "no algorithm
+    # worked" errors from CUDNN.
+    conv_dims = input_shape.ndims - 2
+    build_op = (self._build_op_atrous if fused and conv_dims <= 2 else
+                self._build_op_non_atrous)
     self.conv_op = _WithSpaceToBatch(
         input_shape,
         dilation_rate=dilation_rate,
         padding=padding,
-        build_op=self._build_op,
+        build_op=build_op,
         filter_shape=filter_shape,
         spatial_dims=spatial_dims,
-        data_format=data_format)
+        data_format=data_format,
+        fused=fused)
 
-  def _build_op(self, _, padding):
-    return _NonAtrousConvolution(
+  def _build_op_non_atrous(self, _, padding):
+    return _Convolution(
         self.input_shape,
         filter_shape=self.filter_shape,
         padding=padding,
         data_format=self.data_format,
         strides=self.strides,
+        name=self.name)
+
+  def _build_op_atrous(self, _, padding):
+    return _Convolution(
+        self.input_shape,
+        filter_shape=self.filter_shape,
+        padding=padding,
+        data_format=self.data_format,
+        strides=self.strides,
+        dilation_rate=self.dilation_rate,
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
@@ -2682,6 +2724,18 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
         name=name)
 
 
+def _tf_deterministic_ops():
+  if _tf_deterministic_ops.value is None:
+    tf_deterministic_ops = os.environ.get('TF_DETERMINISTIC_OPS')
+    if tf_deterministic_ops is not None:
+      tf_deterministic_ops = tf_deterministic_ops.lower()
+    _tf_deterministic_ops.value = (
+        tf_deterministic_ops == 'true' or
+        tf_deterministic_ops == '1')
+  return _tf_deterministic_ops.value
+_tf_deterministic_ops.value = None
+
+
 @tf_export("nn.bias_add")
 def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
@@ -2697,11 +2751,19 @@ def bias_add(value, bias, data_format=None, name=None):
     bias: A 1-D `Tensor` with size matching the channel dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
-    data_format: A string. 'N...C' and 'NC...' are supported.
+    data_format: A string. 'N...C' and 'NC...' are supported. If `None` (the
+      default) is specified then 'N..C' is assumed.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError if data format is unrecognized, if `value` has less than two
+    dimensions when `data_format` is 'N..C'/`None` or `value` has less
+    then three dimensions when `data_format` is `NC..`, if `bias` does not
+    have exactly one dimension (is a vector), or if the size of `bias`
+    does not match the size of the channel dimension of `value`.
   """
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
     if data_format is not None:
@@ -2715,7 +2777,25 @@ def bias_add(value, bias, data_format=None, name=None):
     if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
+
+    # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
+    #   level.
+    if _tf_deterministic_ops():
+      # Note that this code does not implement the same error checks as the
+      # pre-existing C++ ops.
+      if data_format == 'NCHW':
+        broadcast_shape_head = [1, array_ops.size(bias)]
+        broadcast_shape_tail = array_ops.ones(array_ops.rank(value) - 2,
+                                              dtype=dtypes.int32)
+        broadcast_shape = array_ops.concat(
+            [broadcast_shape_head, broadcast_shape_tail], 0)
+        return math_ops.add(
+            value, array_ops.reshape(bias, broadcast_shape), name=name)
+      else: # data_format == 'NHWC' or data_format == None
+        return math_ops.add(value, bias, name=name)
+    else:
+      return gen_nn_ops.bias_add(value, bias, data_format=data_format,
+                                 name=name)
 
 
 def bias_add_v1(value, bias, name=None):

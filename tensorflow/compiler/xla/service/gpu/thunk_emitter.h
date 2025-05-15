@@ -17,18 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
 
 // Implements handling of GPU execution for HLO operations that are handed off
-// to specialzied thunks that do not require code generation. Intended to be
+// to specialized thunks that do not require code generation. Intended to be
 // mixed into GPU emitters.
 class ThunkEmitter {
  public:
@@ -38,7 +35,7 @@ class ThunkEmitter {
     virtual StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
         const HloInstruction& hlo, const ShapeIndex& index) const = 0;
     virtual int64 ByteSizeOf(const Shape& shape) const = 0;
-    virtual const se::Platform* platform() const = 0;
+    virtual absl::string_view platform_name() const = 0;
 
     virtual ~EmissionContext() = default;
   };
@@ -50,6 +47,7 @@ class ThunkEmitter {
   Status HandleTriangularSolve(HloInstruction* hlo);
   Status HandleInfeed(HloInstruction* xla_infeed);
   Status HandleOutfeed(HloInstruction* outfeed);
+  Status HandleAsyncOutSend(HloInstruction* async_out_sen);
 
  private:
   EmissionContext* context_;
@@ -65,7 +63,7 @@ class ThunkEmitter {
 
   int64 ByteSizeOf(const Shape& shape) { return context_->ByteSizeOf(shape); }
 
-  const se::Platform* platform() const { return context_->platform(); }
+  absl::string_view platform_name() const { return context_->platform_name(); }
 
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
@@ -92,6 +90,10 @@ class ThunkEmitter {
   // Returns an OutfeedThunk that performs a device-to-host memcpy to implement
   // `inst`.
   std::unique_ptr<Thunk> BuildOutfeedThunk(const HloInstruction* inst);
+
+  // Returns an AsyncOutSendThunk that carries out asynchronous send via
+  // Rendezvous mechanism
+  std::unique_ptr<Thunk> BuildAsyncOutSendThunk(const HloInstruction* inst);
 };
 
 }  // namespace gpu

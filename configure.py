@@ -64,10 +64,7 @@ APPLE_BAZEL_FILES = [
 ]
 
 # List of files to move when building for iOS.
-IOS_FILES = [
-    'tensorflow/lite/experimental/objc/TensorFlowLiteObjC.podspec',
-    'tensorflow/lite/experimental/swift/TensorFlowLiteSwift.podspec',
-]
+IOS_FILES = []
 
 
 class UserInputError(Exception):
@@ -394,11 +391,6 @@ def set_build_var(environ_cp,
     write_to_bazelrc('build:%s --define %s=true' %
                      (bazel_config_name, option_name))
     write_to_bazelrc('build --config=%s' % bazel_config_name)
-  elif bazel_config_name is not None:
-    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
-    # options and not to set build configs through environment variables.
-    write_to_bazelrc('build:%s --define %s=true' %
-                     (bazel_config_name, option_name))
 
 
 def set_action_env_var(environ_cp,
@@ -529,10 +521,10 @@ def set_cc_opt_flags(environ_cp):
   cc_opt_flags = get_from_env_or_user_or_default(environ_cp, 'CC_OPT_FLAGS',
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
-    write_to_bazelrc('build:opt --copt=%s' % opt)
+    write_to_bazelrc('build --copt=%s' % opt)
   # It should be safe on the same build host.
-  if not is_ppc64le() and not is_windows():
-    write_to_bazelrc('build:opt --host_copt=-march=native')
+  # if not is_ppc64le() and not is_windows():
+  #   write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
 
 
@@ -1455,6 +1447,8 @@ def main():
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
 
+  write_action_env_to_bazelrc("TF_USE_CCACHE",
+                              environ_cp.get('TF_USE_CCACHE', '0'))
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
@@ -1597,6 +1591,15 @@ def main():
   config_info_line('nokafka', 'Disable Apache Kafka support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
+  print('Preconfigured Bazel build configs to DISABLE default on features:')
+  config_info_line('noaws', 'Disable AWS S3 filesystem support.')
+  config_info_line('nogcp', 'Disable GCP support.')
+  config_info_line('nohdfs', 'Disable HDFS support.')
+  config_info_line('noignite', 'Disable Apacha Ignite support.')
+  config_info_line('nokafka', 'Disable Apache Kafka support.')
+  config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
+
 
 if __name__ == '__main__':
   main()
+

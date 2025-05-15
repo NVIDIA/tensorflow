@@ -245,30 +245,33 @@ class GpuDriver {
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD8.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g6e582bf866e9e2fb014297bfaf354d7b
-  static bool SynchronousMemsetUint8(GpuContext* context, GpuDevicePtr location,
-                                     uint8 value, size_t size);
+  static port::Status SynchronousMemsetUint8(GpuContext* context,
+                                             GpuDevicePtr location, uint8 value,
+                                             size_t size);
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD32.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g983e8d8759acd1b64326317481fbf132
-  static bool SynchronousMemsetUint32(GpuContext* context,
-                                      GpuDevicePtr location, uint32 value,
-                                      size_t uint32_count);
+  static port::Status SynchronousMemsetUint32(GpuContext* context,
+                                              GpuDevicePtr location,
+                                              uint32 value,
+                                              size_t uint32_count);
 
   // Performs an asynchronous memset of the device memory segment via
   // cuMemsetD8Async.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gaef08a7ccd61112f94e82f2b30d43627
-  static bool AsynchronousMemsetUint8(GpuContext* context,
-                                      GpuDevicePtr location, uint8 value,
-                                      size_t uint32_count,
-                                      GpuStreamHandle stream);
+  static port::Status AsynchronousMemsetUint8(GpuContext* context,
+                                              GpuDevicePtr location,
+                                              uint8 value, size_t uint32_count,
+                                              GpuStreamHandle stream);
 
   // Performs an asynchronous memset of the device memory segment via
   // cuMemsetD32Async.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g58229da5d30f1c0cdf667b320ec2c0f5
-  static bool AsynchronousMemsetUint32(GpuContext* context,
-                                       GpuDevicePtr location, uint32 value,
-                                       size_t uint32_count,
-                                       GpuStreamHandle stream);
+  static port::Status AsynchronousMemsetUint32(GpuContext* context,
+                                               GpuDevicePtr location,
+                                               uint32 value,
+                                               size_t uint32_count,
+                                               GpuStreamHandle stream);
 
   // -- Synchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
@@ -482,6 +485,53 @@ class GpuDriver {
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VERSION.html#group__CUDA__VERSION_1g8b7a10395392e049006e61bcdc8ebe71
   static bool GetDriverVersion(int* driver_version);
+
+  // -- Graph calls.
+
+  // Begins graph capture on a stream associated with the given context.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g767167da0bbf07157dc20b6c258a2143
+  static bool BeginGraphCaptureOnStream(GpuContext* context,
+                                        GpuStreamHandle stream,
+                                        GpuStreamCaptureMode mode);
+
+  // Ends capture on a stream associated with a given context,
+  // returning the captured graph.
+  // graph is an outparam owned by the caller, must not be null.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g03dab8b2ba76b00718955177a929970c
+  static bool EndGraphCaptureOnStream(GpuContext* context,
+                                      GpuStreamHandle stream,
+                                      GpuGraphHandle* graph);
+
+  // Destroys a CUDA graph associated with the given context.
+  // graph is owned by the caller, must not be null, and *graph is set to null
+  // if the graph is successfully destroyed.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g718cfd9681f078693d4be2426fd689c8
+  static void DestroyGraph(GpuContext* context, GpuGraphHandle* graph);
+
+  // Creates an executable graph from a graph associated with the given context.
+  // graph_exec is an outparam owned by the caller, must not be null.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g433ae118a751c9f2087f53d7add7bc2c
+  static bool InstantiateExecutableGraph(GpuContext* context,
+                                         GpuGraphHandle graph,
+                                         GpuGraphExecHandle* graph_exec);
+
+  // Updates an executable graph from a graph associated with the given context.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g7ed3fc6c880ddf8ba571b93f3a6abd87
+  static bool UpdateExecutableGraph(GpuContext* context,
+                                    GpuGraphExecHandle graph_exec,
+                                    GpuGraphHandle graph);
+
+  // Launches an executable graph in a stream.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g6b2dceb3901e71a390d2bd8b0491e471
+  static bool LaunchExecutableGraph(GpuContext* context,
+                                    GpuGraphExecHandle graph_exec,
+                                    GpuStreamHandle stream);
+
+  // Destroys an executable graph associated with the given context.
+  // graph_exec is owned by the caller, must not be null, and *graph_exec is set
+  // to null if the graph is successfully destroyed.
+  static void DestroyExecutableGraph(GpuContext* context,
+                                     GpuGraphExecHandle* graph_exec);
 
   // -- Other calls
 

@@ -51,11 +51,18 @@ namespace gpu {
 //
 // The GPU backend does not implement a lowering for the batchnorm HLOs -- it
 // expects them to be lowered to cudnn calls via this pass or to HLO soup via
-// BatchNormRewriter.
+// BatchNormExpander.
 class CudnnBatchNormRewriter : public HloModulePass {
  public:
+  CudnnBatchNormRewriter(se::StreamExecutor* stream_exec,
+                         se::DeviceMemoryAllocator* allocator)
+      : stream_exec_(stream_exec), allocator_(allocator) {}
   absl::string_view name() const override { return "cudnn_batchnorm_rewriter"; }
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  se::StreamExecutor* stream_exec_;       // never null
+  se::DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu

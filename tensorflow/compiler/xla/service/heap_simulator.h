@@ -57,14 +57,24 @@ class HeapSimulator {
     int64 size;
 
     int64 chunk_end() const { return offset + size; }
+
+    bool OverlapsWith(Chunk other_chunk) const;
   };
 
-  // Result represents the result of the heap simulation.
-  struct Result {
+  struct HeapResult {
     // The assignment of buffers to chunks.
     absl::flat_hash_map<const HloValue*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
+    int64 heap_size = 0;
+  };
+  // Result represents the result of the heap simulation.
+  struct Result {
+    // Heap results.
+    std::vector<HeapResult> heap_results;
+
+    // The total size in bytes of the heaps.
+    // heap_size = sum([hr.heap_size for hr in heap_results]).
     int64 heap_size = 0;
 
     // The total size in bytes of heap fragmentation.
@@ -218,6 +228,7 @@ class HeapAlgorithm {
  public:
   using Chunk = HeapSimulator::Chunk;
   using Result = HeapSimulator::Result;
+  using HeapResult = HeapSimulator::HeapResult;
 
   virtual ~HeapAlgorithm() = default;
 
@@ -254,25 +265,9 @@ class HeapAlgorithm {
     Alloc(buffer, size);
   }
 
-  // Finish collects the buffer offset assignment results.  Free may only be
-  // called once, after the Alloc and Free calls.
+  // Finish collects the buffer offset assignment results.  Finish may only be
+  // called once, after all Alloc and Free calls.
   virtual Result Finish() = 0;
-
-  // Heap algorithms can optionally make use of the instruction/computation
-  // schedule. These data structures are guaranteed to be valid while Finish()
-  // is being called.
-  virtual void SetSchedules(
-      const HloInstructionSequence* flattened_instruction_sequence,
-      const absl::flat_hash_map<const HloInstruction*, int64>*
-          instruction_schedule) {
-    flattened_instruction_sequence_ = flattened_instruction_sequence;
-    instruction_schedule_ = instruction_schedule;
-  }
-
- protected:
-  const HloInstructionSequence* flattened_instruction_sequence_;
-  const absl::flat_hash_map<const HloInstruction*, int64>*
-      instruction_schedule_;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;
@@ -300,6 +295,47 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
   int64 max_heap_size_ = 0;
 };
 
+// Node in BufferIntervalTree that stores the alloc and free times of a buffer,
+// and the chunk assigned to it.
+struct BufferIntervalTreeNode {
+  // Alloc time.
+  int64 start;
+  // Free time.
+  int64 end;
+  // Maximum free time of all nodes in the subtree where this node is the root.
+  int64 subtree_end;
+  // Allocated chunk for the buffer.
+  HeapSimulator::Chunk chunk;
+  // Left child.
+  BufferIntervalTreeNode* left;
+  // Right child.
+  BufferIntervalTreeNode* right;
+  // parent
+  BufferIntervalTreeNode* parent;
+};
+
+// An interval tree that can query buffers overlapping in time.
+class BufferIntervalTree {
+ public:
+  using Chunk = HeapSimulator::Chunk;
+  // Adds a buffer to the interval tree, with the time interval and allocated
+  // chunk specified.
+  void Add(int64 start, int64 end, const Chunk& chunk);
+
+  // Remove the interval from the tree. Returns true if the chunk is removed.
+  bool Remove(int64 start, int64 end, const Chunk& chunk);
+
+  // Returns vector of allocated chunks that overlap with the given time
+  // interval.
+  std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
+
+  BufferIntervalTreeNode* GetRoot() { return root_; }
+
+ private:
+  BufferIntervalTreeNode* root_ = nullptr;
+  std::list<BufferIntervalTreeNode> node_storage_;
+};
+
 // GlobalDecreasingSizeBestFitHeap collects the live intervals of all buffers,
 // then allocates them in decreasing spatial or temporal size regardless of the
 // alloc/free time. It internally tracks the allocated buffers and their live
@@ -312,20 +348,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     kTemporal,
   };
 
-  explicit GlobalDecreasingSizeBestFitHeap(int64 alignment,
-                                           Type type = kSpatial)
-      : alignment_(alignment), type_(type) {}
-  ~GlobalDecreasingSizeBestFitHeap() override {}
-
-  void Alloc(const HloValue* buffer, int64 size) override;
-  void Free(const HloValue* buffer, int64 size) override;
-
-  void ShareWith(const HloValue* buffer, const HloValue* share_with,
-                 int64 size) override;
-
-  Result Finish() override;
-
- protected:
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
     const HloValue* buffer;
@@ -343,39 +365,27 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     bool need_allocation;
   };
 
-  // Node in BufferIntervalTree that stores the alloc and free times of a
-  // buffer, and the chunk assigned to it.
-  struct BufferIntervalTreeNode {
-    // Alloc time.
-    int64 start;
-    // Free time.
-    int64 end;
-    // Maximum free time of all nodes in the subtree where this node is the
-    // root.
-    int64 subtree_end;
-    // Allocated chunk for the buffer.
-    HeapSimulator::Chunk chunk;
-    // Left child.
-    BufferIntervalTreeNode* left;
-    // Right child.
-    BufferIntervalTreeNode* right;
-  };
+  // Comparison function that is used to store buffer intervals.
+  using BufferIntervalCompare =
+      std::function<bool(const BufferInterval&, const BufferInterval&)>;
 
-  // An interval tree that can query buffers overlapping in time.
-  class BufferIntervalTree {
-   public:
-    // Adds a buffer to the interval tree, with the time interval and allocated
-    // chunk specified.
-    void Add(int64 start, int64 end, const Chunk& chunk);
+  explicit GlobalDecreasingSizeBestFitHeap(int64 alignment,
+                                           Type type = kSpatial);
+  ~GlobalDecreasingSizeBestFitHeap() override {}
 
-    // Returns vector of allocated chunks that overlap with the given time
-    // interval.
-    std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
+  void Alloc(const HloValue* buffer, int64 size) override;
+  void Free(const HloValue* buffer, int64 size) override;
 
-   private:
-    std::list<BufferIntervalTreeNode> node_storage_;
-  };
+  void ShareWith(const HloValue* buffer, const HloValue* share_with,
+                 int64 size) override;
 
+  Result Finish() override;
+
+  // Return a BufferIntervalCompare function that sort by spatial size. We don't
+  // look at co-locates as they should have the same size.
+  static BufferIntervalCompare GetSpatialBufferIntervalCompare();
+
+ protected:
   // The candidate contains a chunk and the resultant heap size if this
   // chunk is to be committed.
   struct ChunkCandidate {
@@ -383,7 +393,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     int64 heap_size;
   };
 
-  // Returns the buffer intervals sorted according to type_.
+  // Returns the buffer intervals sorted according to buffer_interval_compare_.
   std::vector<BufferInterval> GetSortedBufferIntervals() const;
 
   // These two methods below are exposed to other heap algorithms that inherit
@@ -398,27 +408,52 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
                                     int64 preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval,
                    ChunkCandidate chunk_candidate);
+
   // Adds the buffer and the chunk to the result chunk map.
   virtual void AddToChunkMap(const HloValue* buffer, Chunk chunk);
 
+  // Return a BufferIntervalCompare function that sorts by live ranges.  A live
+  // range is defined by the range between the start of the first buffer and the
+  // end of the last co-located buffer.  There could be "holes" in the live
+  // ranges of each co-located buffers, but in this heuristics we think they are
+  // contiguous.
+  BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+
   absl::flat_hash_map<const HloValue*, BufferInterval> buffer_intervals_;
-  Result result_;
+  HeapResult result_;
+  BufferIntervalCompare buffer_interval_compare_;
+  BufferIntervalTree interval_tree_;
 
  private:
   int64 alignment_;
-  Type type_;
 
   // The current time represented as an integer. It increments by 1 at each
   // Alloc or Free call.
   int64 current_time_ = 0;
-
-  BufferIntervalTree interval_tree_;
 
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function
   // returns all three of them.
   absl::flat_hash_set<const HloValue*> GetTransitiveColocations(
       const BufferInterval& interval) const;
+};
+
+// This class implements an algorithm that will output multiple heaps. Each heap
+// size is constrained by a given limit.
+class ConstrainedGlobalDecreasingSizeBestFitHeap
+    : public GlobalDecreasingSizeBestFitHeap {
+ public:
+  explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
+      size_t size_limit_per_heap, int64 alignment,
+      GlobalDecreasingSizeBestFitHeap::Type type = kSpatial)
+      : size_limit_per_heap_(size_limit_per_heap),
+        GlobalDecreasingSizeBestFitHeap(alignment, type) {}
+  ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
+
+  Result Finish() override;
+
+ private:
+  size_t size_limit_per_heap_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to

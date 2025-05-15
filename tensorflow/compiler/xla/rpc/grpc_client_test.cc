@@ -34,6 +34,12 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
 
+#if defined(PLATFORM_WINDOWS)
+// This is not used on windows, but we define it here to make the test simpler
+// to write below.
+#define SIGKILL -1
+#endif
+
 namespace xla {
 namespace {
 
@@ -60,7 +66,7 @@ class GRPCClientTestBase : public ::testing::Test {
         gpr_now(GPR_CLOCK_REALTIME), gpr_time_from_seconds(10, GPR_TIMESPAN)));
     LOG(INFO) << "Channel to server is connected on port " << port;
 
-    xla_service_ = grpc::XlaService::NewStub(channel);
+    xla_service_ = XlaService::NewStub(channel);
     stub_.reset(new GRPCStub(xla_service_.get()));
     client_.reset(new Client(stub_.get()));
   }
@@ -71,7 +77,7 @@ class GRPCClientTestBase : public ::testing::Test {
   }
 
   tensorflow::SubProcess subprocess_;
-  std::unique_ptr<grpc::XlaService::Stub> xla_service_;
+  std::unique_ptr<XlaService::Stub> xla_service_;
   std::unique_ptr<GRPCStub> stub_;
   std::unique_ptr<Client> client_;
 };

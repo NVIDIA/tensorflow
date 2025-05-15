@@ -389,6 +389,11 @@ cc_library(
         "//tensorflow/core/platform:cpu_info.cc",
         "//tensorflow/core/platform:legacy_platform_port_srcs",
     ],
+    defines = ["TF_USE_SNAPPY"] + select({
+        # TF Additional NUMA defines
+        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "//conditions:default": [],
+    }),
     hdrs = [
         ":platform_port_hdrs",
         ":platform_port_internal_hdrs",
@@ -2816,6 +2821,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "util/presized_cuckoo_map.h",
     "util/tensor_slice_set.h",
     "util/tensor_slice_util.h",
+    "util/xla_config_registry.h",
 ]
 
 tf_cuda_library(
@@ -2931,7 +2937,10 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/core:framework/bfloat16",
+        "//tensorflow/core:framework/numeric_types",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
@@ -3278,9 +3287,12 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/internal:traceme_recorder",
-    ] + mkl_deps(),
+    ] + if_not_windows([
+        "@nvtx_archive//:nvtx",
+    ]) + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -5581,4 +5593,31 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
+)
+
+#############################
+# TF2/TF1 internal API Bridge
+#############################
+cc_library(
+    name = "framework/bfloat16",
+#    srcs = ["framework/bfloat16.cc"],
+    hdrs = ["framework/bfloat16.h"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":framework/numeric_types",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "framework/numeric_types",
+    hdrs = ["framework/numeric_types.h"],
+    visibility = ["//visibility:public"],
+    #visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+    ],
 )

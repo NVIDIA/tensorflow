@@ -22,14 +22,57 @@ limitations under the License.
 namespace stream_executor {
 namespace dnn {
 
+constexpr DataType ToDataType<float>::value;
+constexpr DataType ToDataType<double>::value;
+constexpr DataType ToDataType<Eigen::half>::value;
+constexpr DataType ToDataType<int8>::value;
+constexpr DataType ToDataType<int32>::value;
+
 uint64 AlgorithmDesc::hash() const {
   auto p = std::make_pair(algo_id(), tensor_ops_enabled());
   return absl::Hash<decltype(p)>()(p);
 }
 
+uint64 ExecutionPlanDesc::hash() const {
+  auto p = exec_plan_id();
+  return absl::Hash<decltype(p)>()(p);
+}
+
+std::string ExecutionPlanDesc::ToString() const {
+  return absl::StrCat(exec_plan_id());
+}
+
+bool DnnSupport::GetBatchNormalizationReserveSpaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+    dnn::ActivationMode mode, bool apply_side_input) {
+  return false;
+}
+
+bool DnnSupport::GetBatchNormalizationWorkspaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc,
+    size_t* workspace_size_in_bytes,
+    stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+    bool apply_side_input) {
+  return false;
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetConvolveExecutionPlans(
+    dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
+    Stream* /*stream*/,
+    const dnn::BatchDescriptor& /*input_descriptor*/,
+    const dnn::FilterDescriptor& /*filter_descriptor*/,
+    const dnn::BatchDescriptor& /*output_descriptor*/,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    std::vector<cudnn_frontend::ExecutionPlan>* /*out_exec_plans*/) {
   return false;
 }
 
@@ -66,6 +109,8 @@ string QuantizedActivationModeString(QuantizedActivationMode mode) {
 
 string ActivationModeString(ActivationMode mode) {
   switch (mode) {
+    case ActivationMode::kNone:
+      return "identity";
     case ActivationMode::kSigmoid:
       return "sigmoid";
     case ActivationMode::kRelu:
@@ -232,6 +277,20 @@ string AlgorithmConfig::ToString() const {
     algo_id_no_scratch = algorithm_no_scratch()->algo_id();
   }
   return absl::StrCat(algo_id, ", ", algo_id_no_scratch);
+}
+
+// -- ExecutionPlanConfig
+
+std::string ExecutionPlanConfig::ToString() const {
+  std::string plan_str = "none";
+  if (plan().has_value()) {
+    plan_str = plan()->ToString();
+  }
+  std::string plan_no_scratch_str = "none";
+  if (plan_no_scratch().has_value()) {
+    plan_no_scratch_str = plan_no_scratch()->ToString();
+  }
+  return absl::StrCat(plan_str, ", ", plan_no_scratch_str);
 }
 
 // -- BatchDescriptor

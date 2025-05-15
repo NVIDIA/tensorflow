@@ -331,6 +331,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/unsupported_recursion.bin",
     ],
     tags = [
         "tflite_not_portable",
@@ -391,6 +392,7 @@ cc_library(
     copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        ":macros",
     ],
 )
 
@@ -405,6 +407,7 @@ cc_test(
     deps = [
         ":util",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )

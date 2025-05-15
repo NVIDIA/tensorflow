@@ -38,6 +38,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
+namespace cudnn_frontend {
+  class ExecutionPlan_v8;
+  using ExecutionPlan = ExecutionPlan_v8;
+} // namespace cudnn_frontend
+
 namespace Eigen {
 struct half;
 }  // namespace Eigen
@@ -48,6 +53,12 @@ class HostBuffer;
 class Stream;
 class ScratchAllocator;
 
+// Enum for batchnorm kind
+enum class BatchNormalizationKind {
+  kBatchnormForward,
+  kBatchnormBackward,
+};
+
 namespace dnn {
 
 // Specifies an index to use when accessing specific spatial dimensions.
@@ -56,6 +67,10 @@ enum class DimIndex : int {
   Y = 1,
   Z = 2,
 };
+
+// Return a reordered dims.
+std::vector<int64> ReorderDims(const std::vector<int64>& input,
+                               const DataLayout& from, const DataLayout& to);
 
 // Helper functions to make methods more readable.
 inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
@@ -188,6 +203,15 @@ class RnnDescriptor {
   virtual int64 ParamsSizeInBytes() const { return -1; }
   virtual ParamsRegions ParamsWeightRegions() const { return ParamsRegions(); }
   virtual ParamsRegions ParamsBiasRegions() const { return ParamsRegions(); }
+};
+
+// Specifies the CTC Loss computation.
+//
+// The user is responsible for releasing this descriptor when it is no longer
+// in use. The destructor releases the underlying descriptors.
+class CtcLossDescriptor {
+ public:
+  virtual ~CtcLossDescriptor() {}
 };
 
 // Specifies the sequence in a RNN model.
@@ -787,6 +811,35 @@ class AlgorithmDesc {
   AlgorithmProto proto_;
 };
 
+// Collects parameters for DNN execution plans
+class ExecutionPlanDesc {
+ public:
+  typedef std::string Index;
+  ExecutionPlanDesc() : ExecutionPlanDesc("unknown", nullptr) {}
+  ExecutionPlanDesc(Index a, void* b) {
+    proto_.set_exec_plan_id(a);
+    exec_plan_desc_ = b;
+  }
+  Index exec_plan_id() const { return proto_.exec_plan_id(); }
+  void* exec_plan_desc() const { return exec_plan_desc_; }
+  bool operator==(const ExecutionPlanDesc& other) const {
+    return exec_plan_id() == other.exec_plan_id();
+  }
+  // TODO(kaixih): Currently, hash() and ToString() only recognize the
+  // exec_plan_id. We might include more information in this class, such as the
+  // CUDNN numerical notes, which can tell whether the underlying engine uses
+  // deterministic algorithm, tensor cores, etc.
+  uint64 hash() const;
+
+  ExecutionPlanProto ToProto() const { return proto_; }
+
+  std::string ToString() const;
+
+ private:
+  ExecutionPlanProto proto_;
+  void* exec_plan_desc_;
+};
+
 // Describes the result from a perf experiment.
 //
 // Arguments:
@@ -815,6 +868,29 @@ class ProfileResult {
   // convolutions.
   size_t scratch_size_ = 0;
 };
+
+class ProfileExecutionPlanResult {
+ public:
+  bool is_valid() const {
+    return plan_.has_value() &&
+           elapsed_time_in_ms() != std::numeric_limits<float>::max();
+  }
+
+  ExecutionPlanDesc plan() const { return *plan_; }
+  void set_plan(ExecutionPlanDesc val) { plan_ = val; }
+
+  float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
+  void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
+
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
+
+ private:
+  absl::optional<ExecutionPlanDesc> plan_;
+  float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
+  size_t scratch_size_ = 0;
+};
+
 
 // Describes the configuration for the algorithms that will used.
 //
@@ -865,6 +941,53 @@ class AlgorithmConfig {
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
 };
+
+// Describes the configuration for the execution plans that will used.
+//
+// Arguments:
+//  plan: the primary execution plan that should be used.
+//  plan_no_scratch: a secondary execution plan that should be used, if the
+//    the allocation for the scratch memory fails.
+//  scrach_size: specify the size of scratch memory in bytes needed for the
+//    primary execution plan used.
+//
+// This class is only for CUDA platform with CUDNN v8 library. Given the
+// execution plan, users can query the scratch size. However, for convenience,
+// we also store this size in the class.
+
+class ExecutionPlanConfig {
+ public:
+  ExecutionPlanConfig() {}
+  ExecutionPlanConfig(ExecutionPlanDesc plan, size_t scratch_size)
+      : plan_(plan), scratch_size_(scratch_size) {}
+  ExecutionPlanConfig(ExecutionPlanDesc plan, size_t scratch_size,
+                      ExecutionPlanDesc plan_no_scratch)
+      : plan_(plan), scratch_size_(scratch_size),
+        plan_no_scratch_(plan_no_scratch) {}
+  absl::optional<ExecutionPlanDesc> plan() const { return plan_; }
+  void set_plan(ExecutionPlanDesc val) { plan_ = val; }
+  absl::optional<ExecutionPlanDesc> plan_no_scratch() const {
+    return plan_no_scratch_;
+  }
+  void set_plan_no_scratch(ExecutionPlanDesc val) { plan_no_scratch_ = val; }
+  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
+  bool operator==(const ExecutionPlanConfig& other) const {
+    return this->plan_ == other.plan_ &&
+           this->scratch_size_ == other.scratch_size_ &&
+           this->plan_no_scratch_ == other.plan_no_scratch_;
+  }
+  bool operator!=(const ExecutionPlanConfig& other) const {
+    return !(*this == other);
+  }
+  std::string ToString() const;
+
+ private:
+  absl::optional<ExecutionPlanDesc> plan_;
+  absl::optional<size_t> scratch_size_;
+  absl::optional<ExecutionPlanDesc> plan_no_scratch_;
+};
+
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
 // dist_belief.
@@ -999,6 +1122,45 @@ class DnnSupport {
         "DnnSupport::GetVersion not implemented on this platform.");
   }
 
+  // Performs a single-precision softmax operation onto
+  // the stream.
+  //
+  // Arguments:
+  //  stream: borrowed pointer to the stream that the batch normalization
+  //    operation should be enqueued onto.
+  //  x: input data.
+  //  x_desc: dimensions of the input data, which is the same as the dimensions
+  //  log: wheather to do a logSoftmax
+  //  y: output data.
+  virtual bool DoSoftmax(
+      Stream* stream, const DeviceMemory<float>& x,
+      const dnn::BatchDescriptor& x_desc, bool log,
+      DeviceMemory<float>* y) {
+    return false;
+  }
+
+  // Performs a half-precision softmax operation onto the stream.
+  // stream. See DoSoftmax above for argument details.
+  virtual bool DoSoftmax(
+      Stream* stream, const DeviceMemory<Eigen::half>& x,
+      const dnn::BatchDescriptor& x_desc, bool log,
+      DeviceMemory<Eigen::half>* y) {
+    return false;
+  }
+
+  virtual bool GetBatchNormalizationReserveSpaceSize(
+      Stream* stream, dnn::DataType input_data_type,
+      const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+      dnn::ActivationMode mode, bool apply_side_input);
+
+  virtual bool GetBatchNormalizationWorkspaceSize(
+      Stream* stream, dnn::DataType input_data_type,
+      dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc,
+      size_t* workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+      bool apply_side_input);
+
   // Performs a single-precision forward batch normalization operation onto
   // the stream.
   //
@@ -1029,11 +1191,6 @@ class DnnSupport {
   //  reserve_space_2: saved inv_var (1/sqrt(epsilon + variance), to be reused
   //    in the backward gradient computation.
   //  is_training: Set to true for training, false for inference.
-  //  var_to_inv_var: a function to convert the variance to inverted variance
-  //    for cuDNN v4 forward inference.
-  //  inv_var_to_var: a function to convert the inverted variance to
-  //    variance for cuDNN v4 forward training, to be used for TensorFlow
-  //    to calculate the running variance.
   virtual bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<float>& x,
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
@@ -1041,14 +1198,13 @@ class DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
       ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) {
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1061,14 +1217,13 @@ class DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
       ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) {
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1324,6 +1479,17 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
+  virtual port::Status DoConvolve(
+      ConvolutionKind kind, DataType element_type, DataType output_type,
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const ExecutionPlanConfig& plan_config,
+      ScratchAllocator* scratch_allocator, 
+      ProfileExecutionPlanResult* output_profile_result) = 0;
+
   template <typename ElementType, typename OutputType>
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<ElementType>& input_data,
@@ -1344,11 +1510,39 @@ class DnnSupport {
         !output_profile_result);
   }
 
+  template <typename ElementType, typename OutputType>
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+                  const DeviceMemory<ElementType>& input_data,
+                  const dnn::FilterDescriptor& filter_descriptor,
+                  const DeviceMemory<ElementType>& filter_data,
+                  const dnn::ConvolutionDescriptor& convolution_descriptor,
+                  const dnn::BatchDescriptor& output_descriptor,
+                  DeviceMemory<OutputType>* output_data,
+                  const ExecutionPlanConfig& plan_config,
+                  ScratchAllocator* scratch_allocator, 
+                  ProfileExecutionPlanResult* output_profile_result) {
+    return IsStatusOk(
+        DoConvolve(ConvolutionKind::FORWARD, ToDataType<ElementType>::value,
+                   ToDataType<OutputType>::value, stream, input_descriptor,
+                   input_data, filter_descriptor, filter_data,
+                   output_descriptor, *output_data, convolution_descriptor,
+                   plan_config, scratch_allocator, output_profile_result),
+        !output_profile_result);
+  }
+
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
+
+  virtual bool GetConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::vector<cudnn_frontend::ExecutionPlan>* out_exec_plans);
 
   // Returns a list of supported rnn algorithms.
   virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
@@ -1437,6 +1631,28 @@ class DnnSupport {
         !output_profile_result);
   }
 
+  template <typename ElementType>
+  bool DoConvolveBackwardData(
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<ElementType>& filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      const DeviceMemory<ElementType>& backward_output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
+      DeviceMemory<ElementType>* backward_input_data,
+      const ExecutionPlanConfig& plan_config,
+      ScratchAllocator* scratch_allocator, 
+      ProfileExecutionPlanResult* output_profile_result) {
+    return IsStatusOk(
+        DoConvolve(
+            ConvolutionKind::BACKWARD_DATA, ToDataType<ElementType>::value,
+            ToDataType<ElementType>::value, stream, input_descriptor,
+            *backward_input_data, filter_descriptor, filter_data,
+            output_descriptor, backward_output_data, convolution_descriptor,
+            plan_config, scratch_allocator, output_profile_result),
+        !output_profile_result);
+  }
+
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
@@ -1481,6 +1697,28 @@ class DnnSupport {
             input_data, filter_descriptor, *backward_filter_data,
             output_descriptor, backward_output_data, convolution_descriptor,
             algorithm_desc, *scratch_memory, output_profile_result),
+        !output_profile_result);
+  }
+
+  template <typename ElementType>
+  bool DoConvolveBackwardFilter(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<ElementType>& input_data,
+      const BatchDescriptor& output_descriptor,
+      const DeviceMemory<ElementType>& backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<ElementType>* backward_filter_data,
+      const ExecutionPlanConfig& plan_config,
+      ScratchAllocator* scratch_allocator, 
+      ProfileExecutionPlanResult* output_profile_result) {
+    return IsStatusOk(
+        DoConvolve(
+            ConvolutionKind::BACKWARD_FILTER, ToDataType<ElementType>::value,
+            ToDataType<ElementType>::value, stream, input_descriptor,
+            input_data, filter_descriptor, *backward_filter_data,
+            output_descriptor, backward_output_data, convolution_descriptor,
+            plan_config, scratch_allocator, output_profile_result),
         !output_profile_result);
   }
 
@@ -2131,6 +2369,16 @@ class DnnSupport {
                         "createRnnDescriptor is unimplemented");
   }
 
+  // Create an CTC Loss descriptor.
+  //
+  // Arguments:
+  //  data_type: an enum to specify the data types used in this model.
+  virtual port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
+  createCtcLossDescriptor(dnn::DataType data_type) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createCtcLossDescriptor is unimplemented");
+  }
+
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   //
@@ -2378,6 +2626,40 @@ class DnnSupport {
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueue a CTC Loss operation onto the stream.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  probs_desc: specifies the shape and the data layout of the input tensor.
+  //  probs_data: the device memory region that contains the input tensor.
+  //  labels_data: the device memory region that contains the labels_value
+  //    tensor.
+  //  labels_lengths_data: the device memory region that contains the
+  //    labels_lengths tensor
+  //  input_lengths_data: the device memory region that contains the seq_lengths
+  //    tensor
+  //  costs_data: the device memory region that contains the costs tensor.
+  //  grads_desc: specifies the shape and the data layout of the grads tensor.
+  //  grads_data: the device memory region that contains the grads tensor.
+  //  ctc_loss_desc: a CTCLoss descriptor created by createCTCLossDescriptor.
+  //  workspace_allocator: a memory allocator that creates the temporary
+  //    workspace memory used by this operation. The caller is responsible for
+  //    keeping the memory alive long enough for this operation, and recylces
+  //    afterwards.
+  virtual bool DoCtcLoss(Stream* stream,
+                         const dnn::RnnStateTensorDescriptor &probs_desc,
+                         const DeviceMemory<float> &probs_data,
+                         const absl::Span<const int32> &labels_data,
+                         const absl::Span<const int32> &labels_lengths_data,
+                         const absl::Span<const int32> &input_lengths_data,
+                         DeviceMemory<float> *costs_data,
+                         const dnn::RnnStateTensorDescriptor &grads_desc,
+                         DeviceMemory<float> *grads_data,
+                         const dnn::CtcLossDescriptor &ctc_loss_desc,
+                         ScratchAllocator *workspace_allocator) {
     return false;
   }
 

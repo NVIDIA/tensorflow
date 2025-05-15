@@ -13,8 +13,8 @@ http_archive(
 )
 
 # Load tf_repositories() before loading dependencies for other repository so
-# that dependencies like com_google_protobuf won't be overridden.
-load("//tensorflow:workspace.bzl", "tf_repositories")
+.
+load("//tensorflow:workspace.all", "tf_repositories")
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_repositories()
 
@@ -46,7 +46,7 @@ load("//third_party/toolchains/preconfig/generate:workspace.bzl",
 
 remote_config_workspace()
 
-# Apple and Swift rules.
+# Apple and Swift .
 http_archive(
     name = "build_bazel_rules_apple",
     sha256 = "6efdde60c91724a2be7f89b0c0a64f01138a45e63ba5add2dca2645d981d23a1",

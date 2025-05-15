@@ -19,12 +19,15 @@ from __future__ import print_function
 
 import argparse
 import curses
+import os
 import tempfile
 import threading
 
 import numpy as np
 from six.moves import queue
 
+from tensorflow.python.debug.cli import cli_config
+from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
@@ -80,12 +83,17 @@ class MockCursesUI(curses_ui.CursesUI):
     # Observer for toast messages.
     self.toasts = []
 
-    curses_ui.CursesUI.__init__(self)
+    curses_ui.CursesUI.__init__(
+        self,
+        config=cli_config.CLIConfig(
+            config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config")))
 
     # Override the default path to the command history file to avoid test
     # concurrency issues.
+    fd, history_file_path = tempfile.mkstemp()
+    os.close(fd)
     self._command_history_store = debugger_cli_common.CommandHistory(
-        history_file_path=tempfile.mktemp())
+        history_file_path=history_file_path)
 
   # Below, override the _screen_ prefixed member methods that interact with the
   # actual terminal, so that the mock can run in a terminal-less environment.
@@ -1056,13 +1064,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(11, len(ui.scroll_messages))
 
     for i in range(11):
-      self.assertEqual([
-          "Tensor \"m\":", "", "array([[ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.]])"
-      ], ui.unwrapped_outputs[i].lines)
+      cli_test_utils.assert_lines_equal_ignoring_whitespace(
+          self, ["Tensor \"m\":", ""], ui.unwrapped_outputs[i].lines[:2])
+      self.assertEqual(
+          repr(np.ones([5, 5])).split("\n"), ui.unwrapped_outputs[i].lines[2:])
 
     self.assertEqual({
         0: None,
@@ -1165,13 +1170,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(4, len(ui.output_array_pointer_indices))
 
     for i in range(4):
-      self.assertEqual([
-          "Tensor \"m\":", "", "array([[ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.]])"
-      ], ui.unwrapped_outputs[i].lines)
+      cli_test_utils.assert_lines_equal_ignoring_whitespace(
+          self, ["Tensor \"m\":", ""], ui.unwrapped_outputs[i].lines[:2])
+      self.assertEqual(
+          repr(np.ones([5, 5])).split("\n"), ui.unwrapped_outputs[i].lines[2:])
 
     self.assertEqual({
         0: None,
@@ -1220,7 +1222,8 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual("ERROR: Empty indices.", ui.toasts[6])
 
   def testWriteScreenOutputToFileWorks(self):
-    output_path = tempfile.mktemp()
+    fd, output_path = tempfile.mkstemp()
+    os.close(fd)
 
     ui = MockCursesUI(
         40,
@@ -1257,7 +1260,8 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, len(ui.unwrapped_outputs))
 
   def testAppendingRedirectErrors(self):
-    output_path = tempfile.mktemp()
+    fd, output_path = tempfile.mkstemp()
+    os.close(fd)
 
     ui = MockCursesUI(
         40,

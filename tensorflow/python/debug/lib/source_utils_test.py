@@ -90,8 +90,12 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
 
   def testGuessedBaseDirIsProbablyCorrect(self):
-    self.assertEqual("tensorflow",
-                     os.path.basename(source_utils._TENSORFLOW_BASEDIR))
+    # In the non-pip world, code resides in "tensorflow/"
+    # In the pip world, after virtual pip, code resides in "tensorflow_core/"
+    # So, we have to check both of them
+    self.assertIn(
+        os.path.basename(source_utils._TENSORFLOW_BASEDIR),
+        ["tensorflow", "tensorflow_core"])
 
   def testUnitTestFileReturnsFalse(self):
     self.assertFalse(
@@ -101,6 +105,7 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
+  @test_util.run_deprecated_v1
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
@@ -145,8 +150,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       self.w = math_ops.matmul(self.u, self.v, name="w")
       self.w_line_number = line_number_above()
 
-      sess.run(self.u.initializer)
-      sess.run(self.v.initializer)
+      self.evaluate(self.u.initializer)
+      self.evaluate(self.v.initializer)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(
@@ -239,7 +244,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def testCallingAnnotateSourceOnUnrelatedSourceFileDoesNotError(self):
     # Create an unrelated source file.
-    unrelated_source_path = tempfile.mktemp()
+    fd, unrelated_source_path = tempfile.mkstemp()
+    os.close(fd)
     with open(unrelated_source_path, "wt") as source_file:
       source_file.write("print('hello, world')\n")
 
@@ -251,6 +257,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     os.remove(unrelated_source_path)
 
 
+@test_util.run_v1_only("b/120545219")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def createAndRunGraphWithWhileLoop(self):

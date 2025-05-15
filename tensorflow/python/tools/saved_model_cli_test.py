@@ -31,8 +31,14 @@ from six import StringIO
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
+from tensorflow.python.training.tracking import tracking
 
 SAVED_MODEL_PATH = ('cc/saved_model/testdata/half_plus_two/00000123')
 
@@ -61,83 +67,173 @@ class SavedModelCLITestCase(test.TestCase):
     exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
 signature_def['classify_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/classify
 
 signature_def['classify_x_to_y']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_STRING
-    shape: unknown_rank
-    name: tf_example:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_STRING
+        shape: unknown_rank
+        name: tf_example:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/classify
 
 signature_def['regress_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['outputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/regress
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['outputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/regress
 
 signature_def['regress_x_to_y']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_STRING
-    shape: unknown_rank
-    name: tf_example:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['outputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/regress
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_STRING
+        shape: unknown_rank
+        name: tf_example:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['outputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/regress
 
 signature_def['regress_x_to_y2']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_STRING
-    shape: unknown_rank
-    name: tf_example:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['outputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y2:0
-Method name is: tensorflow/serving/regress
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_STRING
+        shape: unknown_rank
+        name: tf_example:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['outputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y2:0
+  Method name is: tensorflow/serving/regress
 
 signature_def['serving_default']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/predict"""
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['y'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  def testShowAllWithConcreteFunctions(self):
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model with callable polymorphic functions specified."""
+
+      @def_function.function
+      def func1(self, a, b, c):
+        if c:
+          return a + b
+        else:
+          return a * b
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+      ])
+      def func2(self, x):
+        return x + 2
+
+      @def_function.function
+      def __call__(self, y, c=7):
+        return y + 2 * c
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    # Call with specific values to create new polymorphic function traces.
+    dummy_model.func1(
+        constant_op.constant(5), constant_op.constant(9), True)
+    dummy_model(constant_op.constant(5))
+    save.save(dummy_model, saved_model_dir)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
+
+signature_def['__saved_model_init_op']:
+  The given SavedModel SignatureDef contains the following input(s):
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['__saved_model_init_op'] tensor_info:
+        dtype: DT_INVALID
+        shape: unknown_rank
+        name: NoOp
+  Method name is: 
+
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (2, 2)
+        name: serving_default_x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['output_0'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (2, 2)
+        name: PartitionedCall:0
+  Method name is: tensorflow/serving/predict
+
+Defined Functions:
+  Function Name: '__call__'
+    Option #1
+      Callable with:
+        Argument #1
+          y: TensorSpec(shape=(), dtype=tf.int32, name='y')
+        Argument #2
+          DType: int
+          Value: 7
+
+  Function Name: 'func1'
+    Option #1
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.int32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.int32, name='b')
+        Argument #3
+          DType: bool
+          Value: True
+
+  Function Name: 'func2'
+    Option #1
+      Callable with:
+        Argument #1
+          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
+""".strip()  # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -193,11 +289,11 @@ Method name is: tensorflow/serving/predict"""
     output = out.getvalue().strip()
     expected_output = (
         'The given SavedModel SignatureDef contains the following input(s):\n'
-        'inputs[\'x\'] tensor_info:\n'
-        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n    name: x:0\n'
+        '  inputs[\'x\'] tensor_info:\n'
+        '      dtype: DT_FLOAT\n      shape: (-1, 1)\n      name: x:0\n'
         'The given SavedModel SignatureDef contains the following output(s):\n'
-        'outputs[\'y\'] tensor_info:\n'
-        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n    name: y:0\n'
+        '  outputs[\'y\'] tensor_info:\n'
+        '      dtype: DT_FLOAT\n      shape: (-1, 1)\n      name: y:0\n'
         'Method name is: tensorflow/serving/predict')
     self.assertEqual(output, expected_output)
     self.assertEqual(err.getvalue().strip(), '')
@@ -215,13 +311,19 @@ Method name is: tensorflow/serving/predict"""
     input_expr_str = 'input3=np.zeros([2,2]);input4=[4,5]'
     input_dict = saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_expr_dict = saved_model_cli.preprocess_input_exprs_arg_string(
-        input_expr_str)
+        input_expr_str, safe=False)
     self.assertTrue(input_dict['input1'] == ('/path/file.txt', 'ab3'))
     self.assertTrue(input_dict['input2'] == ('file2', None))
-    self.assertTrue(input_expr_dict['input3'] == 'np.zeros([2,2])')
-    self.assertTrue(input_expr_dict['input4'] == '[4,5]')
+    print(input_expr_dict['input3'])
+    self.assertAllClose(input_expr_dict['input3'], np.zeros([2, 2]))
+    self.assertAllClose(input_expr_dict['input4'], [4, 5])
     self.assertTrue(len(input_dict) == 2)
     self.assertTrue(len(input_expr_dict) == 2)
+
+  def testInputPreprocessExampleWithCodeInjection(self):
+    input_examples_str = 'inputs=os.system("echo hacked")'
+    with self.assertRaisesRegex(RuntimeError, 'not a valid python literal.'):
+      saved_model_cli.preprocess_input_examples_arg_string(input_examples_str)
 
   def testInputPreProcessFileNames(self):
     input_str = (r'inputx=C:\Program Files\data.npz[v:0];'
@@ -239,8 +341,8 @@ Method name is: tensorflow/serving/predict"""
     with self.assertRaises(RuntimeError):
       saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_str = 'inputx:np.zeros((5))'
-    with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_exprs_arg_string(input_str)
+    with self.assertRaisesRegex(RuntimeError, 'format is incorrect'):
+      saved_model_cli.preprocess_input_exprs_arg_string(input_str, safe=False)
 
   def testInputParserNPY(self):
     x0 = np.array([[1], [2]])
@@ -250,7 +352,8 @@ Method name is: tensorflow/serving/predict"""
     np.save(input0_path, x0)
     np.save(input1_path, x1)
     input_str = 'x0=' + input0_path + '[x0];x1=' + input1_path
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
+        input_str, '', '')
     self.assertTrue(np.all(feed_dict['x0'] == x0))
     self.assertTrue(np.all(feed_dict['x1'] == x1))
 
@@ -259,7 +362,8 @@ Method name is: tensorflow/serving/predict"""
     input_path = os.path.join(test.get_temp_dir(), 'input.npz')
     np.savez(input_path, a=x0)
     input_str = 'x=' + input_path + '[a];y=' + input_path
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
+        input_str, '', '')
     self.assertTrue(np.all(feed_dict['x'] == x0))
     self.assertTrue(np.all(feed_dict['y'] == x0))
 
@@ -278,47 +382,11 @@ Method name is: tensorflow/serving/predict"""
       pickle.dump(pkl2, f)
     input_str = 'x=' + input_path0 + '[b];y=' + input_path1 + '[c];'
     input_str += 'z=' + input_path2
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
+        input_str, '', '')
     self.assertTrue(np.all(feed_dict['x'] == pkl0['b']))
     self.assertTrue(np.all(feed_dict['y'] == pkl1))
     self.assertTrue(np.all(feed_dict['z'] == pkl2))
-
-  def testInputParserPythonExpression(self):
-    x1 = np.ones([2, 10])
-    x2 = np.array([[1], [2], [3]])
-    x3 = np.mgrid[0:5, 0:5]
-    x4 = [[3], [4]]
-    input_expr_str = ('x1=np.ones([2,10]);x2=np.array([[1],[2],[3]]);'
-                      'x3=np.mgrid[0:5,0:5];x4=[[3],[4]]')
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        '', input_expr_str)
-    self.assertTrue(np.all(feed_dict['x1'] == x1))
-    self.assertTrue(np.all(feed_dict['x2'] == x2))
-    self.assertTrue(np.all(feed_dict['x3'] == x3))
-    self.assertTrue(np.all(feed_dict['x4'] == x4))
-
-  def testInputParserBoth(self):
-    x0 = np.array([[1], [2]])
-    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
-    np.savez(input_path, a=x0)
-    x1 = np.ones([2, 10])
-    input_str = 'x0=' + input_path + '[a]'
-    input_expr_str = 'x1=np.ones([2,10])'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        input_str, input_expr_str)
-    self.assertTrue(np.all(feed_dict['x0'] == x0))
-    self.assertTrue(np.all(feed_dict['x1'] == x1))
-
-  def testInputParserBothDuplicate(self):
-    x0 = np.array([[1], [2]])
-    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
-    np.savez(input_path, a=x0)
-    x1 = np.ones([2, 10])
-    input_str = 'x0=' + input_path + '[a]'
-    input_expr_str = 'x0=np.ones([2,10])'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        input_str, input_expr_str)
-    self.assertTrue(np.all(feed_dict['x0'] == x1))
 
   def testInputParserErrorNoName(self):
     x0 = np.array([[1], [2]])
@@ -327,7 +395,7 @@ Method name is: tensorflow/serving/predict"""
     np.savez(input_path, a=x0, b=x1)
     input_str = 'x=' + input_path
     with self.assertRaises(RuntimeError):
-      saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
+      saved_model_cli.load_inputs_from_input_arg_string(input_str, '', '')
 
   def testInputParserErrorWrongName(self):
     x0 = np.array([[1], [2]])
@@ -336,7 +404,22 @@ Method name is: tensorflow/serving/predict"""
     np.savez(input_path, a=x0, b=x1)
     input_str = 'x=' + input_path + '[c]'
     with self.assertRaises(RuntimeError):
-      saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
+      saved_model_cli.load_inputs_from_input_arg_string(input_str, '', '')
+
+  def testRunCommandInputExamples(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'regress_x_to_y', '--input_examples',
+        'inputs=[{"x":[8.0],"x2":[5.0]}, {"x":[4.0],"x2":[3.0]}]', '--outdir',
+        output_dir
+    ])
+    saved_model_cli.run(args)
+    y_actual = np.load(os.path.join(output_dir, 'outputs.npy'))
+    y_expected = np.array([[6.0], [4.0]])
+    self.assertAllEqual(y_expected, y_actual)
 
   def testRunCommandExistingOutdir(self):
     self.parser = saved_model_cli.create_parser()
@@ -405,9 +488,45 @@ Method name is: tensorflow/serving/predict"""
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'regress_x2_to_y3', '--input_exprs', 'x2=np.ones((3,1))'
+        'regress_x2_to_y3', '--input_exprs', 'x2=[1,2,3]'
     ])
     with self.assertRaises(ValueError):
+      saved_model_cli.run(args)
+
+  def testRunCommandInputExamplesNotListError(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'regress_x_to_y', '--input_examples', 'inputs={"x":8.0,"x2":5.0}',
+        '--outdir', output_dir
+    ])
+    with self.assertRaisesRegexp(ValueError, 'must be a list'):
+      saved_model_cli.run(args)
+
+  def testRunCommandInputExamplesFeatureValueNotListError(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'regress_x_to_y', '--input_examples', 'inputs=[{"x":8.0,"x2":5.0}]',
+        '--outdir', output_dir
+    ])
+    with self.assertRaisesRegexp(ValueError, 'feature value must be a list'):
+      saved_model_cli.run(args)
+
+  def testRunCommandInputExamplesFeatureBadType(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'regress_x_to_y', '--input_examples', 'inputs=[{"x":[[1],[2]]}]',
+        '--outdir', output_dir
+    ])
+    with self.assertRaisesRegexp(ValueError, 'is not supported'):
       saved_model_cli.run(args)
 
   def testRunCommandOutputFileExistError(self):
@@ -468,6 +587,28 @@ Method name is: tensorflow/serving/predict"""
     y_actual = np.load(os.path.join(output_dir, 'y.npy'))
     y_expected = np.array([[2.5], [3.0]])
     self.assertAllClose(y_expected, y_actual)
+
+  def testScanCommand(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args(['scan', '--dir', base_path])
+    with captured_output() as (out, _):
+      saved_model_cli.scan(args)
+    output = out.getvalue().strip()
+    self.assertTrue('does not contain blacklisted ops' in output)
+
+  def testScanCommandFoundBlacklistedOp(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args(
+        ['scan', '--dir', base_path, '--tag_set', 'serve'])
+    op_blacklist = saved_model_cli._OP_BLACKLIST
+    saved_model_cli._OP_BLACKLIST = set(['VariableV2'])
+    with captured_output() as (out, _):
+      saved_model_cli.scan(args)
+    saved_model_cli._OP_BLACKLIST = op_blacklist
+    output = out.getvalue().strip()
+    self.assertTrue('\'VariableV2\'' in output)
 
 
 if __name__ == '__main__':

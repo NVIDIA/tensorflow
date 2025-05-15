@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_MATMUL_OP_H_
-#define TENSORFLOW_KERNELS_SPARSE_MATMUL_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
 #include "tensorflow/core/platform/windows/intrinsics_port.h"
 #endif
 
@@ -155,29 +155,56 @@ EIGEN_STRONG_INLINE Packet4f pload2bf16<Packet4f>(const float* from) {
 }
 #endif
 
-#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
+// Specialization of pbroadcast for ARM
+#if defined(EIGEN_VECTORIZE_NEON)
 // Return a packet with the first value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_first<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 0);
+  return vdupq_n_f32(vgetq_lane_f32(a, 0));
 }
 
 // Return a packet with the second value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_second<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 1);
+  return vdupq_n_f32(vgetq_lane_f32(a, 1));
 }
 
 // Return a packet with the third value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_third<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 2);
+  return vdupq_n_f32(vgetq_lane_f32(a, 2));
 }
 
 // Return a packet with the fourth value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_fourth<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 3);
+  return vdupq_n_f32(vgetq_lane_f32(a, 3));
+}
+#endif
+
+#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
+// Return a packet with the first value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_first<Packet4f>(const Packet4f& a) {
+  return vec_splat(a, 0);
+}
+
+// Return a packet with the second value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_second<Packet4f>(const Packet4f& a) {
+  return vec_splat(a, 1);
+}
+
+// Return a packet with the third value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_third<Packet4f>(const Packet4f& a) {
+  return vec_splat(a, 2);
+}
+
+// Return a packet with the fourth value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_fourth<Packet4f>(const Packet4f& a) {
+  return vec_splat(a, 3);
 }
 #endif
 
@@ -464,4 +491,4 @@ EIGEN_DEVICE_FUNC inline Packet16f pexpand_bf16_u(const Packet16f& from) {
 #endif
 }  // namespace internal
 }  // namespace Eigen
-#endif
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_

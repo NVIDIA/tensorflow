@@ -63,10 +63,10 @@ class ParseExampleOp : public OpKernel {
 
     // Copy from OpInputList to std::vector<string>.
     for (int di = 0; di < attrs_.num_dense; ++di) {
-      dense_keys_t[di] = dense_keys[di].scalar<string>()();
+      dense_keys_t[di] = dense_keys[di].scalar<tstring>()();
     }
     for (int di = 0; di < attrs_.num_sparse; ++di) {
-      sparse_keys_t[di] = sparse_keys[di].scalar<string>()();
+      sparse_keys_t[di] = sparse_keys[di].scalar<tstring>()();
     }
 
     if (names->NumElements() > 0) {
@@ -234,7 +234,7 @@ class ParseSingleExampleOp : public OpKernel {
       config.sparse.push_back({attrs_.sparse_keys[d], attrs_.sparse_types[d]});
     }
 
-    const string& serialized_proto = serialized->scalar<string>()();
+    const string& serialized_proto = serialized->scalar<tstring>()();
 
     OP_REQUIRES_OK(ctx,
                    FastParseSingleExample(config, serialized_proto, &result));
@@ -264,9 +264,168 @@ class ParseSingleExampleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("ParseSingleExample").Device(DEVICE_CPU),
                         ParseSingleExampleOp);
 
-class SingleSequenceExampleParserOp : public OpKernel {
+class ParseSequenceExampleOp : public OpKernel {
  public:
-  explicit SingleSequenceExampleParserOp(OpKernelConstruction* ctx)
+  explicit ParseSequenceExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* debug_name;
+    const Tensor* serialized;
+    OpInputList context_dense_defaults;
+
+    OP_REQUIRES_OK(ctx, ctx->input("debug_name", &debug_name));
+    OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized));
+    OP_REQUIRES_OK(ctx, ctx->input_list("context_dense_defaults",
+                                        &context_dense_defaults));
+
+    bool has_debug_name = (debug_name->NumElements() > 0);
+    if (has_debug_name) {
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(debug_name->shape()),
+                  errors::InvalidArgument(
+                      "Expected debug_name to be a vector, got shape: ",
+                      debug_name->shape().DebugString()));
+    }
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized->shape()),
+                errors::InvalidArgument(
+                    "Expected serialized to be a vector, got shape: ",
+                    serialized->shape().DebugString()));
+
+    OP_REQUIRES(ctx, context_dense_defaults.size() == attrs_.num_context_dense,
+                errors::InvalidArgument("Expected len(context_dense_defaults) "
+                                        "== len(context_dense_keys) but got: ",
+                                        context_dense_defaults.size(), " vs. ",
+                                        attrs_.num_context_dense));
+
+    std::vector<bool> required(attrs_.num_context_dense);
+    for (int d = 0; d < attrs_.num_context_dense; ++d) {
+      const Tensor& def_value = context_dense_defaults[d];
+      required[d] = (def_value.NumElements() == 0);  // No default provided.
+
+      if (def_value.NumElements() > 0) {
+        OP_REQUIRES(ctx, def_value.shape() == attrs_.context_dense_shapes[d],
+                    errors::InvalidArgument(
+                        "default_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " != context_dense_shapes[", d,
+                        "] == ", attrs_.context_dense_shapes[d].DebugString()));
+        OP_REQUIRES(
+            ctx, def_value.dtype() == attrs_.context_dense_types[d],
+            errors::InvalidArgument(
+                "context_dense_defaults[", d, "].dtype() == ",
+                DataTypeString(def_value.dtype()), " != context_dense_types[",
+                d, "] == ", DataTypeString(attrs_.context_dense_types[d])));
+      }
+    }
+
+    example::Result context_result, feature_list_result;
+    std::vector<Tensor> dense_feature_lengths;
+
+    example::FastParseExampleConfig context_config;
+    for (int d = 0; d < attrs_.num_context_dense; ++d) {
+      context_config.dense.push_back(
+          {attrs_.context_dense_keys[d], attrs_.context_dense_types[d],
+           attrs_.context_dense_shapes[d], context_dense_defaults[d],
+           false /* attrs_.context_variable_length[d] */,
+           0 /*attrs_.context_elements_per_stride[d] */});
+    }
+    for (int d = 0; d < attrs_.num_context_sparse; ++d) {
+      context_config.sparse.push_back(
+          {attrs_.context_sparse_keys[d], attrs_.context_sparse_types[d]});
+    }
+    example::FastParseExampleConfig feature_list_config;
+    for (int d = 0; d < attrs_.num_feature_list_dense; ++d) {
+      DataType dtype = attrs_.feature_list_dense_types[d];
+      Tensor default_value = Tensor(dtype, TensorShape({}));
+      feature_list_config.dense.push_back(
+          {attrs_.feature_list_dense_keys[d], dtype,
+           attrs_.feature_list_dense_shapes[d], default_value,
+           (attrs_.feature_list_dense_missing_assumed_empty.count(
+                attrs_.feature_list_dense_keys[d]) > 0),
+           0 /*attrs_.context_elements_per_stride[d] */});
+    }
+    for (int d = 0; d < attrs_.num_feature_list_sparse; ++d) {
+      feature_list_config.sparse.push_back(
+          {attrs_.feature_list_sparse_keys[d],
+           attrs_.feature_list_sparse_types[d]});
+    }
+
+    auto serialized_t = serialized->flat<string>();
+    auto debug_name_t = debug_name->flat<string>();
+    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
+    gtl::ArraySlice<string> names_slice(debug_name_t.data(),
+                                        debug_name_t.size());
+
+    OP_REQUIRES_OK(
+        ctx,
+        FastParseSequenceExample(
+            context_config, feature_list_config, slice, names_slice,
+            ctx->device()->tensorflow_cpu_worker_threads()->workers,
+            &context_result, &feature_list_result, &dense_feature_lengths));
+
+    OpOutputList context_sparse_indices;
+    OpOutputList context_sparse_values;
+    OpOutputList context_sparse_shapes;
+    OpOutputList context_dense_values;
+    OpOutputList feature_list_sparse_indices;
+    OpOutputList feature_list_sparse_values;
+    OpOutputList feature_list_sparse_shapes;
+    OpOutputList feature_list_dense_values;
+    OpOutputList feature_list_dense_lengths;
+
+    OP_REQUIRES_OK(ctx, ctx->output_list("context_sparse_indices",
+                                         &context_sparse_indices));
+    OP_REQUIRES_OK(
+        ctx, ctx->output_list("context_sparse_values", &context_sparse_values));
+    OP_REQUIRES_OK(
+        ctx, ctx->output_list("context_sparse_shapes", &context_sparse_shapes));
+    OP_REQUIRES_OK(
+        ctx, ctx->output_list("context_dense_values", &context_dense_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("context_sparse_indices",
+                                         &context_sparse_indices));
+    OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_sparse_indices",
+                                         &feature_list_sparse_indices));
+    OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_sparse_values",
+                                         &feature_list_sparse_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_sparse_shapes",
+                                         &feature_list_sparse_shapes));
+    OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_values",
+                                         &feature_list_dense_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_lengths",
+                                         &feature_list_dense_lengths));
+    for (int d = 0; d < attrs_.num_context_dense; ++d) {
+      context_dense_values.set(d, context_result.dense_values[d]);
+    }
+    TensorShape lengths_shape;
+    lengths_shape.AddDim(serialized_t.size());
+    for (int d = 0; d < attrs_.num_feature_list_dense; ++d) {
+      feature_list_dense_values.set(d, feature_list_result.dense_values[d]);
+      feature_list_dense_lengths.set(d, dense_feature_lengths[d]);
+    }
+    for (int d = 0; d < attrs_.num_context_sparse; ++d) {
+      context_sparse_indices.set(d, context_result.sparse_indices[d]);
+      context_sparse_values.set(d, context_result.sparse_values[d]);
+      context_sparse_shapes.set(d, context_result.sparse_shapes[d]);
+    }
+    for (int d = 0; d < attrs_.num_feature_list_sparse; ++d) {
+      feature_list_sparse_indices.set(d, feature_list_result.sparse_indices[d]);
+      feature_list_sparse_values.set(d, feature_list_result.sparse_values[d]);
+      feature_list_sparse_shapes.set(d, feature_list_result.sparse_shapes[d]);
+    }
+  }
+
+ protected:
+  ParseSequenceExampleAttrs attrs_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("ParseSequenceExample").Device(DEVICE_CPU),
+                        ParseSequenceExampleOp);
+
+class ParseSingleSequenceExampleOp : public OpKernel {
+ public:
+  explicit ParseSingleSequenceExampleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
   }
@@ -314,7 +473,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                       "Expected context_dense_keys[", di,
                       "] to be a scalar, got shape: ",
                       context_dense_keys[di].shape().DebugString()));
-      context_dense_keys_t[di] = context_dense_keys[di].scalar<string>()();
+      context_dense_keys_t[di] = context_dense_keys[di].scalar<tstring>()();
     }
     for (int di = 0; di < attrs_.num_context_sparse; ++di) {
       OP_REQUIRES(ctx,
@@ -323,7 +482,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                       "Expected context_sparse_keys[", di,
                       "] to be a scalar, got shape: ",
                       context_sparse_keys[di].shape().DebugString()));
-      context_sparse_keys_t[di] = context_sparse_keys[di].scalar<string>()();
+      context_sparse_keys_t[di] = context_sparse_keys[di].scalar<tstring>()();
     }
     for (int di = 0; di < attrs_.num_feature_list_dense; ++di) {
       OP_REQUIRES(
@@ -333,7 +492,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
               "] to be a scalar, got shape: ",
               feature_list_dense_keys[di].shape().DebugString()));
       feature_list_dense_keys_t[di] =
-          feature_list_dense_keys[di].scalar<string>()();
+          feature_list_dense_keys[di].scalar<tstring>()();
     }
     for (int di = 0; di < attrs_.num_feature_list_sparse; ++di) {
       OP_REQUIRES(
@@ -343,17 +502,18 @@ class SingleSequenceExampleParserOp : public OpKernel {
               "] to be a scalar, got shape: ",
               feature_list_sparse_keys[di].shape().DebugString()));
       feature_list_sparse_keys_t[di] =
-          feature_list_sparse_keys[di].scalar<string>()();
+          feature_list_sparse_keys[di].scalar<tstring>()();
     }
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(
-                 feature_list_dense_missing_assumed_empty->shape()),
+        ctx,
+        TensorShapeUtils::IsVector(
+            feature_list_dense_missing_assumed_empty->shape()),
         errors::InvalidArgument(
             "Expected feature_list_dense_missing_assumed_empty ",
             "to be a vector, got shape: ",
             feature_list_dense_missing_assumed_empty->shape().DebugString()));
     auto feature_list_dense_missing_assumped_empty_t =
-        feature_list_dense_missing_assumed_empty->vec<string>();
+        feature_list_dense_missing_assumed_empty->vec<tstring>();
     for (int de = 0;
          de < feature_list_dense_missing_assumed_empty->NumElements(); ++de) {
       feature_list_dense_missing_assumed_empty_set.insert(
@@ -367,7 +527,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                       "Expected debug_name to be a scalar, got shape: ",
                       debug_name->shape().DebugString()));
     }
-    auto debug_name_t = debug_name->scalar<string>();
+    auto debug_name_t = debug_name->scalar<tstring>();
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(serialized->shape()),
                 errors::InvalidArgument(
@@ -386,12 +546,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
       required[d] = (def_value.NumElements() == 0);  // No default provided.
 
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(
-            ctx, def_value.shape() == attrs_.context_dense_shapes[d],
-            errors::InvalidArgument(
-                "def_value[", d, "].shape() == ",
-                def_value.shape().DebugString(), " != context_dense_shapes_[",
-                d, "] == ", attrs_.context_dense_shapes[d].DebugString()));
+        OP_REQUIRES(ctx, def_value.shape() == attrs_.context_dense_shapes[d],
+                    errors::InvalidArgument(
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " != context_dense_shapes_[", d,
+                        "] == ", attrs_.context_dense_shapes[d].DebugString()));
         OP_REQUIRES(
             ctx, def_value.dtype() == attrs_.context_dense_types[d],
             errors::InvalidArgument(
@@ -401,7 +561,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
       }
     }
 
-    auto serialized_t = serialized->scalar<string>();
+    auto serialized_t = serialized->scalar<tstring>();
 
     OpOutputList context_sparse_indices;
     OpOutputList context_sparse_values;
@@ -431,7 +591,22 @@ class SingleSequenceExampleParserOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_values",
                                          &feature_list_dense_values));
 
+#ifdef TENSORFLOW_LITE_PROTOS
     SequenceExample ex;
+#else
+    // Allocate the SequenceExample on an arena. Provides better memory locality
+    // and greatly speeds up destruction.
+    protobuf::ArenaOptions options;
+    // We have some hint of what the final proto size will be based on the size
+    // of the serialized bytes- use this to set a custom allocation strategy.
+    // Note that the default allocation strategy is quite conservative (min
+    // block size of 256 bytes, and a max of 8 kilobytes).
+    const size_t block_size = serialized_t().size() * 1.1;
+    options.start_block_size = std::max(options.start_block_size, block_size);
+    options.max_block_size = std::max(options.max_block_size, block_size);
+    protobuf::Arena arena(options);
+    auto& ex = *protobuf::Arena::CreateMessage<SequenceExample>(&arena);
+#endif
     OP_REQUIRES(
         ctx, ParseProtoUnlimited(&ex, serialized_t()),
         errors::InvalidArgument("Could not parse example input, value: '",
@@ -576,12 +751,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
         const Feature& f = fl.feature(t);
         bool types_match;
         OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-        OP_REQUIRES(
-            ctx, types_match,
-            errors::InvalidArgument(
-                "Name: ", name, ", Feature list: ", key, ", Index: ", t,
-                ".  Data types don't match. ", "Expected type: ",
-                DataTypeString(dtype), "  Feature is: ", ProtoDebugString(f)));
+        OP_REQUIRES(ctx, types_match,
+                    errors::InvalidArgument(
+                        "Name: ", name, ", Feature list: ", key, ", Index: ", t,
+                        ".  Data types don't match. ",
+                        "Expected type: ", DataTypeString(dtype),
+                        "  Feature is: ", ProtoDebugString(f)));
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(t, name, key, dtype, shape, f,
                                              feature_list_dense_values[d]));
       }
@@ -657,7 +832,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),
-                        SingleSequenceExampleParserOp);
+                        ParseSingleSequenceExampleOp);
 
 #ifndef IS_MOBILE_PLATFORM
 // when using lite protos on mobile, decoding JSON is not available.

@@ -231,7 +231,7 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
   Graph graph(OpRegistry::Global());
   Tensor a_tensor(DT_STRING, TensorShape({2, 2}));
   for (size_t i = 0; i < 4; ++i) {
-    a_tensor.flat<string>()(i) = "hello, world";
+    a_tensor.flat<tstring>()(i) = "hello, world";
   }
   Node* a = test::graph::Constant(&graph, a_tensor);
   Node* b = test::graph::Identity(&graph, a);
@@ -242,7 +242,14 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
   // In this test, we force each node (a, b) on every possible device.
   // We test all possible cases.
   for (const auto& a_dev : cluster->devices()) {
+    // EXCEPT exclude XLA devices.
+    if (a_dev.device_type().compare(0, 4, "XLA_") == 0) {
+      continue; 
+    }
     for (const auto& b_dev : cluster->devices()) {
+      if (b_dev.device_type().compare(0, 4, "XLA_") == 0) {
+        continue; 
+      }
       LOG(INFO) << "a: " << a_dev.name() << " b: " << b_dev.name();
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());
@@ -266,7 +273,7 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
         ASSERT_EQ(outputs[0].dtype(), DT_STRING);
         ASSERT_EQ(outputs[0].NumElements(), 4);
         for (size_t i = 0; i < outputs[0].NumElements(); ++i) {
-          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
+          EXPECT_EQ(outputs[0].flat<tstring>()(i), "hello, world");
         }
         TF_CHECK_OK(session->Close());
 
@@ -278,7 +285,7 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
         ASSERT_EQ(1, dumped_tensors.size());
         ASSERT_EQ(TensorShape({2, 2}), dumped_tensors[0].shape());
         for (size_t i = 0; i < 4; ++i) {
-          ASSERT_EQ("hello, world", dumped_tensors[0].flat<string>()(i));
+          ASSERT_EQ("hello, world", dumped_tensors[0].flat<tstring>()(i));
         }
 
         DeleteDumpDir();

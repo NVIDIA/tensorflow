@@ -18,12 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import sys
+import tempfile
 
 import numpy as np
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 
 def main(_):
@@ -41,7 +45,15 @@ def main(_):
   z = tf.matmul(m, v, name="z")
 
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
+    if FLAGS.use_random_config_path:
+      fd, config_file_path = tempfile.mkstemp(".tfdbg_config")
+      os.close(fd)
+    else:
+      config_file_path = None
+    sess = tf_debug.LocalCLIDebugWrapperSession(
+        sess,
+        ui_type=FLAGS.ui_type,
+        config_file_path=config_file_path)
 
   if FLAGS.error == "shape_mismatch":
     print(sess.run(y, feed_dict={ph_float: np.array([[0.0], [1.0], [2.0]])}))
@@ -76,5 +88,14 @@ if __name__ == "__main__":
       const=True,
       default=False,
       help="Use debugger to track down bad values during training")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  with tf.Graph().as_default():
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

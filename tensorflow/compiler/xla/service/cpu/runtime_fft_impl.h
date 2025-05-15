@@ -15,18 +15,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FFT_IMPL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FFT_IMPL_H_
 
+#include <array>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/types.h"
 
 // 'tensorflow' namespace is used so that int64 and other types don't require
 // qualification.
 namespace tensorflow {
 namespace xla {
+
+enum class FftType : int32 {
+  FFT = 0,    // Forward FFT; complex in, complex out.
+  IFFT = 1,   // Inverse FFT; complex in, complex out.
+  RFFT = 2,   // Forward real FFT; real in, fft_length / 2 + 1 complex out
+  IRFFT = 3,  // Inverse real FFT; fft_length / 2 + 1 complex in,
+              //                   fft_length real out
+};
+static constexpr int kFftTypeArraySize = 4;
 
 namespace internal {
 
@@ -69,11 +77,9 @@ void EigenFftR2C(const EigenDevice& device, complex64* out, float* operand,
   in_dims[0] = input_batch;
   Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> out_dims;
   out_dims[0] = input_batch;
-  TensorShape temp_shape{input_batch};
   for (int i = 0; i < FFTRank; i++) {
     in_dims[i + 1] = fft_shape[i];
     out_dims[i + 1] = i == FFTRank - 1 ? fft_shape[i] / 2 + 1 : fft_shape[i];
-    temp_shape.AddDim(fft_shape[i]);
   }
   const Eigen::TensorMap<Eigen::Tensor<float, FFTRank + 1, Eigen::RowMajor>,
                          Eigen::Aligned>
@@ -86,8 +92,8 @@ void EigenFftR2C(const EigenDevice& device, complex64* out, float* operand,
   const auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
 
   // Compute the full FFT using a temporary tensor.
-  Tensor temp(DataTypeToEnum<complex64>::v(), temp_shape);
-  auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
+  Eigen::Tensor<complex64, FFTRank + 1, Eigen::RowMajor> full_fft(in_dims);
+
   const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> zero_start_indices;
   full_fft.device(device) =
       input.template fft<Eigen::BothParts, Eigen::FFT_FORWARD>(axes);
@@ -110,11 +116,9 @@ void EigenFftC2R(const EigenDevice& device, float* out, complex64* operand,
   in_dims[0] = input_batch;
   Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> out_dims;
   out_dims[0] = input_batch;
-  TensorShape temp_shape{input_batch};
   for (int i = 0; i < FFTRank; i++) {
     in_dims[i + 1] = i == FFTRank - 1 ? fft_shape[i] / 2 + 1 : fft_shape[i];
     out_dims[i + 1] = fft_shape[i];
-    temp_shape.AddDim(fft_shape[i]);
   }
   const Eigen::TensorMap<Eigen::Tensor<complex64, FFTRank + 1, Eigen::RowMajor>,
                          Eigen::Aligned>
@@ -127,8 +131,7 @@ void EigenFftC2R(const EigenDevice& device, float* out, complex64* operand,
   // region we will slice from input given fft_shape. We slice input to
   // fft_shape on its inner-most dimensions, except the last (which we
   // slice to fft_shape[-1] / 2 + 1).
-  Tensor temp(DataTypeToEnum<complex64>::v(), temp_shape);
-  auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
+  Eigen::Tensor<complex64, FFTRank + 1, Eigen::RowMajor> full_fft(out_dims);
 
   // Calculate the starting point and range of the source of
   // negative frequency part.
@@ -175,34 +178,34 @@ void EigenFftC2R(const EigenDevice& device, float* out, complex64* operand,
 
 template <int FFTRank, typename EigenDevice>
 void EigenFftWithRank(const EigenDevice& device, void* out, void* operand,
-                      int32 fft_type, int64 input_batch, int64 fft_length0,
+                      FftType fft_type, int64 input_batch, int64 fft_length0,
                       int64 fft_length1, int64 fft_length2) {
-  CHECK(::xla::FftType_IsValid(fft_type)) << fft_type;
   switch (fft_type) {
-    case ::xla::FftType::FFT:
+    case FftType::FFT:
       EigenFftC2C<true, FFTRank, EigenDevice>(
           device, static_cast<complex64*>(out),
           static_cast<complex64*>(operand), input_batch, fft_length0,
           fft_length1, fft_length2);
       break;
-    case ::xla::FftType::IFFT:
+    case FftType::IFFT:
       EigenFftC2C<false, FFTRank, EigenDevice>(
           device, static_cast<complex64*>(out),
           static_cast<complex64*>(operand), input_batch, fft_length0,
           fft_length1, fft_length2);
       break;
-    case ::xla::FftType::RFFT:
+    case FftType::RFFT:
       EigenFftR2C<FFTRank, EigenDevice>(
           device, static_cast<complex64*>(out), static_cast<float*>(operand),
           input_batch, fft_length0, fft_length1, fft_length2);
       break;
-    case ::xla::FftType::IRFFT:
+    case FftType::IRFFT:
       EigenFftC2R<FFTRank, EigenDevice>(
           device, static_cast<float*>(out), static_cast<complex64*>(operand),
           input_batch, fft_length0, fft_length1, fft_length2);
       break;
     default:
-      LOG(FATAL) << "Unsupported FFT type: " << fft_type;
+      // Unsupported FFT type
+      abort();
   }
 }
 
@@ -210,7 +213,7 @@ void EigenFftWithRank(const EigenDevice& device, void* out, void* operand,
 
 template <typename EigenDevice>
 void EigenFftImpl(const EigenDevice& device, void* out, void* operand,
-                  int32 fft_type, int32 fft_rank, int64 input_batch,
+                  FftType fft_type, int32 fft_rank, int64 input_batch,
                   int64 fft_length0, int64 fft_length1, int64 fft_length2) {
   switch (fft_rank) {
     case 1:
@@ -228,7 +231,8 @@ void EigenFftImpl(const EigenDevice& device, void* out, void* operand,
                                                  fft_length1, fft_length2);
       break;
     default:
-      LOG(FATAL) << "Unsupported FFT rank " << fft_rank;
+      // Unsupported FFT rank
+      abort();
   }
 }
 

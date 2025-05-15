@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <uint64 hash(const string&)>
+template <uint64 hash(StringPiece)>
 class StringToHashBucketOp : public OpKernel {
  public:
   explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -36,7 +36,7 @@ class StringToHashBucketOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(context, context->input("input", &input_tensor));
-    const auto& input_flat = input_tensor->flat<string>();
+    const auto& input_flat = input_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
@@ -78,7 +78,7 @@ class StringToKeyedHashBucketOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(context, context->input("input", &input_tensor));
-    const auto& input_flat = input_tensor->flat<string>();
+    const auto& input_flat = input_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,

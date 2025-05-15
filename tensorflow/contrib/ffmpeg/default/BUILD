@@ -2,13 +2,14 @@
 #   Libraries and kernels for manipulating audio and video using FFmpeg.
 #   (https://www.ffmpeg.org)
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "ffmpeg_lib",
@@ -19,7 +20,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "@protobuf_archive//:protobuf_headers",
+        "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -72,16 +74,4 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

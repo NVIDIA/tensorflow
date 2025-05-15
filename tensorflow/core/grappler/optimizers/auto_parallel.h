@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
 
-#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -32,6 +32,8 @@ class AutoParallel : public GraphOptimizer {
   ~AutoParallel() override {}
 
   string name() const override { return "autoparallel"; };
+
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
@@ -63,4 +65,4 @@ class AutoParallel : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_

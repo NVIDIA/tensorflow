@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -60,6 +61,11 @@ class SparseFillEmptyRowsOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t->shape()),
                 errors::InvalidArgument("values must be a vector, saw: ",
                                         values_t->shape().DebugString()));
+    OP_REQUIRES(context, indices_t->dim_size(0) == values_t->dim_size(0),
+                errors::InvalidArgument("The length of `values` (",
+                    values_t->dim_size(0),
+                    ") must match the first dimension of `indices` (",
+                    indices_t->dim_size(0), ")."));
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(default_value_t->shape()),
         errors::InvalidArgument("default_value must be a scalar, saw: ",
@@ -125,7 +131,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       // Scratch here describes the number of elements in this dense row
       empty_row_indicator(row) = (scratch(row) == 0);
       // In filled version, each row has at least one element.
-      scratch(row) = std::max(scratch(row), 1LL);
+      scratch(row) = std::max(scratch(row), int64{1});
       // Update scratch to represent the number of elements up to and
       // including dense_row + 1:
       //  scratch(0) == #{elements of row 0}
@@ -213,6 +219,9 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
         context, TensorShapeUtils::IsVector(reverse_index_map_t->shape()),
         errors::InvalidArgument("reverse_index_map must be a vector, saw: ",
                                 reverse_index_map_t->shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(grad_values_t->shape()),
+                errors::InvalidArgument("grad_values must be a vector, saw: ",
+                                        grad_values_t->shape().DebugString()));
 
     const auto reverse_index_map = reverse_index_map_t->vec<int64>();
     const auto grad_values = grad_values_t->vec<T>();
@@ -241,8 +250,13 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
       // Locate the index of the output of the forward prop associated
       // with this location in the input of the forward prop.  Copy
       // the gradient into it.  Mark it as visited.
-      d_values(i) = grad_values(reverse_index_map(i));
-      visited(reverse_index_map(i)) = true;
+      int64 reverse_index = reverse_index_map(i);
+      OP_REQUIRES(
+          context, 0 <= reverse_index && reverse_index < N_full,
+          errors::InvalidArgument("Elements in reverse index must be in [0, ",
+                                  N_full, ") but got ", reverse_index));
+      d_values(i) = grad_values(reverse_index);
+      visited(reverse_index) = true;
     }
     for (int j = 0; j < N_full; ++j) {
       // The default value gradient gets the accumulated remainder of

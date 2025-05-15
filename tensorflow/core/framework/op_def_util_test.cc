@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -57,7 +58,7 @@ class ValidateOpDefTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
     if (!status.ok()) {
       LOG(INFO) << "message: " << status;
-      EXPECT_TRUE(StringPiece(status.ToString()).contains(message))
+      EXPECT_TRUE(absl::StrContains(status.ToString(), message))
           << "Actual: " << status << "\nExpected to contain: " << message;
     }
   }
@@ -200,10 +201,11 @@ TEST_F(ValidateOpDefTest, BadAttrDefault) {
                           "default_value { list { s: ['foo'] } } }"),
                 "Length for attr 'a' of 1 must be at least minimum 2\n\t in Op "
                 "'BadAttrDef'");
-  ExpectFailure(TestBuilder(OpDefBuilder("GoodAttrDef")
-                                .Attr("a: list(type) >=2 = [DT_STRING]")),
-                "Length for attr 'a' of 1 must be at least minimum 2\n\t in Op "
-                "'GoodAttrDef'");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("GoodAttrDef").Attr("a: list(type) >=2 = [DT_STRING]")),
+      "Length for attr 'a' of 1 must be at least minimum 2\n\t in Op "
+      "'GoodAttrDef'");
 }
 
 TEST_F(ValidateOpDefTest, NoRefTypes) {
@@ -213,9 +215,10 @@ TEST_F(ValidateOpDefTest, NoRefTypes) {
   ExpectFailure(
       TestBuilder(OpDefBuilder("BadAttrDef").Attr("T: type = DT_INT32_REF")),
       "AttrValue must not have reference type value of int32_ref");
-  ExpectFailure(TestBuilder(OpDefBuilder("BadAttrDef")
-                                .Attr("T: list(type) = [DT_STRING_REF]")),
-                "AttrValue must not have reference type value of string_ref");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("BadAttrDef").Attr("T: list(type) = [DT_STRING_REF]")),
+      "AttrValue must not have reference type value of string_ref");
 }
 
 TEST_F(ValidateOpDefTest, BadAttrMin) {
@@ -245,9 +248,10 @@ TEST_F(ValidateOpDefTest, BadAttrAllowed) {
   TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: numbertype = DT_INT32")));
   // Not in list of allowed types.
-  ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
-                                .Attr("x: numbertype = DT_STRING")),
-                "attr 'x' of string is not in the list of allowed values");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("BadAttrtude").Attr("x: numbertype = DT_STRING")),
+      "attr 'x' of string is not in the list of allowed values");
   ExpectFailure(
       TestBuilder(OpDefBuilder("BadAttrtude")
                       .Attr("x: list(realnumbertype) = [DT_COMPLEX64]")),
@@ -260,9 +264,10 @@ TEST_F(ValidateOpDefTest, BadAttrAllowed) {
   TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: {'foo', 'bar'} = 'bar'")));
   // Not in list of allowed strings.
-  ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
-                                .Attr("x: {'foo', 'bar'} = 'baz'")),
-                "attr 'x' of \"baz\" is not in the list of allowed values");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("BadAttrtude").Attr("x: {'foo', 'bar'} = 'baz'")),
+      "attr 'x' of \"baz\" is not in the list of allowed values");
   ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
                                 .Attr("x: list({'foo', 'bar'}) = ['baz']")),
                 "attr 'x' of \"baz\" is not in the list of allowed values");

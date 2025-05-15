@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
@@ -29,6 +29,8 @@ class LayoutOptimizer : public GraphOptimizer {
   ~LayoutOptimizer() override {}
 
   string name() const override { return "layout"; };
+
+  bool UsesFunctionLibrary() const override { return false; }
 
   struct TuningConfig {
     // If true, do not use the NHWC GEMM implementation. When filter size is
@@ -57,4 +59,4 @@ class LayoutOptimizer : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_

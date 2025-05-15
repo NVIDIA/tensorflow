@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+
 #include <math.h>
 #include <algorithm>
 #include <numeric>
@@ -24,21 +26,30 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if GOOGLE_CUDA
 #include "tensorflow/core/platform/cuda.h"
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct CheckNumericsLaunch {
   void Run(const GPUDevice& d, const T* data, int size,
            int abnormal_detected[2]);
 };
+
+extern template struct CheckNumericsLaunch<Eigen::half>;
+extern template struct CheckNumericsLaunch<float>;
+extern template struct CheckNumericsLaunch<double>;
 #endif
 
 namespace {
@@ -47,6 +58,8 @@ template <typename Device, typename T>
 class CheckNumericsOp;
 
 // Partial specialization for CPU
+// TODO(jeff,rmlarsen): We should make this variant be an AsyncOpKernel, as
+// was done for the GPU case below.
 template <typename T>
 class CheckNumericsOp<CPUDevice, T> : public OpKernel {
  public:
@@ -67,27 +80,31 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     int fp_props =
         std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
           int result = x;
-          if (Eigen::numext::isinf(y)) {
+          if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+            // Do nothing: common case
+          } else if (Eigen::numext::isinf(y)) {
             result |= kInfBit;
           } else if (Eigen::numext::isnan(y)) {
             result |= kNaNBit;
           }
           return result;
         });
-    string status;
-    if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
-      status = "Inf and NaN";
-    } else {
-      if (fp_props & kInfBit) {
-        status = "Inf";
+    if (fp_props != 0) {
+      string status;
+      if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
+        status = "Inf and NaN";
+      } else {
+        if (fp_props & kInfBit) {
+          status = "Inf";
+        }
+        if (fp_props & kNaNBit) {
+          status = "NaN";
+        }
       }
-      if (fp_props & kNaNBit) {
-        status = "NaN";
+      if (!status.empty()) {
+        context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
+                                                   status, " values"));
       }
-    }
-    if (!status.empty()) {
-      context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                 status, " values"));
     }
   }
 
@@ -97,7 +114,7 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
   static const int kNaNBit = 0x02;
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Partial specialization for GPU
 template <typename T>
 class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
@@ -131,13 +148,13 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(context, stream != nullptr,
                       errors::Internal("No GPU stream available."), done);
 
-    perftools::gputools::DeviceMemoryBase abnormal_detected_ptr(
+    se::DeviceMemoryBase abnormal_detected_ptr(
         abnormal_detected.flat<int>().data(),
         abnormal_detected.flat<int>().size());
     stream->ThenMemset32(&abnormal_detected_ptr, 0,
                          abnormal_detected.flat<int>().size() * sizeof(int));
 
-    // Call the Cuda kernels for the numerical checks
+    // Call the GPU kernels for the numerical checks
     const Device& d = context->eigen_device<Device>();
     CheckNumericsLaunch<T>().Run(d, input.data(), input.size(),
                                  abnormal_detected.flat<int>().data());
@@ -159,15 +176,20 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
                          abnormal_detected_ptr,
                          abnormal_detected_size * sizeof(int))
             .ok(),
-        errors::Internal("cudaMemcpy from device to host failed"), done);
+        errors::Internal("GPU memcpy from device to host failed"), done);
 
     // We have observed crashes on some network stacks when not holding
     // this tensor reference.
     TensorReference abnormal_detected_ref(abnormal_detected);
     auto check_cb = [this, stream, abnormal_detected_ref,
                      abnormal_detected_host, context, done]() {
-      ::perftools::gputools::cuda::ScopedActivateExecutorContext
-          scoped_activation{stream->parent()};
+#if GOOGLE_CUDA
+      se::cuda::ScopedActivateExecutorContext scoped_activation{
+          stream->parent()};
+#elif TENSORFLOW_USE_ROCM
+      se::rocm::ScopedActivateExecutorContext scoped_activation{
+          stream->parent()};
+#endif
       auto abnormal_detected_host_flat = abnormal_detected_host.flat<int>();
       int is_nan = abnormal_detected_host_flat(0);
       int is_inf = abnormal_detected_host_flat(1);
@@ -204,7 +226,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
  private:
   string message_;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace
 
@@ -213,10 +235,11 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       Name("CheckNumerics").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       CheckNumericsOp<CPUDevice, T>);
 TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     CheckNumericsOp<GPUDevice, Eigen::half>);
@@ -226,6 +249,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     CheckNumericsOp<GPUDevice, double>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

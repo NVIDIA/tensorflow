@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/dense_update_functor.h"
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,8 +32,8 @@ namespace functor {
 
 template <>
 struct DenseUpdate<CPUDevice, string, ASSIGN> {
-  void operator()(const CPUDevice& d, typename TTypes<string>::Flat params,
-                  typename TTypes<string>::ConstFlat update) {
+  void operator()(const CPUDevice& d, typename TTypes<tstring>::Flat params,
+                  typename TTypes<tstring>::ConstFlat update) {
     if (params.dimension(0) == 1) {
       params.data()->resize(update.data()->size());
       auto work = [&params, &update](int64 start, int64 end) {
@@ -56,9 +57,9 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
         // first element of the tensor seems as good a guess as any of the sizes
         // of the strings contained within...
         estimated_string_size =
-            std::max(update.data()[0].size(), sizeof(string));
+            std::max(update.data()[0].size(), sizeof(tstring));
       } else {
-        estimated_string_size = sizeof(string);
+        estimated_string_size = sizeof(tstring);
       }
       d.parallelFor(
           params.dimension(0),
@@ -69,5 +70,60 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
 };
 
 }  // namespace functor
+
+#define CPU_DENSE_COPY(T)                                                \
+  case DataTypeToEnum<T>::value: {                                       \
+    functor::DenseUpdate<CPUDevice, T, ASSIGN> copy_functor_;            \
+    copy_functor_(context->eigen_device<CPUDevice>(), tensor->flat<T>(), \
+                  from.flat<T>());                                       \
+    break;                                                               \
+  }
+
+#define INSTANTIATE_GET_VARIANT_COPY_FN(DEVICE, TYPE_CALLER, TYPE_DENSE_COPY) \
+  template <>                                                                 \
+  Status VariantCopyFn<DEVICE>(OpKernelContext * context, const Tensor& from, \
+                               Tensor* to) {                                  \
+    PersistentTensor tmp;                                                     \
+    Tensor* tensor;                                                           \
+    AllocatorAttributes attr;                                                 \
+    attr.set_gpu_compatible(true);                                            \
+    attr.set_nic_compatible(true);                                            \
+    TF_RETURN_IF_ERROR(context->allocate_persistent(                          \
+        from.dtype(), from.shape(), &tmp, &tensor, attr));                    \
+    switch (from.dtype()) {                                                   \
+      TYPE_CALLER(TYPE_DENSE_COPY);                                           \
+      default:                                                                \
+        return errors::InvalidArgument(                                       \
+            "VariantCopyFn: Could not perform a deep copy of variant "        \
+            "element of type: ",                                              \
+            DataTypeString(from.dtype()),                                     \
+            " using device: ", context->device()->name());                    \
+    }                                                                         \
+    *to = *tensor;                                                            \
+    return Status::OK();                                                      \
+  }
+
+INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define GPU_DENSE_COPY(T)                                                \
+  case DataTypeToEnum<T>::value: {                                       \
+    functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;            \
+    copy_functor_(context->eigen_device<GPUDevice>(), tensor->flat<T>(), \
+                  from.flat<T>());                                       \
+    break;                                                               \
+  }
+#define TF_CALL_GPU_AND_ADDITIONAL_TYPES(T) \
+  TF_CALL_GPU_ALL_TYPES(T);                 \
+  TF_CALL_int32(T);                         \
+  TF_CALL_int64(T);
+INSTANTIATE_GET_VARIANT_COPY_FN(GPUDevice, TF_CALL_GPU_AND_ADDITIONAL_TYPES,
+                                GPU_DENSE_COPY);
+#undef TF_CALL_GPU_AND_ADDITIONAL_TYPES
+#undef GPU_DENSE_COPY
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#undef CPU_DENSE_COPY
+#undef INSTANTIATE_GET_VARIANT_COPY_FN
 
 }  // namespace tensorflow

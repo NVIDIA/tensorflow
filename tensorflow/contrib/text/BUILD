@@ -2,21 +2,23 @@
 #   contains parts of TensorFlow that are experimental or unstable and which
 #   are not supported.
 
-package(default_visibility = [
-    "//learning/brain:__subpackages__",
-    "//tensorflow:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
     "tf_custom_op_library",
-    "tf_custom_op_py_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
+)
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_dynamic_pywrap")
+
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_custom_op_py_library(
@@ -73,9 +75,10 @@ cc_library(
 tf_custom_op_library(
     name = "python/ops/_skip_gram_ops.so",
     srcs = [
-        "kernels/skip_gram_kernels.cc",
         "ops/skip_gram_ops.cc",
-    ],
+    ] + if_dynamic_pywrap([], otherwise = [
+        "kernels/skip_gram_kernels.cc",
+    ]),
 )
 
 tf_gen_op_libs(
@@ -97,6 +100,7 @@ py_test(
     name = "skip_gram_ops_test",
     size = "medium",
     srcs = ["python/ops/skip_gram_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":text_py",
@@ -110,15 +114,4 @@ py_test(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:training",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

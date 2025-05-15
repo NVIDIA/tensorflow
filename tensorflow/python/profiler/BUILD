@@ -1,10 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "profiler",
@@ -58,9 +58,12 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
+        "no_mac",
         "no_pip",
+        "notap",
         "oss_serial",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -76,6 +79,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_pip"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_library(
@@ -129,7 +133,11 @@ cuda_py_test(
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_gpu",  # b/136036359
+        "no_pip",
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_library(
@@ -144,6 +152,7 @@ py_test(
     size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
@@ -157,17 +166,20 @@ py_test(
     ],
 )
 
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
+py_library(
+    name = "traceme",
+    srcs = ["traceme.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+    ],
+)
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "scoped_annotation",
+    srcs = ["scoped_annotation.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+    ],
 )

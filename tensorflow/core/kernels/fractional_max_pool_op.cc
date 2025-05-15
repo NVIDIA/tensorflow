@@ -44,6 +44,12 @@ class FractionalMaxPoolOp : public OpKernel {
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
                 errors::InvalidArgument("pooling_ratio field must "
                                         "specify 4 dimensions"));
+    for (std::size_t i = 0; i < pooling_ratio_.size(); ++i) {
+      OP_REQUIRES(context, pooling_ratio_[i] >= 1,
+                  errors::InvalidArgument(
+                      "pooling_ratio cannot be smaller than 1, got: ",
+                      pooling_ratio_[i]));
+    }
 
     OP_REQUIRES(
         context, pooling_ratio_[0] == 1 || pooling_ratio_[3] == 1,
@@ -83,13 +89,20 @@ class FractionalMaxPoolOp : public OpKernel {
     std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
+
+      OP_REQUIRES(
+          context, input_size[i] >= pooling_ratio_[i],
+          errors::InvalidArgument("Pooling ratio is higher than input "
+                                  "dimension size for dimension ",
+                                  i, ". Input dim size: ", input_size[i],
+                                  " pooling ratio: ", pooling_ratio_[i]));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       // This must match the same logic in the shape function in
       // core/ops/nn_ops.cc.
       output_size[i] =
-          static_cast<int>(floor(input_size[i] / pooling_ratio_[i]));
+          static_cast<int>(std::floor(input_size[i] / pooling_ratio_[i]));
       DCHECK_GT(output_size[i], 0);
     }
 

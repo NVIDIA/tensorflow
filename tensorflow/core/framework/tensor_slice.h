@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
-#define TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
 
 #include <string>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -46,6 +46,12 @@ class TensorSlice {
   explicit TensorSlice(int dim);
   explicit TensorSlice(const TensorSliceProto& proto);
   explicit TensorSlice(std::initializer_list<std::pair<int64, int64>> extents);
+
+  // This factory methods should be used instead of the constructor that takes a
+  // `TensorSliceProto` if calling code cannot validate that the sizes specify a
+  // valid `TensorSlice`.
+  static Status BuildTensorSlice(const TensorSliceProto& proto,
+                                 TensorSlice* output);
 
   static Status Parse(const string& str, TensorSlice* output);
   static TensorSlice ParseOrDie(const string& str) {
@@ -221,4 +227,4 @@ void TensorSlice::FillIndicesAndSizes(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_

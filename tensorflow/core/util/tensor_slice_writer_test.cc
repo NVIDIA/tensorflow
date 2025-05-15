@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -333,19 +334,19 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<int8> data(300000000, -1);
     Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("Tensor slice is too large to serialize"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Tensor slice is too large to serialize"));
   }
 
   // Add a large string tensor slice, which will fail.
   {
     TensorShape shape({256, 1024});
     TensorSlice slice = TensorSlice::ParseOrDie("-:-");
-    const std::vector<string> data(256 * 1024, std::string(8192, 'f'));
+    const std::vector<tstring> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(StringPiece(s.error_message())
-                    .contains("Tensor slice is too large to serialize"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Tensor slice is too large to serialize"));
   }
 }
 

@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
-#define TENSORFLOW_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -29,7 +30,7 @@ template <typename Device, typename T, typename Tindices, bool ADJ_A,
           bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor {
   static EIGEN_ALWAYS_INLINE Status Compute(
-      const Device& d, typename TTypes<T>::Matrix out,
+      OpKernelContext* context, typename TTypes<T>::Matrix out,
       typename TTypes<Tindices>::ConstMatrix a_indices,
       typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b);
 };
@@ -68,7 +69,34 @@ class MaybeAdjoint<MATRIX, true> {
   const MATRIX m_;
 };
 
+template <typename T>
+struct SumType {
+  using type = T;
+  // The following type alias is required for the build, but will never be used at
+  // run-time. Deterministic operation is not supported for the types for which
+  // there is not an explicit specialization of this template.
+  using type_for_determinism = T;
+};
+
+template <>
+struct SumType<Eigen::half> {
+  using type = float;  // Use fp32 accumulator for fp16 input values
+  using type_for_determinism = double;
+};
+
+template <>
+struct SumType<float> {
+  using type = float;
+  using type_for_determinism = double;
+};
+
+template <>
+struct SumType<complex64> {
+  using type = complex64;
+  using type_for_determinism = complex128;
+};
+
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_

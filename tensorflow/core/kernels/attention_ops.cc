@@ -34,7 +34,31 @@ class ExtractGlimpseOp : public OpKernel {
   explicit ExtractGlimpseOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("normalized", &normalized_));
     OP_REQUIRES_OK(context, context->GetAttr("centered", &centered_));
-    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise_));
+    bool uniform_noise = false;
+    string noise;
+    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise));
+    OP_REQUIRES_OK(context, context->GetAttr("noise", &noise));
+    OP_REQUIRES(context,
+                !(uniform_noise && (!noise.empty() && noise != "uniform")),
+                errors::InvalidArgument("The uniform_noise and noise could not "
+                                        "be specified at the same time"));
+    if (noise.empty()) {
+      noise_ = uniform_noise ? Eigen::ExtractGlimpsesNoiseMode::UNIFORM
+                             : Eigen::ExtractGlimpsesNoiseMode::GAUSSIAN;
+    } else {
+      OP_REQUIRES(context,
+                  noise == "uniform" || noise == "gaussian" || noise == "zero",
+                  errors::InvalidArgument(
+                      "The noise could only be uniform, gaussian, or zero, got",
+                      noise));
+      if (noise == "uniform") {
+        noise_ = Eigen::ExtractGlimpsesNoiseMode::UNIFORM;
+      } else if (noise == "gaussian") {
+        noise_ = Eigen::ExtractGlimpsesNoiseMode::GAUSSIAN;
+      } else {
+        noise_ = Eigen::ExtractGlimpsesNoiseMode::ZERO;
+      }
+    }
   }
 
   // Expect input tensor of rank 4 with dimensions (batch_size, height, width,
@@ -52,8 +76,9 @@ class ExtractGlimpseOp : public OpKernel {
     const int64 batch_size = input_shape.dim_size(0);
 
     const Tensor& window_size = context->input(1);
-    OP_REQUIRES(context, (window_size.shape().dims() == 1) &&
-                             window_size.shape().dim_size(0) == 2,
+    OP_REQUIRES(context,
+                (window_size.shape().dims() == 1) &&
+                    window_size.shape().dim_size(0) == 2,
                 errors::InvalidArgument(
                     "input must be a vector of size 2 (height, width)",
                     window_size.shape().DebugString()));
@@ -61,8 +86,8 @@ class ExtractGlimpseOp : public OpKernel {
     const int64 output_height = window_size.tensor<int, 1>()(0);
     const int64 output_width = window_size.tensor<int, 1>()(1);
     TensorShape output_shape = input_shape;
-    output_shape.set_dim(1, output_height);
-    output_shape.set_dim(2, output_width);
+    OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(1, output_height));
+    OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(2, output_width));
 
     const Tensor& offsets = context->input(2);
     OP_REQUIRES(context, offsets.shape().dims() == 2,
@@ -97,13 +122,13 @@ class ExtractGlimpseOp : public OpKernel {
         context->eigen_cpu_device()) =
         Eigen::ExtractGlimpses(input.tensor<float, 4>().swap_layout(),
                                output_width, output_height, offset_vec,
-                               normalized_, centered_, uniform_noise_);
+                               normalized_, centered_, noise_);
   }
 
  private:
   bool normalized_;
   bool centered_;
-  bool uniform_noise_;
+  Eigen::ExtractGlimpsesNoiseMode noise_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExtractGlimpse").Device(DEVICE_CPU),

@@ -94,6 +94,9 @@ class BincountOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& arr_t = ctx->input(0);
     const Tensor& size_tensor = ctx->input(1);
+    OP_REQUIRES(ctx, size_tensor.dims() == 0,
+                errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                        size_tensor.dims()));
     const Tensor& weights_t = ctx->input(2);
 
     int32 size = size_tensor.scalar<int32>()();
@@ -120,7 +123,7 @@ class BincountOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_KERNELS(type)                            \
   REGISTER_KERNEL_BUILDER(Name("Bincount")                \
@@ -133,6 +136,6 @@ TF_CALL_int32(REGISTER_KERNELS);
 TF_CALL_float(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

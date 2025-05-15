@@ -26,20 +26,19 @@ class PosixEnvTime : public EnvTime {
  public:
   PosixEnvTime() {}
 
-  uint64 NowMicros() override {
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
+  uint64 NowNanos() const override {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (static_cast<uint64>(ts.tv_sec) * kSecondsToNanos +
+            static_cast<uint64>(ts.tv_nsec));
   }
 };
 
 }  // namespace
 
-#if defined(PLATFORM_POSIX) || defined(__ANDROID__)
 EnvTime* EnvTime::Default() {
   static EnvTime* default_env_time = new PosixEnvTime;
   return default_env_time;
 }
-#endif
 
 }  // namespace tensorflow

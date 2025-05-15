@@ -30,17 +30,15 @@ namespace tensorflow {
 
 using tensorforest::CheckTensorBounds;
 
-
 float Convert(const string& in) {
   const std::size_t intval = std::hash<string>()(in);
   return static_cast<float>(intval);
 }
 
-
-void Evaluate(const Tensor& input_data, Tensor output_data,
-              int32 start, int32 end) {
+void Evaluate(const Tensor& input_data, Tensor output_data, int32 start,
+              int32 end) {
   auto out_data = output_data.unaligned_flat<float>();
-  const auto in_data = input_data.unaligned_flat<string>();
+  const auto in_data = input_data.unaligned_flat<tstring>();
 
   for (int32 i = start; i < end; ++i) {
     out_data(i) = Convert(in_data(i));
@@ -59,9 +57,8 @@ class ReinterpretStringToFloat : public OpKernel {
     if (!CheckTensorBounds(context, input_data)) return;
 
     Tensor* output_data = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input_data.shape(),
-                                            &output_data));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(0, input_data.shape(), &output_data));
 
     // Evaluate input data in parallel.
     const int32 num_data = static_cast<int32>(input_data.NumElements());
@@ -73,8 +70,8 @@ class ReinterpretStringToFloat : public OpKernel {
       auto work = [&input_data, output_data, num_data](int64 start, int64 end) {
         CHECK(start <= end);
         CHECK(end <= num_data);
-        Evaluate(input_data, *output_data,
-                 static_cast<int32>(start), static_cast<int32>(end));
+        Evaluate(input_data, *output_data, static_cast<int32>(start),
+                 static_cast<int32>(end));
       };
       Shard(num_threads, worker_threads->workers, num_data, 100, work);
     }

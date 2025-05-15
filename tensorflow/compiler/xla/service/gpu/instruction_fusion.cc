@@ -15,72 +15,49 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
-namespace {
-
-bool IsFusile(const HloInstruction& hlo) {
-  return (hlo.IsElementwise() && hlo.operand_count() > 0) ||
-         hlo.opcode() == HloOpcode::kBroadcast ||
-         hlo.opcode() == HloOpcode::kConcatenate ||
-         hlo.opcode() == HloOpcode::kDynamicSlice ||
-         hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         hlo.opcode() == HloOpcode::kFusion ||
-         hlo.opcode() == HloOpcode::kGetTupleElement ||
-         hlo.opcode() == HloOpcode::kPad ||
-         hlo.opcode() == HloOpcode::kReduce ||
-         hlo.opcode() == HloOpcode::kReduceWindow ||
-         hlo.opcode() == HloOpcode::kReshape ||
-         hlo.opcode() == HloOpcode::kSlice ||
-         hlo.opcode() == HloOpcode::kTranspose;
+bool ElementIsF32OrF16(const Shape& shape) {
+  PrimitiveType type = shape.element_type();
+  return type == F32 || type == F16;
 }
 
-}  // namespace
+/*static*/ bool GpuInstructionFusion::IsExpensive(
+    const HloInstruction& instruction) {
 
-bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64 operand_index) {
+  // We say that some floating-point math ops are cheap on the GPU.
+  switch (instruction.opcode()) {
+    case HloOpcode::kDivide:
+    case HloOpcode::kRsqrt:
+      if (ElementIsF32OrF16(instruction.shape())) {
+        return false;
+      }
+    default:
+      break;
+  }
+  return InstructionFusion::IsExpensive(instruction);
+}
+
+bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
-  // Output fusion is not currently supported on GPUs.
+  // Output fusions are not currently supported on GPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
     return false;
   }
-
-  // RNG operations are not currently parallel-friendly on GPU.
-  if (producer->opcode() == HloOpcode::kRng) {
-    return false;
-  }
-
-  // Do not fuse to-vector reduction into other consumers. They should be
-  // unfused or the root of a kInput fusion.
-  if (IsReductionToVector(*producer)) {
-    return false;
-  }
-
-  // We can't fuse library calls, so if a user of such an op could become a
-  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
-  // further rationale.
-  if (producer->CouldBeBitcast() &&
-      ImplementedAsLibraryCall(*producer->operand(0))) {
-    return false;
-  }
-
-  // We may need to know original operand layout to emit input fusion, and so
-  // far, we merely use the layout of an operand of the fusion node, which means
-  // we must fuse only elementwise operations. This restriction should be lifted
-  // later if we need to fuse other operations, e.g. transpose, for performance.
-  if ((IsReductionToVector(*consumer) ||
-       (HloOpcode::kFusion == consumer->opcode() &&
-        HloInstruction::FusionKind::kInput == consumer->fusion_kind())) &&
-      !producer->IsElementwise()) {
-    return false;
-  }
-
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion &&
@@ -89,19 +66,67 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  return IsFusile(*producer) && IsFusile(*consumer) &&
-         InstructionFusion::ShouldFuse(consumer, operand_index);
+  if (!IsProducerConsumerFusible(*producer, *consumer) ||
+      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    return false;
+  }
+  return true;
+}
+
+bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                      int64 operand_index) {
+  if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    return false;
+  }
+  auto producer = consumer->operand(operand_index);
+
+  // The following checks are potentially expensive.
+  if (FusionWouldBeTooLarge(*consumer, *producer, true)) {
+    return false;
+  }
+  if (consumer->opcode() != HloOpcode::kFusion) {
+    return true;
+  }
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  if (fusion_node_evaluations_.find(consumer) ==
+      fusion_node_evaluations_.end()) {
+    // We have no cached results for this fusion node yet. This can happen when
+    // we run the InstructionFusion pass more than once. We can only cache the
+    // results within one run.
+    fusion_node_evaluations_.emplace(consumer,
+                                     FusionNodeIndexingEvaluation(consumer));
+  }
+  return !fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
+      producer);
+}
+
+bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
+                                                     int64 operand_index) {
+  return false;
 }
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer)) {
-    return HloInstruction::FusionKind::kInput;
+  return ChooseFusionKind(*producer, *consumer);
+}
+
+HloInstruction* GpuInstructionFusion::FuseInstruction(
+    HloInstruction* fusion_instruction, HloInstruction* producer) {
+  auto evaluation = fusion_node_evaluations_.find(fusion_instruction);
+  if (evaluation == fusion_node_evaluations_.end()) {
+    evaluation = fusion_node_evaluations_
+                     .emplace(fusion_instruction,
+                              FusionNodeIndexingEvaluation(fusion_instruction))
+                     .first;
   }
-  if (HloOpcode::kFusion == consumer->opcode()) {
-    return consumer->fusion_kind();
-  }
-  return InstructionFusion::ChooseKind(producer, consumer);
+  auto indexing_users = evaluation->second.RemoveFusionOperand(producer);
+  HloInstruction* new_producer =
+      InstructionFusion::FuseInstruction(fusion_instruction, producer);
+  evaluation->second.UpdateEvaluationCache(new_producer, indexing_users);
+  return new_producer;
 }
 
 }  // namespace gpu

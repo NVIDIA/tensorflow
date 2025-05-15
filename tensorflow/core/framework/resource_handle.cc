@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
 ResourceHandle::ResourceHandle() {}
 
 ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
-  FromProto(proto);
+  TF_CHECK_OK(FromProto(proto));
+}
+
+Status ResourceHandle::BuildResourceHandle(const ResourceHandleProto& proto,
+                                           ResourceHandle* out) {
+  if (out == nullptr)
+    return errors::Internal(
+        "BuildResourceHandle() was called with nullptr for the output");
+  return out->FromProto(proto);
 }
 
 ResourceHandle::~ResourceHandle() {}
@@ -33,14 +44,32 @@ void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
   proto->set_name(name());
   proto->set_hash_code(hash_code());
   proto->set_maybe_type_name(maybe_type_name());
+  for (const auto& dtype_and_shape_pair : dtypes_and_shapes_) {
+    auto dtype_and_shape = proto->add_dtypes_and_shapes();
+    dtype_and_shape->set_dtype(dtype_and_shape_pair.dtype);
+    dtype_and_shape_pair.shape.AsProto(dtype_and_shape->mutable_shape());
+  }
 }
 
-void ResourceHandle::FromProto(const ResourceHandleProto& proto) {
+Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   set_device(proto.device());
   set_container(proto.container());
   set_name(proto.name());
   set_hash_code(proto.hash_code());
   set_maybe_type_name(proto.maybe_type_name());
+  std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+  for (const auto& dtype_and_shape : proto.dtypes_and_shapes()) {
+    DataType dtype = dtype_and_shape.dtype();
+    PartialTensorShape shape;
+    Status s = PartialTensorShape::BuildPartialTensorShape(
+        dtype_and_shape.shape(), &shape);
+    if (!s.ok()) {
+      return s;
+    }
+    dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
+  }
+  dtypes_and_shapes_ = std::move(dtypes_and_shapes);
+  return Status::OK();
 }
 
 string ResourceHandle::SerializeAsString() const {
@@ -51,9 +80,7 @@ string ResourceHandle::SerializeAsString() const {
 
 bool ResourceHandle::ParseFromString(const string& s) {
   ResourceHandleProto proto;
-  const bool status = proto.ParseFromString(s);
-  if (status) FromProto(proto);
-  return status;
+  return proto.ParseFromString(s) && FromProto(proto).ok();
 }
 
 string ResourceHandle::DebugString() const {
@@ -64,6 +91,33 @@ string ResourceHandle::DebugString() const {
 
 string ProtoDebugString(const ResourceHandle& handle) {
   return handle.DebugString();
+}
+
+void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+                              std::unique_ptr<port::StringListEncoder> e) {
+  ResourceHandleProto proto;
+  for (int i = 0; i < n; ++i) {
+    p[i].AsProto(&proto);
+    e->Append(proto);
+  }
+  e->Finalize();
+}
+
+bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
+                              ResourceHandle* ps, int64 n) {
+  std::vector<uint32> sizes(n);
+  if (!d->ReadSizes(&sizes)) return false;
+
+  ResourceHandleProto proto;
+  for (int i = 0; i < n; ++i) {
+    if (!proto.ParseFromArray(d->Data(sizes[i]), sizes[i])) {
+      return false;
+    }
+    if (!ps[i].FromProto(proto).ok()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace tensorflow

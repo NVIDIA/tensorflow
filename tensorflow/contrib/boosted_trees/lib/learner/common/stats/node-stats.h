@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/Eigenvalues"
@@ -59,7 +59,7 @@ struct NodeStats {
             const GradientStats& grad_stats)
       : gradient_stats(grad_stats), gain(0) {
     switch (strategy) {
-      case LearnerConfig_MultiClassStrategy_TREE_PER_CLASS: {
+      case LearnerConfig::TREE_PER_CLASS: {
         float g;
         float h;
         // Initialize now in case of early return.
@@ -97,7 +97,7 @@ struct NodeStats {
         gain = (weight_contribution[0] * -g);
         break;
       }
-      case LearnerConfig_MultiClassStrategy_FULL_HESSIAN: {
+      case LearnerConfig::FULL_HESSIAN: {
         weight_contribution.clear();
 
         if (grad_stats.first.t.NumElements() == 0 ||
@@ -137,7 +137,7 @@ struct NodeStats {
         Eigen::MatrixXf hessian =
             TensorToEigenMatrix(grad_stats.second.t, grad_dim, grad_dim);
         // I is an identity matrix.
-        // The gain in general form is -g^T (H+l2 I)^-1 g.
+        // The gain in general form is g^T (H+l2 I)^-1 g.
         // The node weights are -(H+l2 I)^-1 g.
         Eigen::MatrixXf identity;
         identity.setIdentity(grad_dim, grad_dim);
@@ -147,7 +147,7 @@ struct NodeStats {
         CalculateWeightAndGain(hessian_and_reg, g);
         break;
       }
-      case LearnerConfig_MultiClassStrategy_DIAGONAL_HESSIAN: {
+      case LearnerConfig::DIAGONAL_HESSIAN: {
         weight_contribution.clear();
         if (grad_stats.first.t.NumElements() == 0 ||
             grad_stats.second.t.NumElements() == 0) {
@@ -240,7 +240,7 @@ struct NodeStats {
   // given regularized Hessian and gradient vector g.
   void CalculateWeightAndGain(const Eigen::MatrixXf& hessian_and_reg,
                               const Eigen::VectorXf& g) {
-    // The gain in general form is -g^T (Hessian_and_regularization)^-1 g.
+    // The gain in general form is g^T (Hessian_and_regularization)^-1 g.
     // The node weights are -(Hessian_and_regularization)^-1 g.
     Eigen::VectorXf weight;
     // If we want to calculate x = K^-1 v, instead of explicitly calculating
@@ -298,4 +298,4 @@ struct NodeStats {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_STATS_NODE_STATS_H_

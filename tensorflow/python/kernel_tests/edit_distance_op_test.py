@@ -49,11 +49,11 @@ class EditDistanceTest(test.TestCase):
 
     if expected_err_re is None:
       self.assertEqual(edit_distance.get_shape(), expected_shape)
-      output = edit_distance.eval()
+      output = self.evaluate(edit_distance)
       self.assertAllClose(output, expected_output)
     else:
       with self.assertRaisesOpError(expected_err_re):
-        edit_distance.eval()
+        self.evaluate(edit_distance)
 
   def _testEditDistance(self,
                         hypothesis,
@@ -68,7 +68,7 @@ class EditDistanceTest(test.TestCase):
     ]
 
     # SparseTensorValue inputs.
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       # hypothesis and truth are (index, value, shape) tuples
       self._testEditDistanceST(
           hypothesis_st=sparse_tensor.SparseTensorValue(
@@ -81,7 +81,7 @@ class EditDistanceTest(test.TestCase):
           expected_err_re=expected_err_re)
 
     # SparseTensor inputs.
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       # hypothesis and truth are (index, value, shape) tuples
       self._testEditDistanceST(
           hypothesis_st=sparse_tensor.SparseTensor(
@@ -210,6 +210,24 @@ class EditDistanceTest(test.TestCase):
         truth=(truth_indices, truth_values, truth_shape),
         normalize=True,
         expected_output=expected_output)
+
+  def testEditDistanceBadIndices(self):
+    hypothesis_indices = np.full((3, 3), -1250999896764, dtype=np.int64)
+    hypothesis_values = np.empty(3, dtype=np.int64)
+    hypothesis_shape = np.empty(3, dtype=np.int64)
+    truth_indices = np.full((3, 3), -1250999896764, dtype=np.int64)
+    truth_values = np.full([3], 2, dtype=np.int64)
+    truth_shape = np.full([3], 2, dtype=np.int64)
+    expected_output = []  # dummy; ignored
+
+    self._testEditDistance(
+        hypothesis=(hypothesis_indices, hypothesis_values, hypothesis_shape),
+        truth=(truth_indices, truth_values, truth_shape),
+        normalize=False,
+        expected_output=expected_output,
+        expected_err_re=(r"inner product -\d+ which would require writing "
+                         "to outside of the buffer for the output tensor")
+    )
 
 
 if __name__ == "__main__":

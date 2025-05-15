@@ -34,6 +34,8 @@ set -e
 #
 # Make sure you have an up to date version of the Bazel build tool installed too.
 
+export TF_ENABLE_XLA=0
+
 yes '' | ./configure
 
 # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
@@ -55,16 +57,20 @@ TOOLCHAIN_INSTALL_PATH=/tmp/toolchain_install/
 sudo rm -rf ${TOOLCHAIN_INSTALL_PATH}
 mkdir ${TOOLCHAIN_INSTALL_PATH}
 cd ${TOOLCHAIN_INSTALL_PATH}
-curl -L https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz -o toolchain.tar.gz
+curl -L https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz -o toolchain.tar.gz
 tar xzf toolchain.tar.gz
-mv tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/ tools
+mv rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5 tools
 
-CROSSTOOL_CC=${TOOLCHAIN_INSTALL_PATH}/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
+CROSSTOOL_CC=${TOOLCHAIN_INSTALL_PATH}/tools/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-gcc
 
 OPENBLAS_SRC_PATH=/tmp/openblas_src/
 sudo rm -rf ${OPENBLAS_SRC_PATH}
 git clone https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
 cd ${OPENBLAS_SRC_PATH}
+# The commit after this introduced Fortran compile issues. In theory they should
+# be solvable using NOFORTRAN=1 on the make command, but my initial tries didn't
+# work, so pinning to the last know good version.
+git checkout 5a6a2bed9aff0ba8a18651d5514d029c8cae336a
 # If this path is changed, you'll also need to update
 # cxx_builtin_include_directory in third_party/toolchains/cpus/arm/CROSSTOOL.tpl
 OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
@@ -79,13 +85,16 @@ if [[ $1 == "PI_ONE" ]]; then
   --linkopt=-L${OPENBLAS_INSTALL_PATH}/lib/
   --linkopt=-l:libopenblas.a"
   echo "Building for the Pi One/Zero, with no NEON support"
+  WHEEL_ARCH=linux_armv6l
 else
-  PI_COPTS='--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
+  PI_COPTS="--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
-  --copt=-O3
+  --copt=-O3 --copt=-fno-tree-pre
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
-  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8'
+  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+  --define=raspberry_pi_with_neon=true"
+  WHEEL_ARCH=linux_armv7l
   echo "Building for the Pi Two/Three, with NEON acceleration"
 fi
 
@@ -99,7 +108,10 @@ bazel build -c opt ${PI_COPTS} \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
+  --define tensorflow_mkldnn_contraction_kernel=0 \
   --verbose_failures \
+  //tensorflow:libtensorflow.so \
+  //tensorflow:libtensorflow_framework.so \
   //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 
@@ -112,10 +124,12 @@ BDIST_OPTS="--universal" \
   bazel-bin/tensorflow/tools/pip_package/build_pip_package "${OUTDIR}"
 
 OLD_FN=$(ls "${OUTDIR}" | grep -m 1 \.whl)
-SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-any.whl/; print'
+SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-'${WHEEL_ARCH}'.whl/; print'
 NEW_FN=$(echo "${OLD_FN}" | perl -ne "${SUB}")
 mv "${OUTDIR}/${OLD_FN}" "${OUTDIR}/${NEW_FN}"
 cp bazel-bin/tensorflow/tools/benchmark/benchmark_model "${OUTDIR}"
+cp bazel-bin/tensorflow/libtensorflow.so "${OUTDIR}"
+cp bazel-bin/tensorflow/libtensorflow_framework.so "${OUTDIR}"
 
 echo "Output can be found here:"
 find "${OUTDIR}"

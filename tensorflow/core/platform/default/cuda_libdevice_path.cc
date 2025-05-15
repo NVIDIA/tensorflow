@@ -16,17 +16,39 @@ limitations under the License.
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 
 #include <stdlib.h>
+#include <vector>
+
+#if defined(PLATFORM_POSIX)
+#include <link.h>
+#include <dlfcn.h>
+#include <libgen.h>
+#endif
 
 #if !defined(PLATFORM_GOOGLE)
-#include "cuda/cuda_config.h"
+#include "third_party/gpus/cuda/cuda_config.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-string CudaRoot() {
-  VLOG(3) << "CUDA root = " << TF_CUDA_TOOLKIT_PATH;
-  return TF_CUDA_TOOLKIT_PATH;
+std::vector<string> CandidateCudaRoots() {
+  auto roots = std::vector<string>{TF_CUDA_TOOLKIT_PATH};
+
+#if defined(PLATFORM_POSIX)
+  Dl_info info;
+
+  if (dladdr(&__FUNCTION__, &info)) {
+    auto lib = std::vector<char>{info.dli_fname, info.dli_fname + strlen(info.dli_fname)};
+    auto dir = dirname(lib.data());
+
+    for (auto path : {"/../nvidia/cuda_nvcc", "/../../nvidia/cuda_nvcc"})
+      roots.emplace_back(string{dir} + path);
+  }
+#endif
+
+  for (auto root : roots)
+	  VLOG(3) << "CUDA root = " << root;
+  return roots;
 }
 
 }  // namespace tensorflow

@@ -56,9 +56,10 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
       errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
                               " instead of ", orig_input_tensor.dims()));
 
-  OP_REQUIRES(context, TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
-                           block_dims == orig_crops.dim_size(0) &&
-                           2 == orig_crops.dim_size(1),
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
+                  block_dims == orig_crops.dim_size(0) &&
+                  2 == orig_crops.dim_size(1),
               errors::InvalidArgument("crops should have shape [", block_dims,
                                       ", 2] instead of ",
                                       orig_crops.shape().DebugString()));
@@ -265,7 +266,7 @@ class BatchToSpaceOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER(T)                                        \
   REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")           \
                               .Device(DEVICE_GPU)          \
@@ -281,6 +282,6 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

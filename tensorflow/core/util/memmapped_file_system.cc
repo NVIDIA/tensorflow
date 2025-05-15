@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -54,6 +55,11 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
       : data_(data), length_(length) {}
 
   ~RandomAccessFileFromMemmapped() override = default;
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented(
+        "RandomAccessFileFromMemmapped does not support Name()");
+  }
 
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
@@ -157,6 +163,12 @@ Status MemmappedFileSystem::GetChildren(const string& filename,
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
 }
 
+Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
+                                             std::vector<string>* results) {
+  return errors::Unimplemented(
+      "memmapped format doesn't support GetMatchingPaths");
+}
+
 Status MemmappedFileSystem::DeleteFile(const string& filename) {
   return errors::Unimplemented("memmapped format doesn't support DeleteFile");
 }
@@ -178,13 +190,8 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
-#if defined(COMPILER_MSVC)
-constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
-constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
-#else
-constexpr char MemmappedFileSystem::kMemmappedPackagePrefix[];
-constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
-#endif
+constexpr const char MemmappedFileSystem::kMemmappedPackagePrefix[];
+constexpr const char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {
@@ -223,8 +230,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     if (!directory_
              .insert(std::make_pair(
                  element_iter->name(),
-                 FileRegion(element_iter->offset(),
-                            prev_element_offset - element_iter->offset())))
+                 FileRegion(element_iter->offset(), element_iter->length())))
              .second) {
       return errors::DataLoss("Corrupted memmapped model file: ", filename,
                               " Duplicate name of internal component ",
@@ -236,7 +242,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
-  return StringPiece(filename).starts_with(kMemmappedPackagePrefix);
+  return absl::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
 namespace {

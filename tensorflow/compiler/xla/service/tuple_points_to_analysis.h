@@ -17,12 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TUPLE_POINTS_TO_ANALYSIS_H_
 
 #include <stddef.h>
+
 #include <iosfwd>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -33,10 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -109,7 +110,7 @@ class PointsToSet {
   // Add a tuple source instruction for the given index.
   void add_tuple_source(const ShapeIndex& index, HloInstruction* tuple);
 
-  using BufferList = tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+  using BufferList = absl::InlinedVector<const LogicalBuffer*, 1>;
 
   // Return the list of logical buffers for the subshape at index.
   const BufferList& element(const ShapeIndex& index) const {
@@ -199,13 +200,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   StatusOr<const LogicalBuffer*> GetBufferDefinedAt(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
-  // Return a vector containing all BufferAliases of the given logical buffer
-  // This trivially includes the BufferAlias with same instruction and index as
-  // the logical buffer itself, so the returned vector is never empty.  The
-  // buffer alias set is the inverse of the points-to set. That is,
-  // LogicalBuffer B is in the points-to set of instruction I at index N iff
-  // instruction I, index N is a BufferAlias of B.
-  using BufferAliasVector = tensorflow::gtl::InlinedVector<BufferAlias, 1>;
+  // Return a (possibly empty) vector containing all BufferAliases of the given
+  // logical buffer The buffer alias set is the inverse of the points-to set.
+  // That is, LogicalBuffer B is in the points-to set of instruction I at index
+  // N iff instruction I, index N is a BufferAlias of B.
+  using BufferAliasVector = absl::InlinedVector<BufferAlias, 1>;
   const BufferAliasVector& GetBufferAliases(const LogicalBuffer& buffer) const;
 
   // Returns the number of logical buffers in the module
@@ -228,8 +227,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // instructions produce a single buffer (the top-level buffer), some produce
   // no buffers (eg bitcast), and some produce more than one buffer (eg,
   // tuple-shaped parameters).
-  using BufferDefinitionVector =
-      tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+  using BufferDefinitionVector = absl::InlinedVector<const LogicalBuffer*, 1>;
   const BufferDefinitionVector& GetBuffersDefinedByInstruction(
       const HloInstruction* instruction) const;
 
@@ -250,13 +248,24 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleSlice(HloInstruction* slice) override;
+  Status HandleDomain(HloInstruction* domain) override;
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleCopyStart(HloInstruction* copy_start) override;
+  Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleSelect(HloInstruction* select) override;
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   string ToString() const;
+
+  // Returns true if 'user' cannot possibly use the buffer at 'index' in
+  // 'operand'. Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                               const ShapeIndex& index,
+                               const HloInstruction* user) const;
 
  private:
   explicit TuplePointsToAnalysis(
@@ -294,7 +303,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // Information kept per instruction
   struct PerInstruction {
     std::unique_ptr<PointsToSet> points_to_set;
-    // Empircally, ~92% of instructions have 1
+    // Empirically, ~92% of instructions have 1
     // instruction_defined_buffer, and 99% have 0 or 1
     BufferDefinitionVector instruction_defined_buffers;
   };
@@ -302,15 +311,31 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const PerInstruction* PerInst(const HloInstruction* inst) const {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
-    DCHECK_LT(id, per_instruction_.size());
-    return &per_instruction_[id];
+    auto iter = per_instruction_.find(id);
+    if (iter == per_instruction_.end()) {
+      LOG(FATAL) << "Expected per-instruction information to already exist";
+    } else {
+      return iter->second.get();
+    }
   }
   PerInstruction* PerInst(const HloInstruction* inst) {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
-    DCHECK_LT(id, per_instruction_.size());
-    return &per_instruction_[id];
+    auto iter = per_instruction_.find(id);
+    if (iter == per_instruction_.end()) {
+      return per_instruction_.emplace(id, absl::make_unique<PerInstruction>())
+          .first->second.get();
+    } else {
+      return iter->second.get();
+    }
   }
+
+  std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
+      HloInstruction* instruction, const ShapeIndex& index) const;
+  bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
+                                    const ShapeIndex& operand_index,
+                                    HloInstruction* fusion,
+                                    const int64 use_operand_index) const;
 
   // The module this analysis is performed on.
   const HloModule* module_;
@@ -319,7 +344,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
   // A map from instruction->unique_id() to
-  std::vector<PerInstruction> per_instruction_;
+  absl::flat_hash_map<int, std::unique_ptr<PerInstruction>> per_instruction_;
 
   // A map from LogicalBuffer->id() to alias information about that logical
   // buffer

@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class NegativeBinomial(distribution.Distribution):
@@ -51,6 +52,14 @@ class NegativeBinomial(distribution.Distribution):
   * `n!` is the factorial of `n`.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                total_count,
                logits=None,
@@ -90,8 +99,8 @@ class NegativeBinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
 
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
       with ops.control_dependencies(
@@ -136,7 +145,7 @@ class NegativeBinomial(distribution.Distribution):
     return array_ops.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     # Here we use the fact that if:
@@ -181,10 +190,9 @@ class NegativeBinomial(distribution.Distribution):
     return self.total_count * math_ops.exp(self.logits)
 
   def _mode(self):
-    adjusted_count = array_ops.where(
-        1. < self.total_count,
-        self.total_count - 1.,
-        array_ops.zeros_like(self.total_count))
+    adjusted_count = array_ops.where_v2(1. < self.total_count,
+                                        self.total_count - 1.,
+                                        array_ops.zeros_like(self.total_count))
     return math_ops.floor(adjusted_count * math_ops.exp(self.logits))
 
   def _variance(self):

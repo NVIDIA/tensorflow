@@ -17,14 +17,14 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double,
-          complex64, complex128);
+REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double, complex64,
+          complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Acosh", functor::acosh, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(UnaryOp, GPU, "Acosh", functor::acosh, float, double);
 #endif
 }  // namespace tensorflow

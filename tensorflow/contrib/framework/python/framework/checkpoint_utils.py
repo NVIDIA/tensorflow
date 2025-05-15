@@ -21,13 +21,14 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as train
 
 __all__ = [
@@ -40,7 +41,7 @@ __all__ = [
 def _get_checkpoint_filename(filepattern):
   """Returns checkpoint filename given directory or specific filepattern."""
   if gfile.IsDirectory(filepattern):
-    return saver.latest_checkpoint(filepattern)
+    return checkpoint_management.latest_checkpoint(filepattern)
   return filepattern
 
 
@@ -116,9 +117,10 @@ def _set_checkpoint_initializer(variable, file_pattern, tensor_name, slice_spec,
     name: Name of the operation.
   """
   base_type = variable.dtype.base_dtype
-  restore_op = io_ops.restore_v2(
-      file_pattern, [tensor_name], [slice_spec], [base_type], name=name)[0]
-  variable._initializer_op = state_ops.assign(variable, restore_op)
+  with ops.device(variable.device), ops.device("/cpu:0"):
+    restore_op = io_ops.restore_v2(
+        file_pattern, [tensor_name], [slice_spec], [base_type], name=name)[0]
+    variable._initializer_op = state_ops.assign(variable, restore_op)
 
 
 def _set_variable_or_list_initializer(variable_or_list, file_pattern,
@@ -177,11 +179,11 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
 
   ```python
     # Create variables.
-    with tf.variable_scope('test'):
-      m = tf.get_variable('my_var')
-    with tf.variable_scope('test2'):
-      var2 = tf.get_variable('my_var')
-    var3 = tf.get_variable(name="my1", shape=[100, 100],
+    with tf.compat.v1.variable_scope('test'):
+      m = tf.compat.v1.get_variable('my_var')
+    with tf.compat.v1.variable_scope('test2'):
+      var2 = tf.compat.v1.get_variable('my_var')
+    var3 = tf.compat.v1.get_variable(name="my1", shape=[100, 100],
                            partitioner=lambda shape, dtype: [5, 1])
     ...
     # Specify which variables to initialize from checkpoint.

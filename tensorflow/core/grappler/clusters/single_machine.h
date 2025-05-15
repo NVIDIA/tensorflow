@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
-#define TENSORFLOW_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
+#define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
 
 #include "tensorflow/cc/training/coordinator.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -42,6 +43,14 @@ class SingleMachine : public Cluster {
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
 
+  const DeviceSet* GetDeviceSet() const override { return device_set_.get(); }
+
+  Status EnablePeakMemoryStats(bool enable) override;
+
+  // It requires EnableAllocatorStats(true) be called before Provision().
+  Status GetPeakMemoryUsage(
+      std::unordered_map<string, uint64>* device_peak_memory) const override;
+
  private:
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
@@ -55,7 +64,8 @@ class SingleMachine : public Cluster {
   void MergeCosts(CostGraphDef* graph_costs, const CostGraphDef& init_costs,
                   const CostGraphDef& queue_costs);
 
-  const int num_gpus_;
+  Status ClearAllocatorStats() const;
+
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;
   string last_graph_id_;
@@ -65,14 +75,17 @@ class SingleMachine : public Cluster {
   int64 expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::unique_ptr<DeviceSet> device_set_;
 
   RunMetadata init_metadata_;
 
   mutex close_mu_;
   bool closing_ GUARDED_BY(close_mu_);
+
+  bool cpu_allocator_stats_enabled_ = false;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_

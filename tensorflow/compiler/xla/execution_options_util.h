@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_EXECUTION_OPTIONS_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_EXECUTION_OPTIONS_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_EXECUTION_OPTIONS_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_EXECUTION_OPTIONS_UTIL_H_
 
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 
 // Create a default ExecutionOptions proto; this proto has its debug options
-// popupated to the default values taken from flags.
+// populated to the default values taken from flags.
 ExecutionOptions CreateDefaultExecutionOptions();
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_EXECUTION_OPTIONS_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_EXECUTION_OPTIONS_UTIL_H_

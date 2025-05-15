@@ -16,18 +16,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import errors
+import numpy as np
+
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-TIMEOUT = 1
+TIMEOUT = 5
+
 
 class MapStageTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -43,12 +49,13 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
         self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testMultiple(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -64,13 +71,14 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testDictionary(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -83,7 +91,7 @@ class MapStageTest(test.TestCase):
             [dtypes.float32, dtypes.float32],
             shapes=[[], [128, 128]],
             names=['x', 'v'])
-        stage = stager.put(pi,{'x': x, 'v': v})
+        stage = stager.put(pi, {'x': x, 'v': v})
         key, ret = stager.get(gi)
         z = ret['x']
         y = ret['v']
@@ -91,7 +99,7 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
@@ -120,6 +128,7 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
+  @test_util.run_deprecated_v1
   def testPeek(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -128,8 +137,11 @@ class MapStageTest(test.TestCase):
         gi = array_ops.placeholder(dtypes.int64)
         p = array_ops.placeholder(dtypes.int32, name='p')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.MapStagingArea([dtypes.int32, ], shapes=[[]])
-        stage = stager.put(pi,[x], [0])
+        stager = data_flow_ops.MapStagingArea(
+            [
+                dtypes.int32,
+            ], shapes=[[]])
+        stage = stager.put(pi, [x], [0])
         peek = stager.peek(gi)
         size = stager.size()
 
@@ -137,7 +149,7 @@ class MapStageTest(test.TestCase):
 
     n = 10
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       for i in range(n):
         sess.run(stage, feed_dict={x: i, pi: i})
 
@@ -146,6 +158,7 @@ class MapStageTest(test.TestCase):
 
       self.assertTrue(sess.run(size) == 10)
 
+  @test_util.run_deprecated_v1
   def testSizeAndClear(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -158,13 +171,13 @@ class MapStageTest(test.TestCase):
             [dtypes.float32, dtypes.float32],
             shapes=[[], [128, 128]],
             names=['x', 'v'])
-        stage = stager.put(pi,{'x': x, 'v': v})
+        stage = stager.put(pi, {'x': x, 'v': v})
         size = stager.size()
         clear = stager.clear()
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 3})
       self.assertEqual(sess.run(size), 1)
       sess.run(stage, feed_dict={x: -1, pi: 1})
@@ -172,7 +185,7 @@ class MapStageTest(test.TestCase):
       sess.run(clear)
       self.assertEqual(sess.run(size), 0)
 
-
+  @test_util.run_deprecated_v1
   def testCapacity(self):
     capacity = 3
 
@@ -182,8 +195,10 @@ class MapStageTest(test.TestCase):
         pi = array_ops.placeholder(dtypes.int64, name='pi')
         gi = array_ops.placeholder(dtypes.int64, name='gi')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
-          capacity=capacity, shapes=[[]])
+        stager = data_flow_ops.MapStagingArea(
+            [
+                dtypes.int32,
+            ], capacity=capacity, shapes=[[]])
 
       stage = stager.put(pi, [x], [0])
       get = stager.get()
@@ -197,7 +212,7 @@ class MapStageTest(test.TestCase):
     queue = Queue.Queue()
     n = 8
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens
@@ -222,9 +237,8 @@ class MapStageTest(test.TestCase):
         self.fail("Expected to timeout on iteration '{}' "
                   "but instead timed out on iteration '{}' "
                   "Staging Area size is '{}' and configured "
-                  "capacity is '{}'.".format(capacity, i,
-                                            sess.run(size),
-                                            capacity))
+                  "capacity is '{}'.".format(capacity, i, sess.run(size),
+                                             capacity))
 
       # Should have capacity elements in the staging area
       self.assertTrue(sess.run(size) == capacity)
@@ -235,9 +249,10 @@ class MapStageTest(test.TestCase):
 
       self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testMemoryLimit(self):
-    memory_limit = 512*1024  # 512K
-    chunk = 200*1024 # 256K
+    memory_limit = 512 * 1024  # 512K
+    chunk = 200 * 1024  # 256K
     capacity = memory_limit // chunk
 
     with ops.Graph().as_default() as G:
@@ -246,8 +261,8 @@ class MapStageTest(test.TestCase):
         pi = array_ops.placeholder(dtypes.int64, name='pi')
         gi = array_ops.placeholder(dtypes.int64, name='gi')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.MapStagingArea([dtypes.uint8],
-          memory_limit=memory_limit, shapes=[[]])
+        stager = data_flow_ops.MapStagingArea(
+            [dtypes.uint8], memory_limit=memory_limit, shapes=[[]])
         stage = stager.put(pi, [x], [0])
         get = stager.get()
         size = stager.size()
@@ -256,12 +271,11 @@ class MapStageTest(test.TestCase):
 
     from six.moves import queue as Queue
     import threading
-    import numpy as np
 
     queue = Queue.Queue()
     n = 8
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens
@@ -287,9 +301,8 @@ class MapStageTest(test.TestCase):
         self.fail("Expected to timeout on iteration '{}' "
                   "but instead timed out on iteration '{}' "
                   "Staging Area size is '{}' and configured "
-                  "capacity is '{}'.".format(capacity, i,
-                                            sess.run(size),
-                                            capacity))
+                  "capacity is '{}'.".format(capacity, i, sess.run(size),
+                                             capacity))
 
       # Should have capacity elements in the staging area
       self.assertTrue(sess.run(size) == capacity)
@@ -300,6 +313,7 @@ class MapStageTest(test.TestCase):
 
       self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testOrdering(self):
     import six
     import random
@@ -310,8 +324,10 @@ class MapStageTest(test.TestCase):
         pi = array_ops.placeholder(dtypes.int64, name='pi')
         gi = array_ops.placeholder(dtypes.int64, name='gi')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
-          shapes=[[]], ordered=True)
+        stager = data_flow_ops.MapStagingArea(
+            [
+                dtypes.int32,
+            ], shapes=[[]], ordered=True)
         stage = stager.put(pi, [x], [0])
         get = stager.get()
         size = stager.size()
@@ -320,7 +336,7 @@ class MapStageTest(test.TestCase):
 
     n = 10
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # Keys n-1..0
       keys = list(reversed(six.moves.range(n)))
 
@@ -336,6 +352,7 @@ class MapStageTest(test.TestCase):
 
       self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testPartialDictInsert(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -349,7 +366,7 @@ class MapStageTest(test.TestCase):
         stager = data_flow_ops.MapStagingArea(
             [dtypes.float32, dtypes.float32, dtypes.float32],
             names=['x', 'v', 'f'])
-        stage_xf = stager.put(pi,{'x': x, 'f': f})
+        stage_xf = stager.put(pi, {'x': x, 'f': f})
         stage_v = stager.put(pi, {'v': v})
         key, ret = stager.get(gi)
         size = stager.size()
@@ -357,7 +374,7 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # 0 complete and incomplete entries
       self.assertTrue(sess.run([size, isize]) == [0, 0])
       # Stage key 0, x and f tuple entries
@@ -373,12 +390,13 @@ class MapStageTest(test.TestCase):
       self.assertTrue(sess.run([size, isize]) == [1, 1])
       # We can now obtain tuple associated with key 0
       self.assertTrue(
-          sess.run([key, ret],
-                   feed_dict={gi: 0}) == [0, {
-                       'x': 1,
-                       'f': 2,
-                       'v': 1
-                   }])
+          sess.run([key, ret], feed_dict={
+              gi: 0
+          }) == [0, {
+              'x': 1,
+              'f': 2,
+              'v': 1
+          }])
 
       # 0 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [0, 1])
@@ -386,13 +404,15 @@ class MapStageTest(test.TestCase):
       sess.run(stage_v, feed_dict={pi: 1, v: 3})
       # We can now obtain tuple associated with key 1
       self.assertTrue(
-          sess.run([key, ret],
-                   feed_dict={gi: 1}) == [1, {
-                       'x': 1,
-                       'f': 2,
-                       'v': 3
-                   }])
+          sess.run([key, ret], feed_dict={
+              gi: 1
+          }) == [1, {
+              'x': 1,
+              'f': 2,
+              'v': 3
+          }])
 
+  @test_util.run_deprecated_v1
   def testPartialIndexInsert(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -412,7 +432,7 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # 0 complete and incomplete entries
       self.assertTrue(sess.run([size, isize]) == [0, 0])
       # Stage key 0, x and f tuple entries
@@ -436,6 +456,7 @@ class MapStageTest(test.TestCase):
       # We can now obtain tuple associated with key 1
       self.assertTrue(sess.run([key, ret], feed_dict={gi: 1}) == [1, [1, 3, 2]])
 
+  @test_util.run_deprecated_v1
   def testPartialDictGetsAndPeeks(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -450,7 +471,7 @@ class MapStageTest(test.TestCase):
         stager = data_flow_ops.MapStagingArea(
             [dtypes.float32, dtypes.float32, dtypes.float32],
             names=['x', 'v', 'f'])
-        stage_xf = stager.put(pi,{'x': x, 'f': f})
+        stage_xf = stager.put(pi, {'x': x, 'f': f})
         stage_v = stager.put(pi, {'v': v})
         peek_xf = stager.peek(pei, ['x', 'f'])
         peek_v = stager.peek(pei, ['v'])
@@ -463,7 +484,7 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # 0 complete and incomplete entries
       self.assertTrue(sess.run([size, isize]) == [0, 0])
       # Stage key 0, x and f tuple entries
@@ -487,11 +508,12 @@ class MapStageTest(test.TestCase):
 
       # We can now obtain 'x' and 'f' values associated with key 0
       self.assertTrue(
-          sess.run([key_xf, get_xf],
-                   feed_dict={gi: 0}) == [0, {
-                       'x': 1,
-                       'f': 2
-                   }])
+          sess.run([key_xf, get_xf], feed_dict={
+              gi: 0
+          }) == [0, {
+              'x': 1,
+              'f': 2
+          }])
       # Still have 1 complete and 1 incomplete entry
       self.assertTrue(sess.run([size, isize]) == [1, 1])
 
@@ -499,14 +521,15 @@ class MapStageTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError) as cm:
         sess.run([key_xf, get_xf], feed_dict={gi: 0})
 
-      exc_str = ("Tensor at index '0' for key '0' "
-                "has already been removed.")
+      exc_str = ("Tensor at index '0' for key '0' " 'has already been removed.')
 
       self.assertTrue(exc_str in cm.exception.message)
 
       # Obtain 'v' value associated with key 0
       self.assertTrue(
-          sess.run([key_v, get_v], feed_dict={gi: 0}) == [0, {
+          sess.run([key_v, get_v], feed_dict={
+              gi: 0
+          }) == [0, {
               'v': 1
           }])
       # 0 complete and 1 incomplete entry
@@ -523,12 +546,15 @@ class MapStageTest(test.TestCase):
       self.assertTrue(sess.run([size, isize]) == [1, 0])
       # We can now obtain 'x' and 'f' values associated with key 1
       self.assertTrue(
-          sess.run([pop_key_v, pop_v], feed_dict={pi: 1}) == [1, {
+          sess.run([pop_key_v, pop_v], feed_dict={
+              pi: 1
+          }) == [1, {
               'v': 1
           }])
       # Nothing is left
       self.assertTrue(sess.run([size, isize]) == [0, 0])
 
+  @test_util.run_deprecated_v1
   def testPartialIndexGets(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -550,25 +576,73 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # Stage complete tuple
       sess.run(stage_xvf, feed_dict={pi: 0, x: 1, f: 2, v: 3})
 
       self.assertTrue(sess.run([size, isize]) == [1, 0])
 
       # Partial get using indices
-      self.assertTrue(sess.run([key_xf, get_xf],
-            feed_dict={gi: 0}) == [0, [1, 2]])
+      self.assertTrue(
+          sess.run([key_xf, get_xf], feed_dict={
+              gi: 0
+          }) == [0, [1, 2]])
 
       # Still some of key 0 left
       self.assertTrue(sess.run([size, isize]) == [1, 0])
 
       # Partial get of remaining index
-      self.assertTrue(sess.run([key_v, get_v],
-            feed_dict={gi: 0}) == [0, [3]])
+      self.assertTrue(sess.run([key_v, get_v], feed_dict={gi: 0}) == [0, [3]])
 
       # All gone
       self.assertTrue(sess.run([size, isize]) == [0, 0])
+
+  @test_util.run_deprecated_v1
+  def testNonScalarKeyOrderedMap(self):
+    with ops.Graph().as_default() as g:
+      x = array_ops.placeholder(dtypes.float32)
+      v = 2. * (array_ops.zeros([128, 128]) + x)
+      t = data_flow_ops.gen_data_flow_ops.ordered_map_stage(
+          key=constant_op.constant(value=[1], shape=(1, 3), dtype=dtypes.int64),
+          indices=np.array([[6]]),
+          values=[x, v],
+          dtypes=[dtypes.int64],
+          capacity=0,
+          memory_limit=0,
+          container='container1',
+          shared_name='',
+          name=None)
+
+    g.finalize()
+
+    with self.session(graph=g) as sess:
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'key must be an int64 scalar'):
+        sess.run(t, feed_dict={x: 1})
+
+  @test_util.run_deprecated_v1
+  def testNonScalarKeyUnorderedMap(self):
+    with ops.Graph().as_default() as g:
+      x = array_ops.placeholder(dtypes.float32)
+      v = 2. * (array_ops.zeros([128, 128]) + x)
+      t = data_flow_ops.gen_data_flow_ops.map_stage(
+          key=constant_op.constant(value=[1], shape=(1, 3), dtype=dtypes.int64),
+          indices=np.array([[6]]),
+          values=[x, v],
+          dtypes=[dtypes.int64],
+          capacity=0,
+          memory_limit=0,
+          container='container1',
+          shared_name='',
+          name=None)
+
+    g.finalize()
+
+    with self.session(graph=g) as sess:
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'key must be an int64 scalar'):
+        sess.run(t, feed_dict={x: 1})
+
 
 if __name__ == '__main__':
   test.main()

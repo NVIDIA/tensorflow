@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import shutil
 import argparse
 import tempfile
 
@@ -33,9 +35,11 @@ class MockReadlineUI(readline_ui.ReadlineUI):
   """Test subclass of ReadlineUI that bypasses terminal manipulations."""
 
   def __init__(self, on_ui_exit=None, command_sequence=None):
+    fd, config_file_path = tempfile.mkstemp()
+    os.close(fd)
     readline_ui.ReadlineUI.__init__(
         self, on_ui_exit=on_ui_exit,
-        config=cli_config.CLIConfig(config_file_path=tempfile.mktemp()))
+        config=cli_config.CLIConfig(config_file_path=config_file_path))
 
     self._command_sequence = command_sequence
     self._command_counter = 0
@@ -52,6 +56,16 @@ class MockReadlineUI(readline_ui.ReadlineUI):
 
 
 class CursesTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self._tmp_dir = tempfile.mkdtemp()
+    self._tmp_config_path = os.path.join(self._tmp_dir, ".tfdbg_config")
+    self.assertFalse(gfile.Exists(self._tmp_config_path))
+    super(CursesTest, self).setUp()
+
+  def tearDown(self):
+    shutil.rmtree(self._tmp_dir)
+    super(CursesTest, self).tearDown()
 
   def _babble(self, args, screen_info=None):
     ap = argparse.ArgumentParser(
@@ -70,16 +84,23 @@ class CursesTest(test_util.TensorFlowTestCase):
     return debugger_cli_common.RichTextLines(lines)
 
   def testUIFactoryCreatesReadlineUI(self):
-    ui = ui_factory.get_ui("readline")
+    ui = ui_factory.get_ui(
+        "readline",
+        config=cli_config.CLIConfig(config_file_path=self._tmp_config_path))
     self.assertIsInstance(ui, readline_ui.ReadlineUI)
 
   def testUIFactoryRaisesExceptionOnInvalidUIType(self):
     with self.assertRaisesRegexp(ValueError, "Invalid ui_type: 'foobar'"):
-      ui_factory.get_ui("foobar")
+      ui_factory.get_ui(
+          "foobar",
+          config=cli_config.CLIConfig(config_file_path=self._tmp_config_path))
 
   def testUIFactoryRaisesExceptionOnInvalidUITypeGivenAvailable(self):
     with self.assertRaisesRegexp(ValueError, "Invalid ui_type: 'readline'"):
-      ui_factory.get_ui("readline", available_ui_types=["curses"])
+      ui_factory.get_ui(
+          "readline",
+          available_ui_types=["curses"],
+          config=cli_config.CLIConfig(config_file_path=self._tmp_config_path))
 
   def testRunUIExitImmediately(self):
     """Make sure that the UI can exit properly after launch."""
@@ -149,7 +170,8 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertTrue(observer["callback_invoked"])
 
   def testIncompleteRedirectWorks(self):
-    output_path = tempfile.mktemp()
+    fd, output_path = tempfile.mkstemp()
+    os.close(fd)
 
     ui = MockReadlineUI(
         command_sequence=["babble -n 2 > %s" % output_path, "exit"])

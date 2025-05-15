@@ -410,10 +410,18 @@ TEST(NNOpsTest, SoftmaxCrossEntropyWithLogits_ShapeFn) {
   INFER_OK(op, "[1,?];[?,2]", "[d0_0];[d0_0,d0_1|d1_1]");
   INFER_OK(op, "[?,2];[1,2]", "[d1_0];in1");
 
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1,?];[2,?]");
-  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3];?");
-  INFER_ERROR("Shapes must be equal rank, but are 2 and 3", op, "?;[1,2,3]");
+  INFER_ERROR("Shape must be broadcasted with rank 2", op, "[1,2,3];?");
+  INFER_ERROR("Shape must be broadcasted with rank 2", op, "?;[1,2,3]");
+
+  // Broadcast example
+  // [1,4] and [2,4] are broadcasted to [2,4]
+  INFER_OK(op, "[1,4];[2,4]", "[d1_0];[d1_0,d0_1|d1_1]");
+  // [2,4] and [2,1] are broadcasted to [2,4]
+  INFER_OK(op, "[2,4];[2,1]", "[d0_0];[d0_0|d1_0,d0_1]");
+  // [1,?] and [2,4] are broadcasted to [2,4]
+  INFER_OK(op, "[1,?];[2,4]", "[d1_0];[d1_0,d0_1|d1_1]");
+  // [2,4] and [?,1] are broadcasted to [2,4]
+  INFER_OK(op, "[2,4];[?,1]", "[d0_0];[d0_0|d1_0,d0_1]");
 }
 
 TEST(NNOpsTest, SparseSoftmaxCrossEntropyWithLogits_ShapeFn) {
@@ -480,7 +488,8 @@ TEST(NNOpsTest, FractionalPool_ShapeFn) {
                        .Finalize(&op.node_def));
     };
 
-    set_op(std::vector<float>{2.0f, 1, 1 / 1.5f, 1 / 2.0f});
+    // pooling_ratio must >= 1.0
+    set_op(std::vector<float>{2.0f, 1, 1.5f, 4.0f});
 
     // Rank check.
     INFER_ERROR("must be rank 4", op, "[?,?,?]");
@@ -489,11 +498,11 @@ TEST(NNOpsTest, FractionalPool_ShapeFn) {
     INFER_OK(op, "?", "[?,?,?,?];[?];[?]");
     INFER_OK(op, "[?,?,?,?]", "[?,?,?,?];[?];[?]");
 
-    INFER_OK(op, "[10,20,30,40]", "[5,20,45,80];[20];[45]");
-    INFER_OK(op, "[?,20,30,40]", "[?,20,45,80];[20];[45]");
-    INFER_OK(op, "[10,?,30,40]", "[5,?,45,80];[?];[45]");
-    INFER_OK(op, "[10,20,?,40]", "[5,20,?,80];[20];[?]");
-    INFER_OK(op, "[10,20,30,?]", "[5,20,45,?];[20];[45]");
+    INFER_OK(op, "[10,20,30,40]", "[5,20,20,10];[20];[20]");
+    INFER_OK(op, "[?,20,30,40]", "[?,20,20,10];[20];[20]");
+    INFER_OK(op, "[10,?,30,40]", "[5,?,20,10];[?];[20]");
+    INFER_OK(op, "[10,20,?,40]", "[5,20,?,10];[20];[?]");
+    INFER_OK(op, "[10,20,30,?]", "[5,20,20,?];[20];[20]");
 
     // Wrong number of values for pooling_ratio.
     set_op(std::vector<float>{.5, 1.0, 1.5});

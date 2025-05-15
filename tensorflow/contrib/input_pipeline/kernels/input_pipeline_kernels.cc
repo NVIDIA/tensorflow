@@ -30,13 +30,12 @@ class ObtainNextOp : public OpKernel {
     const Tensor* list;
     OP_REQUIRES_OK(ctx, ctx->input("list", &list));
     int64 num_elements = list->NumElements();
-    auto list_flat = list->flat<string>();
+    auto list_flat = list->flat<tstring>();
 
     // Allocate output.
     Tensor* output_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx,
-        ctx->allocate_output("out_element", TensorShape({}), &output_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("out_element", TensorShape({}),
+                                             &output_tensor));
 
     // Obtain mutex for the "counter" tensor.
     mutex* mu;
@@ -49,7 +48,7 @@ class ObtainNextOp : public OpKernel {
     *pos = (*pos + 1) % num_elements;
 
     // Assign value to output.
-    output_tensor->scalar<string>()() = list_flat(*pos);
+    output_tensor->scalar<tstring>()() = list_flat(*pos);
   }
 };
 

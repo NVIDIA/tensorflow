@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
@@ -146,6 +146,11 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
+    bool non_negative = std::all_of(
+        ksize_.begin(), ksize_.end(), [](int k) { return k > 0; });
+    OP_REQUIRES(context, non_negative,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "have non-negative dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -258,7 +263,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -365,6 +370,19 @@ class MaxPooling3dGradOp : public OpKernel {
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
+
+    const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
+    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
+                                            {{out[2], out[1], out[0]}}, depth);
+    OP_REQUIRES(
+        context, tensor_out.shape() == out_shape,
+        errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
+                                ", but got ", tensor_out.shape()));
+    OP_REQUIRES(context, out_backprop.shape() == out_shape,
+                errors::InvalidArgument("Expected grad shape to be ", out_shape,
+                                        ", but got ", out_backprop.shape()));
+
     LaunchMaxPooling3dGradOp<Device, T>::launch(
         context, tensor_in, tensor_out, out_backprop, window, stride, out,
         padding, data_format_, input_backprop);
@@ -431,7 +449,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -697,6 +715,15 @@ class MaxPooling3dGradGradOp : public OpKernel {
 
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
+    if (!context->status().ok()) return;  // params is invalid
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(
+        context, out_grad_backprop.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", out_grad_backprop.shape()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
@@ -738,7 +765,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 struct LaunchPoolingOp<GPUDevice, T, AVG> {
@@ -748,9 +775,8 @@ struct LaunchPoolingOp<GPUDevice, T, AVG> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -762,9 +788,8 @@ struct LaunchPoolingOp<GPUDevice, T, MAX> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -778,10 +803,10 @@ struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* input_backprop) {
     const TensorShape output_shape = tensor_in.shape();
-    DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, out, data_format, out_backprop, output_shape,
-        &tensor_in, &tensor_out, input_backprop);
+    DnnPooling3dGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum,
+                                   window, stride, padding, out, data_format,
+                                   out_backprop, output_shape, &tensor_in,
+                                   &tensor_out, input_backprop);
   }
 };
 
@@ -796,9 +821,8 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, out, data_format, out_backprop, tensor_in_shape,
-        nullptr, nullptr, output);
+        context, se::dnn::PoolingMode::kAverage, window, stride, padding, out,
+        data_format, out_backprop, tensor_in_shape, nullptr, nullptr, output);
   }
 };
 
@@ -829,11 +853,11 @@ struct LaunchMaxPooling3dGradGradOp<GPUDevice, T> {
 TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+    TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

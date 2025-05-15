@@ -20,8 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -65,7 +70,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       t = constant_op.constant(x, shape=input_sizes)
       window = [1] + list(window) + [1]
       strides = [1] + list(strides) + [1]
@@ -81,7 +86,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format)
       if data_format == "NCDHW":
         t = test_util.NCHWToNHWC(t)
-      vals = sess.run(t)
+      vals = self.evaluate(t)
     # Verifies values.
     actual = vals.flatten()
     self.assertAllClose(expected, actual)
@@ -205,6 +210,26 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         expected=[29.5, 32.5, 50.5, 53.5, 176.5, 179.5, 197.5, 200.5])
 
+  def _MaxPool3DEmptyTensorOutputShape(self):
+    """Verifies the output shape of the max pooling function when tensor is empty.
+
+    Args: none
+    """
+    input_sizes = [0, 112, 112, 112, 64]
+
+    input_data = 1
+    input_tensor = constant_op.constant(
+        input_data, shape=input_sizes, name="input")
+    max_pool_3d = nn_ops.max_pool3d(
+        input_tensor,
+        ksize=[2, 2, 2],
+        strides=[2, 2, 2],
+        padding="VALID",
+        data_format="NDHWC",
+        name="max_pool_3d")
+    values = self.evaluate(max_pool_3d)
+    self.assertEqual(values.shape, (0, 56, 56, 56, 64))
+
   def _ConstructAndTestGradientForConfig(self,
                                          pool_func,
                                          input_sizes,
@@ -233,7 +258,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = np.arange(1, total_size + 1, dtype=np.float32)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
       err_g_margin = 1e-3
       err_gg_margin = 1.5e-2
@@ -253,6 +278,7 @@ class PoolingTest(test.TestCase):
         ksize = test_util.NHWCToNCHW(ksize)
         strides = test_util.NHWCToNCHW(strides)
         t = test_util.NHWCToNCHW(t)
+        output_sizes = test_util.NHWCToNCHW(output_sizes)
 
       t = pool_func(
           t,
@@ -294,6 +320,7 @@ class PoolingTest(test.TestCase):
                                               use_gpu=use_gpu,
                                               **kwargs)
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradValidPadding1_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -303,6 +330,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradValidPadding2_1_6_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -312,6 +340,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradValidPadding2_1_7_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -321,6 +350,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradValidPadding1_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -330,6 +360,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradValidPadding2_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -339,6 +370,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradSamePadding1_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -348,6 +380,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradSamePadding1_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -357,6 +390,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradSamePadding2_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -366,6 +400,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradSamePadding2_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -375,6 +410,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testMaxPoolGradSamePadding3_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.max_pool3d,
@@ -384,6 +420,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradValidPadding1_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -393,6 +430,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradValidPadding1_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -402,6 +440,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradValidPadding2_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -411,6 +450,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradValidPadding2_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -420,6 +460,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="VALID")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradSamePadding1_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -429,6 +470,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradSamePadding1_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -438,6 +480,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradSamePadding2_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -447,6 +490,7 @@ class PoolingTest(test.TestCase):
         strides=(1, 1, 1),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradSamePadding2_2_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -456,6 +500,7 @@ class PoolingTest(test.TestCase):
         strides=(2, 2, 2),
         padding="SAME")
 
+  @test_util.run_deprecated_v1
   def testAvgPoolGradSamePadding3_1_3d(self):
     self._ConstructAndTestGradient(
         nn_ops.avg_pool3d,
@@ -464,6 +509,61 @@ class PoolingTest(test.TestCase):
         window=(3, 3, 3),
         strides=(1, 1, 1),
         padding="SAME")
+
+  def testMaxPool3DZeroPoolSize(self):
+    # Test case for GitHub issue 51936.
+    for f in [nn_ops.max_pool3d, nn_ops.avg_pool3d]:
+      with self.session():
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+          input_sizes = [3, 4, 10, 11, 12]
+
+          input_data = 1.
+          input_tensor = constant_op.constant(
+              input_data, shape=input_sizes, name="input")
+          pool_3d = f(
+              input_tensor,
+              ksize=[2, 2, 0],
+              strides=1,
+              padding="VALID")
+          self.evaluate(pool_3d)
+
+  def testMaxPoolGradEagerShapeErrors(self):
+    with context.eager_mode():
+      orig_in = array_ops.ones((1, 1, 1, 1, 1))
+
+      # Test invalid orig_out shape
+      orig_out = array_ops.ones((1, 1, 1, 1, 2))
+      grad = array_ops.ones((1, 1, 1, 1, 1))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected orig_output shape to be \[1,1,1,1,1\], but got "
+          r"\[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected orig_output shape to be \[1,1,1,1,1\], but got "
+          r"\[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
+
+      # Test invalid grad shape
+      orig_out = array_ops.ones((1, 1, 1, 1, 1))
+      grad = array_ops.ones((1, 1, 1, 1, 2))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1,1\], but got \[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1,1\], but got \[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
 
 
 if __name__ == "__main__":

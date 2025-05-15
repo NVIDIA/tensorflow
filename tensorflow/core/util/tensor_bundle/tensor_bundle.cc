@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
 
 namespace tensorflow {
@@ -50,6 +52,9 @@ namespace tensorflow {
 const int kTensorBundleMinProducer = 0;
 const int kTensorBundleMinConsumer = 0;
 const int kTensorBundleVersion = 1;
+
+// Size of our input buffer for streaming reads
+static const int kBufferSize = 1024 * 1024;
 
 // Key to the special BundleHeaderProto entry.  Do not change this, as clients
 // can make the assumption that the header is always the first entry in the
@@ -61,48 +66,68 @@ namespace {
 // Reads "num_elements" string elements from file[offset, offset+size) into the
 // length-N "destination".  Discards the original content of "destination".
 //
-// Checksums the string lengths (as restored uint32, not varint32 bytes) and
-// string bytes, and stores it into "actual_crc32c".
+// Checksums the string lengths (as restored uint32 or uint64, not varint64
+// bytes) and string bytes, and stores it into "actual_crc32c".
 Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
-                        size_t offset, size_t size, string* destination,
-                        uint32* actual_crc32c) {
+                        size_t offset, size_t size, tstring* destination,
+                        uint32* actual_crc32c, bool need_to_swap_bytes) {
   if (size == 0) return Status::OK();
   CHECK_GT(size, 0);
 
-  // Reads "num_elements" varint32's from "buffered_file".
+  // Reads "num_elements" varint64's from "buffered_file".
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
-  std::vector<uint32> string_lengths(num_elements);
+  std::vector<uint64> string_lengths(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
-    TF_RETURN_IF_ERROR(buffered_file->ReadVarint32(&string_lengths[i]));
+    TF_RETURN_IF_ERROR(buffered_file->ReadVarint64(&string_lengths[i]));
+    if (string_lengths[i] <= UINT32_MAX) {
+      // We need to do this because older checkpoints only used uint32s and we
+      // should still support them.
+      uint32 elem_size_uint32 = static_cast<uint32>(string_lengths[i]);
+      if (need_to_swap_bytes) {
+        // Checksum would have been computed on the source machine's byte order
+        elem_size_uint32 = BYTE_SWAP_32(elem_size_uint32);
+      }
+      *actual_crc32c = crc32c::Extend(
+          *actual_crc32c, reinterpret_cast<const char*>(&elem_size_uint32),
+          sizeof(uint32));
+    } else {
+      uint64 length = string_lengths[i];
+      if (need_to_swap_bytes) {
+        length = BYTE_SWAP_64(length);
+      }
+      *actual_crc32c =
+          crc32c::Extend(*actual_crc32c, reinterpret_cast<const char*>(&length),
+                         sizeof(uint64));
+    }
   }
   if (offset + size < buffered_file->Tell()) {
     return errors::DataLoss("String lengths longer than expected offset ",
                             offset + size);
   }
-  *actual_crc32c =
-      crc32c::Value(reinterpret_cast<const char*>(string_lengths.data()),
-                    sizeof(uint32) * num_elements);
 
   // Reads the length-checksum.
-  uint32 length_checksum = 0;
+  uint32 raw_length_checksum = 0;  // Bytes in file
+  uint32 length_checksum = 0;      // In-memory representation
   size_t unused_bytes_read = 0;
   TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(
-      sizeof(uint32), reinterpret_cast<char*>(&length_checksum),
+      sizeof(uint32), reinterpret_cast<char*>(&raw_length_checksum),
       &unused_bytes_read));
+  length_checksum = need_to_swap_bytes ? BYTE_SWAP_32(raw_length_checksum)
+                                       : raw_length_checksum;
   if (crc32c::Unmask(length_checksum) != *actual_crc32c) {
     return errors::DataLoss(
         "The length checksum does not match: expected ",
         strings::Printf("%08u", crc32c::Unmask(length_checksum)),
         " but actual is ", strings::Printf("%08u", *actual_crc32c));
   }
-  *actual_crc32c =
-      crc32c::Extend(*actual_crc32c, reinterpret_cast<char*>(&length_checksum),
-                     sizeof(uint32));
+  *actual_crc32c = crc32c::Extend(*actual_crc32c,
+                                  reinterpret_cast<char*>(&raw_length_checksum),
+                                  sizeof(uint32));
 
   // Reads the actual string bytes.
   for (size_t i = 0; i < num_elements; ++i) {
-    const uint32 string_length = string_lengths[i];
-    string* buffer = &destination[i];
+    const uint64 string_length = string_lengths[i];
+    tstring* buffer = &destination[i];
 
     buffer->resize(string_length);
     size_t bytes_read = 0;
@@ -141,7 +166,11 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
         buffered_file->ReadNBytes(string_length, &buffer[0], &bytes_read));
     *actual_crc32c = crc32c::Extend(*actual_crc32c, buffer.data(), bytes_read);
     VariantTensorDataProto proto;
-    proto.ParseFromString(buffer);
+    if (!proto.ParseFromString(buffer)) {
+      return errors::DataLoss("Unable to parse VariantTensorDataProto from ",
+                              "buffer of size ", string_length, ". ",
+                              "Bundle entry offset: ", offset, " size: ", size);
+    }
     Variant v = proto;
     if (!DecodeUnaryVariant(&v)) {
       return errors::Internal("Could not decode variant with type_name: \"",
@@ -176,9 +205,9 @@ char* GetBackingBuffer(const Tensor& val) {
   return const_cast<char*>(val.tensor_data().data());
 }
 
-string* GetStringBackingBuffer(const Tensor& val) {
+tstring* GetStringBackingBuffer(const Tensor& val) {
   CHECK_EQ(DT_STRING, val.dtype());
-  return const_cast<string*>(val.flat<string>().data());
+  return const_cast<tstring*>(val.flat<tstring>().data());
 }
 
 Status ParseEntryProto(StringPiece key, StringPiece value,
@@ -211,24 +240,33 @@ Status WriteTensor(const Tensor& val, FileOutputBuffer* out,
 Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
                          size_t* bytes_written, uint32* crc32c) {
   // On-disk format:
-  //   [varint32 len0]..[varint32 lenL][4 byte cksum on lengths][string bytes]
-  // Var "crc32c" checksums the string lengths (as uint32, not varint32 bytes),
+  //   [varint64 len0]..[varint64 lenL][4 byte cksum on lengths][string bytes]
+  // Var "crc32c" checksums the string lengths (as uint64, not varint64 bytes),
   // the length-checksum, and all the string bytes.
   DCHECK_EQ(val.dtype(), DT_STRING);
-  const string* strings = GetStringBackingBuffer(val);
+  const tstring* strings = GetStringBackingBuffer(val);
 
   // Writes the varint lengths.
   string lengths;
   lengths.reserve(val.NumElements());  // At least 1 byte per element.
   *crc32c = 0;
   for (int64 i = 0; i < val.NumElements(); ++i) {
-    const string* elem = &strings[i];
-    DCHECK_EQ(elem->size(), static_cast<uint32>(elem->size()));
-    const uint32 elem_size = static_cast<uint32>(elem->size());
+    const tstring* elem = &strings[i];
+    DCHECK_EQ(elem->size(), static_cast<uint64>(elem->size()));
+    const uint64 elem_size = static_cast<uint64>(elem->size());
 
-    core::PutVarint32(&lengths, elem_size);
-    *crc32c = crc32c::Extend(*crc32c, reinterpret_cast<const char*>(&elem_size),
-                             sizeof(uint32));
+    core::PutVarint64(&lengths, elem_size);
+    if (elem_size <= UINT32_MAX) {
+      // We need to do this because older checkpoints only used uint32s and we
+      // should still support them.
+      const uint32 elem_size_uint32 = static_cast<uint32>(elem_size);
+      *crc32c = crc32c::Extend(*crc32c,
+                               reinterpret_cast<const char*>(&elem_size_uint32),
+                               sizeof(uint32));
+    } else {
+      *crc32c = crc32c::Extend(
+          *crc32c, reinterpret_cast<const char*>(&elem_size), sizeof(uint64));
+    }
   }
   TF_RETURN_IF_ERROR(out->Append(lengths));
   *bytes_written = lengths.size();
@@ -243,7 +281,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
 
   // Writes all the string bytes out.
   for (int64 i = 0; i < val.NumElements(); ++i) {
-    const string* string = &strings[i];
+    const tstring* string = &strings[i];
     TF_RETURN_IF_ERROR(out->Append(*string));
     *bytes_written += string->size();
     *crc32c = crc32c::Extend(*crc32c, string->data(), string->size());
@@ -279,7 +317,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     TF_RETURN_IF_ERROR(out->Append(len));
     *crc32c = crc32c::Extend(*crc32c, reinterpret_cast<const char*>(&elem_size),
                              sizeof(uint64));
-    *bytes_written += sizeof(uint64);
+    *bytes_written += len.size();
 
     // Write the serialized variant.
     TF_RETURN_IF_ERROR(out->Append(elem));
@@ -342,18 +380,35 @@ table::Options TableBuilderOptions() {
   return o;
 }
 
+// Writes zeros to output buffer to align the next write to the requested
+// alignment. "size" is the current size of the buffer and is updated to the
+// new size.
+Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
+  int bytes_over = *size % alignment;
+  if (bytes_over == 0) {
+    return Status::OK();
+  }
+  int bytes_to_write = alignment - bytes_over;
+  Status status = out->Append(string(bytes_to_write, '\0'));
+  if (status.ok()) {
+    *size += bytes_to_write;
+  }
+  return status;
+}
+
 }  // namespace
 
-BundleWriter::BundleWriter(Env* env, StringPiece prefix)
+BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
     : env_(env),
-      prefix_(prefix.ToString()),
+      options_(options),
+      prefix_(prefix),
       tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
                                          random::New64())),
       tmp_data_path_(strings::StrCat(DataFilename(prefix_, 0, 1), ".tempstate",
                                      random::New64())),
       out_(nullptr),
       size_(0) {
-  status_ = env_->CreateDir(io::Dirname(prefix_).ToString());
+  status_ = env_->CreateDir(string(io::Dirname(prefix_)));
   if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
     return;
   }
@@ -370,7 +425,7 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix)
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
   if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);
-  const string key_string = key.ToString();
+  const string key_string(key);
   if (entries_.find(key_string) != entries_.end()) {
     status_ = errors::InvalidArgument("Adding duplicate key: ", key);
     return status_;
@@ -399,6 +454,7 @@ Status BundleWriter::Add(StringPiece key, const Tensor& val) {
     entry->set_size(data_bytes_written);
     entry->set_crc32c(crc32c::Mask(crc32c));
     size_ += data_bytes_written;
+    status_ = PadAlignment(out_.get(), options_.data_alignment, &size_);
   }
   return status_;
 }
@@ -420,7 +476,7 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
   // In the case of a sharded save, MergeBundles() is responsible for merging
   // the "slices" field of multiple metadata entries corresponding to the same
   // full tensor.
-  const string full_tensor_key_string = full_tensor_key.ToString();
+  const string full_tensor_key_string(full_tensor_key);
   BundleEntryProto* full_entry = &entries_[full_tensor_key_string];
   if (full_entry->dtype() != DT_INVALID) {
     CHECK_EQ(full_entry->dtype(), slice_tensor.dtype());
@@ -575,7 +631,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Loops through the non-header to-merge entries.
   BundleEntryProto to_merge_entry;
   for (; iter->Valid(); iter->Next()) {
-    const string key = iter->key().ToString();
+    const string key(iter->key());
     const auto entry_iter = merge_state->entries.find(key);
 
     // Illegal: the duplicated entry is a non-slice tensor.
@@ -619,12 +675,12 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   return Status::OK();
 }
 
-Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
+Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
                     StringPiece merged_prefix) {
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
-  Status status = env->CreateDir(io::Dirname(merged_prefix).ToString());
+  Status status = env->CreateDir(string(io::Dirname(merged_prefix)));
   if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
   for (int i = 0; i < prefixes.size(); ++i) {
     TF_RETURN_IF_ERROR(MergeOneBundle(env, prefixes[i], &merge));
@@ -668,21 +724,15 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   return status;
 }
 
-// TODO(b/64763924): Remove after Jan 1st 2018.
-bool GetLenientNames() {
-  const char* lenient_names_str = std::getenv("TF_SAVER_LENIENT_NAMES");
-  return lenient_names_str != nullptr &&
-         std::strcmp(lenient_names_str, "") != 0;
-}
-
 // Interface for reading a tensor bundle.
 
 BundleReader::BundleReader(Env* env, StringPiece prefix)
     : env_(env),
-      prefix_(prefix.ToString()),
+      prefix_(prefix),
       metadata_(nullptr),
       table_(nullptr),
-      iter_(nullptr) {
+      iter_(nullptr),
+      need_to_swap_bytes_(false) {
   const string filename = MetaFilename(prefix_);
   uint64 file_size;
   status_ = env_->GetFileSize(filename, &file_size);
@@ -714,13 +764,10 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   if ((header.endianness() == BundleHeaderProto::BIG && port::kLittleEndian) ||
       (header.endianness() == BundleHeaderProto::LITTLE &&
        !port::kLittleEndian)) {
-    status_ = errors::Unimplemented(
-        "Reading a bundle with different endianness from the reader");
-    return;
+    need_to_swap_bytes_ = true;
   }
   status_ = CheckVersions(header.version(), kTensorBundleVersion,
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
-  lenient_names_ = GetLenientNames();
 }
 
 BundleReader::~BundleReader() {
@@ -743,23 +790,6 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_CHECK_OK(status_);
   Seek(key);
   if (!iter_->Valid() || iter_->key() != key) {
-    if (lenient_names_ && !key.ends_with(":0")) {
-      // TODO(b/64763924): Remove after Jan 1st 2018.
-      // Try appending ":0" to the key.
-      const string key_with_colon_zero = key.ToString() + ":0";
-      Status status = GetBundleEntryProto(key_with_colon_zero, entry);
-      if (status.ok()) {
-        LOG(WARNING) << "Key " << key << " was not found; using key "
-                     << key_with_colon_zero << " instead. This lenient naming "
-                     << "behavior will be removed on Jan 1st 2018, so please "
-                     << "update your checkpoint file.";
-        return status;
-      } else if (status.code() != error::NOT_FOUND) {
-        return status;
-      }
-      LOG(INFO) << "Looked for both " << key << " and " << key_with_colon_zero
-                << " in checkpoint.";
-    }
     return errors::NotFound("Key ", key, " not found in checkpoint");
   }
 
@@ -767,7 +797,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_RETURN_IF_ERROR(
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
-    return errors::DataLoss("Invaid tensor shape: ", key, " ",
+    return errors::DataLoss("Invalid tensor shape: ", key, " ",
                             ProtoShortDebugString(entry_copy.shape()));
   }
 
@@ -793,10 +823,10 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // Relaxes the check for string tensors as follows:
     //   entry.size() == bytes(varint lengths) + bytes(data)
     //                >= NumElems + bytes(data), since size bytes(varint) >= 1.
-    //   TotalBytes() == sizeof(string) * NumElems + bytes(data)
+    //   TotalBytes() == sizeof(tstring) * NumElems + bytes(data)
     // Since we don't know bytes(varint lengths), we just check an inequality.
     const size_t lower_bound = ret->NumElements() + ret->TotalBytes() -
-                               sizeof(string) * ret->NumElements();
+                               sizeof(tstring) * ret->NumElements();
     if (entry.size() < lower_bound) {
       return errors::DataLoss("Invalid size in bundle entry: key ", key(),
                               "; stored size ", entry.size(),
@@ -810,8 +840,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     std::unique_ptr<RandomAccessFile> file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file =
-        new io::InputBuffer(file.release(), 1024 << 10 /* 1024KB buffer */);
+    buffered_file = new io::InputBuffer(file.release(), kBufferSize);
     // The InputBuffer and RandomAccessFile objects are both released in dtor.
     data_[entry.shard_id()] = buffered_file;
   }
@@ -819,13 +848,35 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 
   TF_RETURN_IF_ERROR(buffered_file->Seek(entry.offset()));
   uint32 actual_crc32c = 0;
+
   if (DataTypeCanUseMemcpy(entry.dtype())) {
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
     size_t unused_bytes_read;
-    TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
-                                                 &unused_bytes_read));
+    if (entry.size() > kBufferSize) {
+      StringPiece sp;
+      TF_RETURN_IF_ERROR(buffered_file->file()->Read(
+          entry.offset(), entry.size(), &sp, backing_buffer));
+      if (sp.data() != backing_buffer) {
+        memmove(backing_buffer, sp.data(), entry.size());
+      }
+    } else {
+      TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
+                                                   &unused_bytes_read));
+    }
+    // Note that we compute the checksum *before* byte-swapping. The checksum
+    // should be on the bytes in the order they appear in the file.
     actual_crc32c = crc32c::Value(backing_buffer, entry.size());
+    if (need_to_swap_bytes_) {
+      TF_RETURN_IF_ERROR(ByteSwapTensor(ret));
+    }
   } else if (entry.dtype() == DT_VARIANT) {
+    if (need_to_swap_bytes_) {
+      return errors::Unimplemented(
+          "TensorBundle at ", prefix_,
+          "is of a different endianness than this machine's hardware, and "
+          "the bundle contains a variant (arbitrary C++ type) tensor. "
+          "Byte-swapping of variant tensors is not currently implemented.");
+    }
     // Relies on io::InputBuffer's buffering, because we issue many neighboring
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadVariantTensor(buffered_file, ret, entry.offset(),
@@ -835,7 +886,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadStringTensor(
         buffered_file, ret->NumElements(), entry.offset(), entry.size(),
-        GetStringBackingBuffer(*ret), &actual_crc32c));
+        GetStringBackingBuffer(*ret), &actual_crc32c, need_to_swap_bytes_));
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
     return errors::DataLoss(
@@ -868,7 +919,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
   if (!TensorShape::IsValid(entry.shape())) {
-    return errors::DataLoss("Invaid tensor shape: ", iter_->key(), " ",
+    return errors::DataLoss("Invalid tensor shape: ", iter_->key(), " ",
                             ProtoShortDebugString(entry.shape()));
   }
 
@@ -904,13 +955,13 @@ Status BundleReader::LookupSlice(StringPiece full_tensor_key,
 Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
                                    const BundleEntryProto& full_tensor_entry,
                                    const TensorSlice& slice_spec, Tensor* val) {
-  using checkpoint::TensorSliceSet;
   using checkpoint::RegisterTensorSlice;
+  using checkpoint::TensorSliceSet;
   DCHECK_GE(full_tensor_entry.slices_size(), 0);
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));
   std::vector<std::pair<TensorSlice, string>> details;
-  const string full_tensor_key_string = full_tensor_key.ToString();
+  const string full_tensor_key_string(full_tensor_key);
   const TensorSliceSet* tss =
       gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
 
@@ -1006,6 +1057,7 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       HANDLE_COPY(qint32)
       HANDLE_COPY(quint8)
       HANDLE_COPY(qint8)
+      HANDLE_COPY(bfloat16)
       default:
         return errors::InvalidArgument("Dtype ", DataTypeString(common_dtype),
                                        " not supported.");

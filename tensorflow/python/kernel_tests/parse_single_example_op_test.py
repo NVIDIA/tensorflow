@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -89,20 +90,27 @@ def _compare_output_to_expected(tester, dict_tensors, expected_tensors,
 class ParseExampleTest(test.TestCase):
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if expected_err:
         with self.assertRaisesWithPredicateMatch(expected_err[0],
                                                  expected_err[1]):
-          out = parsing_ops.parse_single_example_v2(**kwargs)
+          out = parsing_ops.parse_single_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(out.values()))
         return
       else:
         # Returns dict w/ Tensors and SparseTensors.
-        out = parsing_ops.parse_single_example_v2(**kwargs)
-        result = flatten_values_tensors_or_sparse(out.values())
-        # Check values.
-        tf_result = sess.run(result)
-        _compare_output_to_expected(self, out, expected_values, tf_result)
+        out = parsing_ops.parse_single_example(**kwargs)
+        # Also include a test with the example names specified to retain
+        # code coverage of the unfused version, and ensure that the two
+        # versions produce the same results.
+        out_with_example_name = parsing_ops.parse_single_example(
+            example_names="name", **kwargs)
+        for result_dict in [out, out_with_example_name]:
+          result = flatten_values_tensors_or_sparse(result_dict.values())
+          # Check values.
+          tf_result = self.evaluate(result)
+          _compare_output_to_expected(self, result_dict, expected_values,
+                                      tf_result)
 
       for k, f in kwargs["features"].items():
         if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
@@ -114,6 +122,7 @@ class ParseExampleTest(test.TestCase):
           self.assertEqual(
               tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
+  @test_util.run_deprecated_v1
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -203,7 +212,7 @@ class ParseExampleTest(test.TestCase):
                 "a": parsing_ops.FixedLenFeature((1, 3), dtypes.float32)
             }
         },
-        # TODO(mrry): Consider matching the `tf.parse_example()` error message.
+        # TODO(mrry): Consider matching the `io.parse_example()` error message.
         expected_err=(errors_impl.OpError, "Key: a."))
 
   def testDenseDefaultNoShapeShouldFail(self):
@@ -222,6 +231,7 @@ class ParseExampleTest(test.TestCase):
         },
         expected_err=(ValueError, "Missing shape for feature a"))
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparse(self):
     original = [
         example(features=features({
@@ -545,6 +555,7 @@ class ParseExampleTest(test.TestCase):
           }
       }, expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
     original = [
         example(features=features({
@@ -611,6 +622,7 @@ class ParseExampleTest(test.TestCase):
           },
           expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
     original = [
         example(features=features({
@@ -651,6 +663,7 @@ class ParseExampleTest(test.TestCase):
           }
       }, expected_output)
 
+  @test_util.run_deprecated_v1
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -761,7 +774,7 @@ class ParseExampleTest(test.TestCase):
                         (2, 1, 1), dtype=dtypes.string, allow_missing=True),
             }
         },
-        # TODO(mrry): Consider matching the `tf.parse_example()` error message.
+        # TODO(mrry): Consider matching the `io.parse_example()` error message.
         expected_err=(errors_impl.OpError, "Key: b."))
 
     self._test(
@@ -837,15 +850,15 @@ class ParseExampleTest(test.TestCase):
 class ParseSingleExampleTest(test.TestCase):
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if expected_err:
         with self.assertRaisesWithPredicateMatch(expected_err[0],
                                                  expected_err[1]):
-          out = parsing_ops.parse_single_example_v2(**kwargs)
+          out = parsing_ops.parse_single_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(out.values()))
       else:
         # Returns dict w/ Tensors and SparseTensors.
-        out = parsing_ops.parse_single_example_v2(**kwargs)
+        out = parsing_ops.parse_single_example(**kwargs)
         # Check values.
         tf_result = sess.run(flatten_values_tensors_or_sparse(out.values()))
         _compare_output_to_expected(self, out, expected_values, tf_result)
@@ -862,6 +875,7 @@ class ParseSingleExampleTest(test.TestCase):
           self.assertEqual(
               tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
+  @test_util.run_deprecated_v1
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(features=features({
         "c": float_feature([3, 4]),

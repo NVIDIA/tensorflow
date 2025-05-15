@@ -209,9 +209,9 @@ class StagingMap : public ResourceBase {
                                    const OptionalTuple& tuple)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (tuple[index].has_value()) {
-      return Status(errors::InvalidArgument(
+      return errors::InvalidArgument(
           "The tensor for index '", index, "' for key '", key.scalar<int64>()(),
-          "' was already initialized '", dtypes_.size(), "'."));
+          "' was already initialized '", dtypes_.size(), "'.");
     }
 
     return Status::OK();
@@ -219,6 +219,10 @@ class StagingMap : public ResourceBase {
 
   // Check that the indices are strictly ordered
   Status check_index_ordering(const Tensor& indices) {
+    if (indices.NumElements() == 0) {
+      return errors::InvalidArgument("Indices are empty");
+    }
+
     auto findices = indices.flat<int>();
 
     for (std::size_t i = 0; i < findices.dimension(0) - 1; ++i) {
@@ -226,8 +230,7 @@ class StagingMap : public ResourceBase {
         continue;
       }
 
-      return Status(
-          errors::InvalidArgument("Indices are not strictly ordered"));
+      return errors::InvalidArgument("Indices are not strictly ordered");
     }
 
     return Status::OK();
@@ -236,10 +239,10 @@ class StagingMap : public ResourceBase {
   // Check bytes are within memory limits memory limits
   Status check_memory_limit(std::size_t bytes) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (has_memory_limit() && bytes > memory_limit_) {
-      return Status(errors::ResourceExhausted(
+      return errors::ResourceExhausted(
           "Attempted to insert tensors with combined size of '", bytes,
           "' bytes into Staging Area with a memory limit of '", memory_limit_,
-          "'."));
+          "'.");
     }
 
     return Status::OK();
@@ -410,8 +413,9 @@ class StagingMap : public ResourceBase {
         copy_or_move_tensors(&it->second, *key, *indices, tuple));
 
     // Remove entry if all the values have been consumed
-    if (!std::any_of(it->second.begin(), it->second.end(),
-                     std::mem_fn(&OptionalTensor::has_value))) {
+    if (!std::any_of(
+            it->second.begin(), it->second.end(),
+            [](const OptionalTensor& tensor) { return tensor.has_value(); })) {
       map_.erase(it);
     }
 
@@ -444,8 +448,9 @@ class StagingMap : public ResourceBase {
     *key = it->first;
 
     // Remove entry if all the values have been consumed
-    if (!std::any_of(it->second.begin(), it->second.end(),
-                     std::mem_fn(&OptionalTensor::has_value))) {
+    if (!std::any_of(
+            it->second.begin(), it->second.end(),
+            [](const OptionalTensor& tensor) { return tensor.has_value(); })) {
       map_.erase(it);
     }
 
@@ -478,7 +483,7 @@ class StagingMap : public ResourceBase {
     return map_.size();
   }
 
-  string DebugString() override { return "StagingMap"; }
+  string DebugString() const override { return "StagingMap"; }
 };
 
 template <bool Ordered>
@@ -523,6 +528,13 @@ class MapStageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values_tensor));
+    OP_REQUIRES(ctx, key_tensor->NumElements() > 0,
+                errors::InvalidArgument("key must not be empty"));
+
+    OP_REQUIRES(ctx, key_tensor->NumElements() == 1,
+                errors::InvalidArgument(
+                    "key must be an int64 scalar, got tensor with shape: ",
+                    key_tensor->shape()));
 
     // Create copy for insertion into Staging Area
     Tensor key(*key_tensor);
@@ -541,7 +553,7 @@ REGISTER_KERNEL_BUILDER(Name("MapStage").Device(DEVICE_CPU), MapStageOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapStage").Device(DEVICE_CPU),
                         MapStageOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("MapStage").HostMemory("key").HostMemory("indices").Device(DEVICE_GPU),
     MapStageOp<false>);
@@ -550,7 +562,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
                             .HostMemory("indices")
                             .Device(DEVICE_GPU),
                         MapStageOp<true>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MapStage")
@@ -580,7 +592,6 @@ class MapUnstageOp : public OpKernel {
 
     const Tensor* key_tensor;
     const Tensor* indices_tensor;
-    OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
@@ -602,7 +613,7 @@ REGISTER_KERNEL_BUILDER(Name("MapUnstage").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage").Device(DEVICE_CPU),
                         MapUnstageOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("MapUnstage")
                             .HostMemory("key")
                             .HostMemory("indices")
@@ -642,7 +653,6 @@ class MapPeekOp : public OpKernel {
 
     const Tensor* key_tensor;
     const Tensor* indices_tensor;
-    OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
@@ -663,7 +673,7 @@ REGISTER_KERNEL_BUILDER(Name("MapPeek").Device(DEVICE_CPU), MapPeekOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").Device(DEVICE_CPU),
                         MapPeekOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("MapPeek").HostMemory("key").HostMemory("indices").Device(DEVICE_GPU),
     MapPeekOp<false>);
@@ -726,7 +736,7 @@ REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").Device(DEVICE_CPU),
                         MapUnstageNoKeyOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey")
                             .HostMemory("key")
                             .HostMemory("indices")
@@ -775,7 +785,7 @@ REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_CPU), MapSizeOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapSize").Device(DEVICE_CPU),
                         MapSizeOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_GPU).HostMemory("size"),
                         MapSizeOp<false>);
 REGISTER_KERNEL_BUILDER(
@@ -814,7 +824,7 @@ REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_CPU),
                         MapIncompleteSizeOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("MapIncompleteSize").Device(DEVICE_GPU).HostMemory("size"),
     MapIncompleteSizeOp<false>);
@@ -849,7 +859,7 @@ REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_CPU), MapClearOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_CPU),
                         MapClearOp<true>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("MapClear").Device(DEVICE_GPU), MapClearOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapClear").Device(DEVICE_GPU),
                         MapClearOp<true>);

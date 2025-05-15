@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 
@@ -62,7 +62,15 @@ class MatrixBandPartOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_lower_in.shape()),
                 errors::InvalidArgument("num_lower must be scalar, got shape ",
                                         num_lower_in.shape().DebugString()));
-    const int64 num_lower = num_lower_in.scalar<int64>()();
+
+    auto as_int64_scalar = [](const Tensor& tensor) -> int64 {
+      if (tensor.dtype() == DT_INT32) {
+        return tensor.scalar<int32>()();
+      } else {
+        return tensor.scalar<int64>()();
+      }
+    };
+    const int64 num_lower = as_int64_scalar(num_lower_in);
     OP_REQUIRES(
         context, num_lower <= input_reshaped.dimension(1),
         errors::InvalidArgument(
@@ -73,7 +81,7 @@ class MatrixBandPartOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
                 errors::InvalidArgument("num_upper must be scalar, got shape ",
                                         num_upper_in.shape().DebugString()));
-    const int64 num_upper = num_upper_in.scalar<int64>()();
+    const int64 num_upper = as_int64_scalar(num_upper_in);
     OP_REQUIRES(context, num_upper <= input_reshaped.dimension(2),
                 errors::InvalidArgument("num_upper must be negative or less or "
                                         "equal to number of columns (",
@@ -140,7 +148,8 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
     const bool in_place = input.data() == output.data();
     auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
       if (!in_place) {
-        std::fill(output.data() + begin * n, output.data() + end * n, Scalar());
+        std::fill(output.data() + begin * n, output.data() + end * n,
+                  Scalar(0));
       }
       const int64 batch_begin = begin / m;
       const int64 batch_end = (end + m - 1) / m;
@@ -151,7 +160,7 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
           const int64 band_start =
               num_lower_diags < 0
                   ? 0
-                  : std::min(n, std::max(0ll, row - num_lower_diags));
+                  : std::min(n, std::max(int64{0}, row - num_lower_diags));
           const int64 band_end =
               num_upper_diags < 0
                   ? n
@@ -159,11 +168,11 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
           if (in_place) {
             if (band_start > 0) {
               std::fill(&output(batch, row, 0), &output(batch, row, band_start),
-                        Scalar());
+                        Scalar(0));
             }
             if (band_end < n) {
               std::fill(&output(batch, row, band_end), &output(batch, row, n),
-                        Scalar());
+                        Scalar(0));
             }
           } else {
             if (band_start < band_end) {
@@ -187,7 +196,7 @@ TF_CALL_POD_TYPES(DEFINE_CPU_SPEC);
 
 }  // namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -234,6 +243,6 @@ TF_CALL_complex128(REGISTER_MATRIX_BAND_PART_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATRIX_BAND_PART_GPU);
 #undef REGISTER_BATCH_MATRIX_BAND_PART_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

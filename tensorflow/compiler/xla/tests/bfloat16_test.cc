@@ -95,9 +95,7 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
   auto offset = ConstantR1<bfloat16>(
       &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
 
-  XlaOp side_input;
-
-  BatchNormTraining(operand, scale, offset, side_input, /*epsilon=*/0.001, kFeatureIndex, 0, true, false);
+  BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001, kFeatureIndex, 0, true);
 
   auto expected = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR4<bfloat16>(

@@ -426,8 +426,6 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv3d_bn(self):
     """Test graph with convolution followed by batch norm."""
-    # TODO(nluehr) re-enable once nvbug 3098132 is fixed.
-    self.skipTest('Test case should be skipped when cuDNN < 8.0.4')
     with compat.forward_compatibility_horizon(2019, 6, 7):
       if test.is_gpu_available(cuda_only=True):
         random_seed.set_random_seed(0)
@@ -451,8 +449,6 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv3d(self):
     """Test grad ops with convolution3d graph."""
-    # TODO(nluehr) re-enable once nvbug 3098132 is fixed.
-    self.skipTest('Test case should be skipped when cuDNN < 8.0.4')
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 8, 1])
@@ -473,7 +469,7 @@ class AutoMixedPrecisionTest(test.TestCase):
                                'gradients/Conv3D_grad/Conv3DBackpropFilterV2')
 
       output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
-      self.assertAllClose(output_val_ref, output_val, atol=3e-3, rtol=3e-3)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')

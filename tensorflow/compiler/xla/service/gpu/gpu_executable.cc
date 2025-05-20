@@ -42,6 +42,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/platform.h"
+// TODO(benbarsdell): Plumb Graph APIs into stream_executor (and implement
+// wrapper classes for Graph/GraphExec) instead of using this directly.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
@@ -54,15 +56,7 @@ using tensorflow::tracing::ScopedAnnotation;
 
 // A helper function to decide whether to use GPU graph capture, which can
 // reduce GPU launch latency overheads in some cases.
-//
-// To enable for all supported cluster set the environment variable
-// TF_XLA_ENABLE_GPU_GRAPH_CAPTURE to 1.
-//
-// The environment variable TF_XLA_GPU_GRAPH_CLUSTER_NAME can be used
-// to limit which cluster uses CudaGraph. Multiple names can be added
-// by separating them by a comma. Example:
-// TF_XLA_GPU_GRAPH_CLUSTER_NAME=cluster_1,cluster_20
-bool GpuGraphCaptureEnabled(absl::string_view module_name) {
+bool GpuGraphCaptureEnabled() {
   static bool is_enabled = [] {
     bool is_enabled = false;
     TF_CHECK_OK(
@@ -70,24 +64,6 @@ bool GpuGraphCaptureEnabled(absl::string_view module_name) {
                                        /*default_val=*/false, &is_enabled));
     return is_enabled;
   }();
-
-  static string enabled_names = [] {
-    string enabled_names;
-    TF_CHECK_OK(
-        tensorflow::ReadStringFromEnvVar("TF_XLA_GPU_GRAPH_CLUSTER_NAME",
-					 /*default_val=*/"", &enabled_names));
-    return enabled_names;
-  }();
-  if (!enabled_names.empty() && is_enabled) {
-    for (auto cluster_name: absl::StrSplit(enabled_names, ',')) {
-      if (absl::StartsWith(module_name, cluster_name)) {
-	VLOG(0) << "CUDA GRAPH ENABLED FOR CLUSTER " << module_name;
-	return true;
-      }
-    }
-    VLOG(0) << "CUDA GRAPH NOT ENABLED FOR CLUSTER " << module_name;
-    return false;
-  }
   return is_enabled;
 }
 
@@ -95,6 +71,7 @@ bool IsThunkSafeForGpuGraphCapture(const Thunk* thunk) {
   // Thunks that synchronize with the host (i.e., call BlockHostUntilDone)
   // cannot be used with graph capture.
   static const absl::flat_hash_set<Thunk::Kind> thunk_kinds_safe_for_capture = {
+      Thunk::kCholesky,
       Thunk::kCollectivePermute,
       Thunk::kConvolution,
       Thunk::kCopy,
@@ -102,12 +79,14 @@ bool IsThunkSafeForGpuGraphCapture(const Thunk* thunk) {
       Thunk::kCudnnBatchNormBackward,
       Thunk::kCudnnBatchNormForwardInference,
       Thunk::kCudnnBatchNormForwardTraining,
+      Thunk::kFft,
       Thunk::kGemm,
       Thunk::kKernel,
       Thunk::kMemset32BitValue,
       Thunk::kMemzero,
       Thunk::kNcclAllReduce,
       Thunk::kReplicaId,
+      Thunk::kTriangularSolve,
       Thunk::kTuple,
   };
   if (thunk->kind() == Thunk::kSequential) {
@@ -315,7 +294,7 @@ Status GpuExecutable::ExecuteThunks(
   se::Stream* capture_stream = main_stream;
   StreamPool::Ptr private_capture_stream;
   bool use_gpu_graph_capture =
-      GpuGraphCaptureEnabled(module().name()) && CanUseGpuGraphCapture() &&
+      GpuGraphCaptureEnabled() && CanUseGpuGraphCapture() &&
       executor->platform_kind() == stream_executor::PlatformKind::kCuda &&
       !is_graph_capture_costly_;
   if (use_gpu_graph_capture) {
@@ -657,36 +636,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer shaped_buffer,
-                      ExecuteAsyncOnStreamImpl(run_options, nullptr, &arguments, hlo_execution_profile));
-
-  std::vector<se::OwningDeviceMemory> buffers_to_free;
-  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
-    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
-      auto maybe_owning_buffer = buffer.second.Release();
-      if (maybe_owning_buffer) {
-        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
-      }
-    }
-  }
-  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free),
-                         {}, {});
-}
-
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  return GpuExecutable::ExecuteAsyncOnStreamImpl(run_options, &arguments, nullptr, hlo_execution_profile);
-}
-
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStreamImpl(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const>* arguments_buffer,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>>* arguments_shapetree,
-    HloExecutionProfile* hlo_execution_profile) {
-  CHECK_EQ((arguments_buffer == nullptr) + (arguments_shapetree == nullptr), 1);
-
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(",
                                         module().name(), ")"));
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
@@ -722,15 +671,11 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStreamImpl(
       const BufferAllocation& allocation = assignment_->GetAllocation(i);
       if (allocation.is_entry_computation_parameter()) {
         auto param_no = allocation.parameter_number();
-        se::DeviceMemoryBase buffer;
-        if (arguments_buffer != nullptr) {
-          buffer = (*arguments_buffer)[param_no]->buffers().element(
-              allocation.param_shape_index());
-        } else {
-          buffer = (*arguments_shapetree)[param_no]
-              .element(allocation.param_shape_index())
-              .AsDeviceMemoryBase();
-        }
+        se::DeviceMemoryBase buffer =
+            arguments[param_no]
+                .element(allocation.param_shape_index())
+                .AsDeviceMemoryBase();
+
         // All top-level buffers and sub-buffers must have an explicit, non-null
         // pointer, except for zero-sized buffers, which may be null.
         if (buffer.is_null() && buffer.size() > 0) {
@@ -831,7 +776,18 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(src_base);
   }
   TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
-  return shaped_buffer;
+
+  std::vector<se::OwningDeviceMemory> buffers_to_free;
+  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
+    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
+      auto maybe_owning_buffer = buffer.second.Release();
+      if (maybe_owning_buffer) {
+        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free),
+                         {}, {});
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {

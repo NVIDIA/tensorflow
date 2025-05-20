@@ -23,7 +23,6 @@
   * `TF_CUDA_COMPUTE_CAPABILITIES`: The CUDA compute capabilities. Default is
     `3.5,5.2`.
   * `PYTHON_BIN_PATH`: The python binary path
-  * `TF_USE_CCACHE`: Prepend ccache to compilation commands.
 """
 
 load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
@@ -50,7 +49,6 @@ _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
 _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
-_TF_USE_CCACHE = "TF_USE_CCACHE"
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 
@@ -679,7 +677,7 @@ def _find_libs(repository_ctx, cuda_config):
             repository_ctx,
             cpu_value,
             cuda_config.config["cupti_library_dir"],
-            cuda_config.cupti_version
+            cuda_config.cuda_version,
         ),
         "cusparse": _find_cuda_lib(
             "cusparse",
@@ -739,10 +737,8 @@ def _get_cuda_config(repository_ctx):
     if int(cuda_major) >= 11:
         if int(cuda_major) == 11:
           cudart_version = "64_110" if is_windows else "11.0"
-          cupti_version = cuda_version
         else:
           cudart_version = ("64_%s" if is_windows else "%s") % cuda_major
-          cupti_version = cudart_version
         cublas_version = ("64_%s" if is_windows else "%s") % config["cublas_version"].split(".")[0]
         cusolver_version = ("64_%s" if is_windows else "%s") % config["cusolver_version"].split(".")[0]
         curand_version = ("64_%s" if is_windows else "%s") % config["curand_version"].split(".")[0]
@@ -753,7 +749,6 @@ def _get_cuda_config(repository_ctx):
         # It changed from 'x.y' to just 'x' in CUDA 10.1.
         cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_major
         cudart_version = cuda_version
-        cupti_version = cuda_version
         cublas_version = cuda_lib_version
         cusolver_version = cuda_lib_version
         curand_version = cuda_lib_version
@@ -761,7 +756,6 @@ def _get_cuda_config(repository_ctx):
         cusparse_version = cuda_lib_version
     else:
         cudart_version = cuda_version
-        cupti_version = cuda_version
         cublas_version = cuda_version
         cusolver_version = cuda_version
         curand_version = cuda_version
@@ -771,9 +765,7 @@ def _get_cuda_config(repository_ctx):
     return struct(
         cuda_toolkit_path = toolkit_path,
         cuda_version = cuda_version,
-        cuda_version_major = cuda_major,
         cudart_version = cudart_version,
-        cupti_version = cupti_version,
         cublas_version = cublas_version,
         cusolver_version = cusolver_version,
         curand_version = curand_version,
@@ -858,7 +850,6 @@ def _create_dummy_repository(repository_ctx):
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
             "%{cusparse_lib}": lib_name("cusparse", cpu_value),
-            "%{cub_actual}": ":cuda_headers",
             "%{copy_rules}": """
 filegroup(name="cuda-include")
 filegroup(name="cublas-include")
@@ -899,7 +890,6 @@ filegroup(name="cudnn-include")
         {
             "%{cuda_version}": "",
             "%{cudart_version}": "",
-            "%{cupti_version}": "",
             "%{cublas_version}": "",
             "%{cusolver_version}": "",
             "%{curand_version}": "",
@@ -1185,10 +1175,6 @@ def _create_local_cuda_repository(repository_ctx):
         outs = cudnn_outs,
     ))
 
-    cub_actual = "@cub_archive//:cub"
-    if int(cuda_config.cuda_version_major) >= 11:
-        cub_actual = ":cuda_headers"
-
     # Set up BUILD file for cuda/
     _tpl(
         repository_ctx,
@@ -1216,7 +1202,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{curand_lib}": cuda_libs["curand"].basename,
             "%{cupti_lib}": cuda_libs["cupti"].basename,
             "%{cusparse_lib}": cuda_libs["cusparse"].basename,
-            "%{cub_actual}": cub_actual,
             "%{copy_rules}": "\n".join(copy_rules),
             "%{nvtools_lib}": cuda_libs["nvToolsExt"].basename,
         },
@@ -1304,9 +1289,6 @@ def _create_local_cuda_repository(repository_ctx):
         cuda_defines["%{linker_files}"] = ":crosstool_wrapper_driver_is_not_gcc"
         cuda_defines["%{win_linker_files}"] = ":windows_msvc_wrapper_files"
 
-        ccache = ""
-        if repository_ctx.os.environ.get(_TF_USE_CCACHE) == "1":
-            ccache = "ccache"
         wrapper_defines = {
             "%{cpu_compiler}": str(cc),
             "%{cuda_version}": cuda_config.cuda_version,
@@ -1316,7 +1298,6 @@ def _create_local_cuda_repository(repository_ctx):
                 ["\"%s\"" % c for c in cuda_config.compute_capabilities],
             ),
             "%{nvcc_tmp_dir}": _get_nvcc_tmp_dir_for_windows(repository_ctx),
-            "%{ccache}": ccache
         }
         _tpl(
             repository_ctx,
@@ -1348,7 +1329,6 @@ def _create_local_cuda_repository(repository_ctx):
         {
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cudart_version}": cuda_config.cudart_version,
-            "%{cupti_version}": cuda_config.cupti_version,
             "%{cublas_version}": cuda_config.cublas_version,
             "%{cusolver_version}": cuda_config.cusolver_version,
             "%{curand_version}": cuda_config.curand_version,
@@ -1429,7 +1409,6 @@ cuda_configure = repository_rule(
         "TMP",
         "TMPDIR",
         "TF_CUDA_PATHS",
-        _TF_USE_CCACHE,
     ],
 )
 

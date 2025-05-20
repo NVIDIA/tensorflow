@@ -738,12 +738,10 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]>,
     HLO_Tensor:$operand,
     HLO_Tensor:$scale,
     HLO_Tensor:$offset,
-    HLO_Tensor:$side_input,
     F32Attr:$epsilon,
     I64Attr:$feature_index,
     I64Attr:$reserve_space_size,
-    BoolAttr:$use_reserve_space,
-    BoolAttr:$is_activation_relu
+    BoolAttr:$use_reserve_space
   );
 
   let results = (outs HLO_Tuple);

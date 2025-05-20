@@ -151,17 +151,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kBatchNormTraining: {
-      auto operand_0 = operands(0);
-      auto scale = operands(1);
-      std::vector<HloInstruction*> other_operands(proto.operand_ids_size() - 2);
-      std::transform(std::next(std::next(proto.operand_ids().begin())),
-                     proto.operand_ids().end(), other_operands.begin(),
-                     [&instruction_map](int64 operand_id) {
-                       return instruction_map.at(operand_id);
-                     });
-      instruction = CreateBatchNormTraining(
-          shape, operand_0, scale, other_operands, proto.epsilon(),
-          proto.feature_index(), proto.is_activation_relu());
+      instruction =
+          CreateBatchNormTraining(shape, operands(0), operands(1), operands(2),
+                                  proto.epsilon(), proto.feature_index());
       break;
     }
     case HloOpcode::kBatchNormInference:
@@ -1220,13 +1212,13 @@ HloInstruction::CreateSoftmax(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateBatchNormTraining(
-    const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
-    absl::Span<HloInstruction* const> other_operands, float epsilon,
-    int64 feature_index, bool is_activation_relu) {
+HloInstruction::CreateBatchNormTraining(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* scale,
+                                        HloInstruction* offset, float epsilon,
+                                        int64 feature_index) {
   return absl::make_unique<HloBatchNormTrainingInstruction>(
-      shape, operand_0, scale, other_operands, epsilon, feature_index,
-      is_activation_relu);
+      shape, operand, scale, offset, epsilon, feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>

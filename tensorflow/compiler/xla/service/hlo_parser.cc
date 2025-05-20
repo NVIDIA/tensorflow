@@ -1402,17 +1402,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      optional<bool> is_activation_relu;
-      attrs["is_activation_relu"] = {/*required=*/false, AttrTy::kBool,
-                                     &is_activation_relu};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, /*expected_size=*/3) ||
+          !ParseAttributes(attrs)) {
         return false;
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateBatchNormTraining(
               shape, /*operand=*/operands[0], /*scale=*/operands[1],
-              absl::MakeSpan(operands).subspan(2), *epsilon, *feature_index,
-              *is_activation_relu));
+              /*offset=*/operands[2], *epsilon, *feature_index));
       break;
     }
     case HloOpcode::kBatchNormInference: {

@@ -819,9 +819,8 @@ class HloInstruction {
 
   // Creates a batch-norm-training instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
-      const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
-      absl::Span<HloInstruction* const> other_operands, float epsilon,
-      int64 feature_index, bool is_activation_relu);
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* offset, float epsilon, int64 feature_index);
 
   // Creates a batch-norm-inference instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormInference(
@@ -1889,10 +1888,6 @@ class HloInstruction {
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
-
-  void RemoveAllOperands() {
-    operands_.clear();
-  }
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);

@@ -174,11 +174,7 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  // compile_fn can be called asynchronously. make sure all required arguments
-  // are passed by value.
-  auto compile_fn = [&, compile_options, function](
-                        XlaCompiler* compiler,
-                        const std::vector<XlaCompiler::Argument>& args,
+  auto compile_fn = [=](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
     return compiler->CompileFunction(compile_options, function, args, result);
   };
@@ -204,7 +200,7 @@ static bool IsMegamorphic(
 
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
-    std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
+    absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
@@ -217,7 +213,6 @@ Status XlaCompilationCache::CompileSingleOp(
   // and causes false uniqueness between nodes.
   name.mutable_attr()->erase("_class");
   auto compile_op = [&](XlaCompiler* compiler,
-                        const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result) {
     std::vector<DataType> result_dtypes(ctx->num_outputs());
     for (int i = 0; i < result_dtypes.size(); ++i) {
@@ -246,10 +241,8 @@ void LogOnceXlaCompiledFirstCluster() {
 
 Status XlaCompilationCache::CompileStrict(
     Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
     const string &function_name,
     const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64 compile_start_us = env->NowMicros();
@@ -258,7 +251,7 @@ Status XlaCompilationCache::CompileStrict(
   entry->compile_state = CompileState::kCompiled;
 
   entry->compilation_status =
-      compile_fn(&compiler, args, &entry->compilation_result);
+      compile_fn(&compiler, &entry->compilation_result);
   TF_RETURN_IF_ERROR(entry->compilation_status);
   CHECK_EQ(entry->executable.get(), nullptr);
   entry->compilation_status =
@@ -302,10 +295,8 @@ Status XlaCompilationCache::CompileStrict(
 
 Status XlaCompilationCache::CompileAsynchronous(
     Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
     const string &function_name,
     const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn) {
   entry->compile_state = CompileState::kCompiling; // still under caller's lock.
   {
@@ -317,13 +308,11 @@ Status XlaCompilationCache::CompileAsynchronous(
   // passing options by value into the lamba increases the refcount on
   // options.device_allocator, keeping it alive for the duration of the
   // compilation
-  // passing args by value as well. Doing this here only when an asynchronous
-  // compilation is performed, as copying many args incurs overhead,
   async_compilation_.compiler_threads.Schedule([=] {
       Entry tmp;
       VLOG(2) << "Starting asynchronous compilation of cluster "
               << function_name << '.';
-      (void)CompileStrict(&tmp, options, args, function_name, compile_fn);
+      (void)CompileStrict(&tmp, options, function_name, compile_fn);
       VLOG(2) << "Finished asynchronous compililation of cluster "
               << function_name << '.';
       {
@@ -344,9 +333,8 @@ Status XlaCompilationCache::CompileAsynchronous(
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
-    std::vector<XlaCompiler::Argument>& args,
+    absl::Span<const XlaCompiler::Argument> args,
     const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn,
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
@@ -464,12 +452,12 @@ Status XlaCompilationCache::CompileImpl(
     } else if (compile_mode == CompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: " << human_signature;
       TF_RETURN_IF_ERROR(
-        CompileAsynchronous(entry, options, args, function_name, compile_fn));
+        CompileAsynchronous(entry, options, function_name, compile_fn));
       return_null = true;
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
       TF_RETURN_IF_ERROR(
-        CompileStrict(entry, options, args, function_name, compile_fn));
+        CompileStrict(entry, options, function_name, compile_fn));
     }
   } else if (state == CompileState::kCompiling) {
       VLOG(2) << "Ongoing asynchronous compilation for signature: " << human_signature;

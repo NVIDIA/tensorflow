@@ -48,8 +48,6 @@ DOCLINES = __doc__.split('\n')
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
 _VERSION = '1.15.5'
-import setupnovernormalize
-VERSION = _VERSION.replace('-', '')+"+nv"+os.getenv('RELEASE_VERSION', "")
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.9.0',
@@ -58,18 +56,16 @@ REQUIRED_PACKAGES = [
     'enum34 >= 1.1.6;python_version<"3.4"',
     # functools comes with python3, need to install the backport for python2
     'functools32 >= 3.2.3;python_version<"3"',
-    'astor == 0.8.1',
     'gast == 0.3.3',
     'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.8',
     'keras_preprocessing >= 1.0.5',
     # mock comes with unittest.mock for python3, need to install for python2
     'mock >= 2.0.0;python_version<"3"',
-    'numpy ~= 1.19.0;python_version<"3.7"',
-    'numpy >= 1.22.0, < 1.24;python_version>="3.7"',
+    'numpy >= 1.16.0, < 1.19.0',
     'opt_einsum >= 2.3.2',
     'six >= 1.10.0',
-    'protobuf >= 3.6.1, < 4.0.0',
+    'protobuf >= 3.6.1',
     'tensorboard >= 1.15.0, < 1.16.0',
     'tensorflow-estimator == 1.15.1',
     'termcolor >= 1.1.0',
@@ -77,9 +73,9 @@ REQUIRED_PACKAGES = [
     'wheel >= 0.26;python_version>="3"',
     'wheel;python_version<"3"',
     'wrapt >= 1.11.1',
-    'h5py == 2.10.0'
+    # Pin h5py to at most 2.10.0 as newer versions break old keras tests
+    'h5py <= 2.10.0',
 ]
-EXTRA_PACKAGES = {}
 
 if sys.byteorder == 'little':
   # grpcio does not build correctly on big-endian machines due to lack of
@@ -103,52 +99,6 @@ if 'tf_nightly' in project_name:
       REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
-
-if 'nvidia_tensorflow' == project_name:
-  require_exact_versions = os.getenv('REQUIRE_EXACT_VERSIONS','') == '1'
-
-  def get_version_specifier(version_var_name, include_cuda_maj=True):
-    requested_version = os.getenv(version_var_name, '')
-    package_suffix = ''
-    if include_cuda_maj:
-      cuda_ver = os.getenv('CUDA_VERSION', '')
-      # Allow CUDA_MAJMIN to be overriden for this specific package using requested_version like "8.3.2.44+cuda11.5"
-      override_cuda_ver = requested_version.split('+cuda')
-      if len(override_cuda_ver) == 2:
-        requested_version, cuda_ver = override_cuda_ver
-      # Only major version is included
-      package_suffix = cuda_ver.split('.')[0]
-    if require_exact_versions:
-      if not requested_version:
-        raise Exception("No version was set in env var %s, but REQUIRE_EXACT_VERSIONS was set." % version_var_name)
-      return package_suffix + ' == ' + requested_version
-    if len(requested_version) == 0:
-      return package_suffix
-    # Require compatible release >=maj.min,==maj.*
-    major, minor = requested_version.split('.')[:2]
-    return '{package_suffix} ~= {major}.{minor}'.format(package_suffix=package_suffix, major=major, minor=minor)
-
-  def append_nv_release(pkg_name, pkg_env_var, skip_if_none=False):
-    if os.getenv(pkg_env_var,'') == '':
-      return '' if skip_if_none else pkg_name
-    else:
-      return pkg_name + '==' + os.getenv(pkg_env_var) + '+nv' + os.getenv('RELEASE_VERSION')
-
-  REQUIRED_PACKAGES += [
-      'nvidia-cuda-runtime-cu' + get_version_specifier('CUDARUNTIME_VERSION'),
-      'nvidia-cublas-cu' + get_version_specifier('CUBLAS_VERSION'),
-      'nvidia-cufft-cu' + get_version_specifier('CUFFT_VERSION'),
-      'nvidia-cudnn-cu' + get_version_specifier('CUDNN_VERSION'),
-      'nvidia-curand-cu' + get_version_specifier('CURAND_VERSION'),
-      'nvidia-cusolver-cu' + get_version_specifier('CUSOLVER_VERSION'),
-      'nvidia-cusparse-cu' + get_version_specifier('CUSPARSE_VERSION'),
-      'nvidia-nccl-cu' + get_version_specifier('NCCL_VERSION'),
-      'nvidia-cuda-cupti-cu' + get_version_specifier('CUPTI_VERSION'),
-      'nvidia-cuda-nvcc-cu' + get_version_specifier('NVCC_VERSION'),
-      'tensorrt' + get_version_specifier('TRT_VERSION', include_cuda_maj=False)
-  ]
-  REQUIRED_PACKAGES += [append_nv_release('nvidia-dali-nvtf-plugin', 'DALI_VERSION', skip_if_none=True)]
-  EXTRA_PACKAGES['horovod'] = [append_nv_release('nvidia-horovod', 'HOROVOD_VERSION')]
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
@@ -302,7 +252,7 @@ headers = (
 
 setup(
     name=project_name,
-    version=VERSION,
+    version=_VERSION.replace('-', '')+"+nv"+os.getenv('RELEASE_BRANCH_NAME', ""),
     build_tag=os.getenv('CI_PIPELINE_ID', ""),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
@@ -317,7 +267,6 @@ setup(
     },
     headers=headers,
     install_requires=REQUIRED_PACKAGES,
-    extras_require=EXTRA_PACKAGES,
     tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
     # Add in any packaged data.
     include_package_data=True,

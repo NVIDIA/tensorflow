@@ -12,7 +12,6 @@ load(
     "tf_exec_compatible_with",
     "tf_gpu_tests_tags",
     "tf_sycl_tests_tags",
-    "if_dynamic_pywrap",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -1600,7 +1599,6 @@ def _py_wrap_cc_impl(ctx):
         outputs = outputs,
         mnemonic = "PythonSwig",
         progress_message = "SWIGing " + src.path,
-        use_default_shell_env=True,
     )
     return struct(files = depset(outputs))
 
@@ -1968,11 +1966,10 @@ def tf_py_wrap_cc(
             "%s.lds" % vscriptname,
         ],
     })
-    extra_deps += if_dynamic_pywrap([clean_dep("//tensorflow:libtensorflow_cc_import_lib")])
 
     tf_cc_shared_object(
         name = cc_library_name,
-        srcs = [module_name + ".cc"] + if_dynamic_pywrap([clean_dep("//tensorflow:libtensorflow_cc.so.1")]),
+        srcs = [module_name + ".cc"],
         copts = copts + if_not_windows([
             "-Wno-self-assign",
             "-Wno-sign-compare",

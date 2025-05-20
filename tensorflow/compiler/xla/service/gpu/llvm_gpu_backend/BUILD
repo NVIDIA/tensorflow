@@ -1,17 +1,12 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
-package(
-    default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
+licenses(["notice"])  # Apache 2.0
+package(default_visibility = [":friends"],
+load("//tensorflow:tensorflow.bzl", "tf_cc_test"))
 package_group(
     name = "friends",
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
 )
-
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
@@ -30,28 +25,23 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:analysis",
-        "@llvm-project//llvm:bit_reader",
-        "@llvm-project//llvm:bit_writer",
-        "@llvm-project//llvm:code_gen",
-        "@llvm-project//llvm:core",
-        "@llvm-project//llvm:ipo",
-        "@llvm-project//llvm:ir_reader",
-        "@llvm-project//llvm:linker",
-        "@llvm-project//llvm:nvptx_code_gen",  # buildcleaner: keep
-        "@llvm-project//llvm:objc_arc",  # buildcleaner: keep
-        "@llvm-project//llvm:scalar",
-        "@llvm-project//llvm:support",
-        "@llvm-project//llvm:target",
+        "@llvm//:analysis",
+        "@llvm//:bit_reader",
+        "@llvm//:bit_writer",
+        "@llvm//:code_gen",
+        "@llvm//:core",
+        "@llvm//:ipo",
+        "@llvm//:ir_reader",
+        "@llvm//:linker",
+        "@llvm//:nvptx_code_gen",  # buildcleaner: keep
+        "@llvm//:objc_arc",  # buildcleaner: keep
+        "@llvm//:scalar",
+        "@llvm//:support",
+        "@llvm//:target",
+        "@llvm//:transform_utils",
     ],
 )
 
@@ -68,8 +58,21 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform:resource_loader",
-        "@llvm-project//llvm:core",
-        "@llvm-project//llvm:support",
+        "@llvm//:core",
+        "@llvm//:support",
     ],
+)
+
+# -----------------------------------------------------------------------------
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

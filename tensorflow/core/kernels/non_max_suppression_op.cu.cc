@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
-#include "cub/device/device_radix_sort.cuh"
-#include "cub/device/device_segmented_radix_sort.cuh"
-#include "cub/device/device_select.cuh"
+#include "third_party/cub/device/device_radix_sort.cuh"
+#include "third_party/cub/device/device_segmented_radix_sort.cuh"
+#include "third_party/cub/device/device_select.cuh"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define TF_RETURN_IF_CUDA_ERROR(result)                                        \
@@ -147,6 +147,26 @@ __device__ EIGEN_STRONG_INLINE void ClearBit(T* bit_mask, int bit) {
   constexpr int kRemainderMask = 8 * sizeof(T) - 1;
   int bin = bit >> kShiftLen;
   atomicAnd(bit_mask + bin, ~(T(1) << (bit & kRemainderMask)));
+}
+
+__global__ void FlipBoxes(Box* boxes, const int* num_batch_boxes,
+                          const int* box_strides, const int batch_size) {
+  // for (int b = 0; b < batch_size; ++b) {
+  // int box_offset = box_strides[b];
+  for (const int y : CudaGridRangeY(batch_size)) {
+    int box_offset = box_strides[y];
+    Box* curr_boxes = boxes + box_offset;
+    // if (threadIdx.x == 0) {
+    //   printf(" FBx batch=%d, box_offset=%d, num_batch_boxes=%d boxes@ %p \n",
+    //   y,
+    //          box_offset, num_batch_boxes[y],curr_boxes);
+    // }
+
+    for (int i : GpuGridRangeX(num_batch_boxes[y])) {
+      Flipped<true>(curr_boxes[i]);
+    }
+  }
+  // }
 }
 
 

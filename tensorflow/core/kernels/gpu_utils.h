@@ -304,17 +304,15 @@ class AutoTuneExecutionPlanMap {
         for (int i = 0; i < min_score_threshold_; ++i) {
           VLOG(1) << GetActionSummary("promotes", params, plans);
         }
-        // Log the plans before the UpdateMap(), which will move the objects out
-        // of the vector.
-        VLOG(1) << GetActionSummary("accepts", params, plans);
         UpdateMap(params, min_score_threshold_, 1, plans);
+        VLOG(1) << GetActionSummary("accepts", params, plans);
       } else {
         int promotes_times = min_score_threshold_ - winner->second.score;
         for (int i = 0; i < promotes_times; ++i) {
-          VLOG(1) << GetActionSummary("promotes", params, winner->second);
+          VLOG(1) << GetActionSummary("promotes", params, iter->second);
         }
         winner->second.score = min_score_threshold_;
-        VLOG(1) << GetActionSummary("accepts", params, winner->second);
+        VLOG(1) << GetActionSummary("accepts", params, iter->second);
       }
     }
     autotune_global_count_++;
@@ -461,18 +459,6 @@ void LogFusedConvForwardAutotuneResults(
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
     double side_value_scale, se::dnn::ActivationMode activation_mode,
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
-
-void LogFusedConvForwardAutotuneResults(
-    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
-    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase side_input_buffer,
-    const se::dnn::BatchDescriptor& input_desc,
-    const se::dnn::FilterDescriptor& filter_desc,
-    const se::dnn::BatchDescriptor& output_desc,
-    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
-    double side_value_scale, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec,
-    absl::Span<const AutotuneExecutionPlanResult> results);
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scracth space. Unsuccessful autotuning results are

@@ -3,6 +3,7 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "if_not_windows",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -15,22 +16,6 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-filegroup(
-    name = "pywrap_required_hdrs",
-    srcs = [
-        "attr_builder.h",
-        "context.h",
-        "eager_executor.h",
-        "eager_operation.h",
-        "kernel_and_device.h",
-        "tensor_handle.h",
-        "tensor_handle_data.h",
-    ],
-    visibility = [
-        "//tensorflow/python:__subpackages__",
-    ],
 )
 
 tf_cuda_library(
@@ -221,7 +206,9 @@ tf_cuda_library(
             "//tensorflow/core/profiler:nvtx_utils",
             "//tensorflow/core/grappler/optimizers:meta_optimizer",
         ],
-    }),
+    }) + if_not_windows([
+        "@nvtx_archive//:nvtx",
+    ]),
 )
 
 tf_cc_test(

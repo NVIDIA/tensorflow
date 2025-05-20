@@ -174,17 +174,6 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    linkopts = select({
-        "//tensorflow:build_oss_using_cuda_nvcc": [
-            "-Wl,-rpath,$$ORIGIN/../../nvidia/cuda_runtime/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
-        ],
-        "//tensorflow:build_oss_using_cuda_clang": [
-            "-Wl,-rpath,$$ORIGIN/../../nvidia/cuda_runtime/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
-        ],
-        "//conditions:default": [],
-    }),
 )
 
 # The activation library is tightly coupled to the executor library.
@@ -237,10 +226,6 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    linkopts = if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/cublas/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
     ]),
 )
 
@@ -300,10 +285,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
-    linkopts = if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/cufft/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
-    ]),
 )
 
 alias(
@@ -348,10 +329,6 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    linkopts = if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/cudnn/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
     ]),
 )
 
@@ -411,10 +388,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
-    linkopts =  if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/curand/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/curand/lib",
-    ]),
 )
 
 alias(
@@ -460,10 +433,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
-    linkopts = if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/cuda_cupti/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
-    ]),
 )
 
 cc_library(
@@ -478,10 +447,6 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    linkopts = if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/cusolver/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
     ]),
 )
 
@@ -503,10 +468,6 @@ cc_library(
         "@local_config_cuda//cuda:cusparse_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ]),
-    linkopts = if_cuda_is_configured([
-        "-Wl,-rpath,$$ORIGIN/../../nvidia/cusparse/lib",
-        "-Wl,-rpath,$$ORIGIN/../nvidia/cusparse/lib",
     ]),
 )
 
@@ -645,9 +606,6 @@ cc_library(
         ":cudnn_plugin",
         ":cufft_plugin",
         ":curand_plugin",
-        ":cusolver_lib",
-        ":cusparse_lib",
-        "//tensorflow/compiler/tf2tensorrt:tensorrt_lib",
     ],
     alwayslink = 1,
 )

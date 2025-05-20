@@ -66,10 +66,6 @@ class IrEmitterUnnested : public IrEmitter,
     llvm::Value* lane_id;
   };
 
-  absl::string_view platform_name() const override {
-    return ir_emitter_context_->platform_name();
-  }
-
   // A function object to generate code to process one element in a tile.
   //
   // index: the index for the first output element of the current thread.
@@ -140,7 +136,7 @@ class IrEmitterUnnested : public IrEmitter,
   // `LastThunk()`.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk, bool few_waves=false);
+      KernelThunk* thunk);
 
   // Emits LLVM global variables corresponding to constant instructions.
   Status EmitConstantGlobals();
@@ -165,6 +161,10 @@ class IrEmitterUnnested : public IrEmitter,
   int64 ByteSizeOf(const Shape& shape) const override {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
+  }
+
+  const se::Platform* platform() const override {
+    return ir_emitter_context_->platform();
   }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
@@ -251,6 +251,19 @@ class IrEmitterUnnested : public IrEmitter,
   // reduce op.
   ReductionCodegenInfo ComputeReductionCodegenInfo(
       const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
+
+  // Generates code for input-fusible slices.
+  //
+  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
+  // of all ROOT slices need to be the same while their output shapes can be
+  // different. On the other hand, the input ranges of slices can be
+  // overlapping. Further generalization/specialization when the needs are seen
+  // in the future.
+  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+
+  void EmitElementForInputFusibleSlices(
+      HloInstruction* unnested_hlo,
+      const llvm_ir::IrArray::Index& slice_input_index);
 
   // Generates code for input-fusible slices.
   //

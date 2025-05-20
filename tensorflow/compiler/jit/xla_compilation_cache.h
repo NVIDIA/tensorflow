@@ -89,7 +89,7 @@ class XlaCompilationCache : public ResourceBase {
   // XlaCompiler::CompileFunction.
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
-      std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
+      absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
       const XlaCompiler::CompileOptions& compile_options,
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
@@ -131,9 +131,8 @@ class XlaCompilationCache : public ResourceBase {
   // Common implementation of Compile and CompileSingleOp.
   Status CompileImpl(
       const XlaCompiler::Options& options, const NameAttrList& function,
-      std::vector<XlaCompiler::Argument>& args,
+      absl::Span<const XlaCompiler::Argument> args,
       const std::function<Status(XlaCompiler* compiler,
-                                 const std::vector<XlaCompiler::Argument>& args,
                                  XlaCompiler::CompilationResult*)>& compile_fn,
       CompileMode compile_mode,
       const XlaCompiler::CompilationResult** out_compilation_result,
@@ -171,17 +170,13 @@ class XlaCompilationCache : public ResourceBase {
 
   Status CompileStrict(
     Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
     const string &function_name,
     const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn);
   Status CompileAsynchronous(
     Entry* entry, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
     const string &function_name,
     const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn);
 
   mutex compile_cache_mu_;

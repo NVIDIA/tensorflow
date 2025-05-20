@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -26,7 +26,6 @@
 
 #include "triton/tensorflow_backend_tf.h"
 
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -56,12 +55,12 @@ TRITONTF_IOList* TRITONTF_IOListNew(
 void TRITONTF_IOListDelete(TRITONTF_IOList* list);
 
 // If TensorFlow status is non-OK, return the equivalent TRITONTF_Error
-#define RETURN_IF_TF_ERROR(TFS)                           \
-  do {                                                    \
-    const tensorflow::Status& status__ = (TFS);           \
-    if (status__.code() != 0) {                           \
+#define RETURN_IF_TF_ERROR(TFS)                          \
+  do {                                                   \
+    const tensorflow::Status& status__ = (TFS);          \
+    if (status__.code() != 0) {                          \
       return TRITONTF_ErrorNew(status__.error_message()); \
-    }                                                     \
+    }                                                    \
   } while (false)
 
 namespace {
@@ -209,19 +208,14 @@ IsGPUFeedAndFetchSupported(TRITONTF_DataType dtype)
 
 void
 NewSessionOptions(
-    const int num_intra_threads, const int num_inter_threads,
-    const bool use_per_session_threads, const bool has_graph_level,
-    const int graph_level, const bool allow_gpu_memory_growth,
+    const bool has_graph_level, const int graph_level,
+    const bool allow_gpu_memory_growth,
     const float per_process_gpu_memory_fraction,
     const bool allow_soft_placement,
     const std::map<int, std::vector<float>>& memory_limit_mb,
     const TRITONTF_TFTRTConfig* tftrt_config, const bool auto_mixed_precision,
     tensorflow::SessionOptions* session_options)
 {
-  session_options->config.set_intra_op_parallelism_threads(num_intra_threads);
-  session_options->config.set_inter_op_parallelism_threads(num_inter_threads);
-  session_options->config.set_use_per_session_threads(use_per_session_threads);
-
   session_options->config.mutable_gpu_options()->set_allow_growth(
       allow_gpu_memory_growth);
   session_options->config.mutable_gpu_options()
@@ -462,9 +456,6 @@ class ModelImpl {
       const std::vector<std::string>& output_names,
       TRITONTF_TensorList** output_tensors);
 
-  // Run a single operation.
-  TRITONTF_Error* RunOp(const std::string& op_name);
-
  private:
   const std::string model_name_;
   std::unique_ptr<tensorflow::SavedModelBundle> bundle_;
@@ -595,13 +586,6 @@ ModelImpl::Run(
     }
   }
 
-  return nullptr;
-}
-
-TRITONTF_Error*
-ModelImpl::RunOp(const std::string& op_name)
-{
-  RETURN_IF_TF_ERROR(session_->Run({}, {}, {op_name}, nullptr));
   return nullptr;
 }
 
@@ -829,10 +813,8 @@ TRITONTF_TensorSetString(
 TRITONTF_Error*
 TRITONTF_ModelCreateFromGraphDef(
     TRITONTF_Model** tritontf_model, const char* model_name,
-    const char* model_path, const int device_id, const int num_intra_threads,
-    const int num_inter_threads, const bool use_per_session_threads,
-    const bool has_graph_level, const int graph_level,
-    const bool allow_gpu_memory_growth,
+    const char* model_path, const int device_id, const bool has_graph_level,
+    const int graph_level, const bool allow_gpu_memory_growth,
     const float per_process_gpu_memory_fraction,
     const bool allow_soft_placement,
     const std::map<int, std::vector<float>>& memory_limit_mb,
@@ -840,7 +822,6 @@ TRITONTF_ModelCreateFromGraphDef(
 {
   tensorflow::SessionOptions session_options;
   NewSessionOptions(
-      num_intra_threads, num_inter_threads, use_per_session_threads,
       has_graph_level, graph_level, allow_gpu_memory_growth,
       per_process_gpu_memory_fraction, allow_soft_placement, memory_limit_mb,
       tftrt_config, auto_mixed_precision, &session_options);
@@ -911,11 +892,8 @@ TRITONTF_ModelCreateFromGraphDef(
 TRITONTF_Error*
 TRITONTF_ModelCreateFromSavedModel(
     TRITONTF_Model** tritontf_model, const char* model_name,
-    const char* model_path, const int device_id, const int num_intra_threads,
-    const int num_inter_threads, const bool use_per_session_threads,
-    const char* graph_tag, const char* signature_def,
-    const bool has_graph_level, const int graph_level,
-    const bool allow_gpu_memory_growth,
+    const char* model_path, const int device_id, const bool has_graph_level,
+    const int graph_level, const bool allow_gpu_memory_growth,
     const float per_process_gpu_memory_fraction,
     const bool allow_soft_placement,
     const std::map<int, std::vector<float>>& memory_limit_mb,
@@ -923,7 +901,6 @@ TRITONTF_ModelCreateFromSavedModel(
 {
   tensorflow::SessionOptions session_options;
   NewSessionOptions(
-      num_intra_threads, num_inter_threads, use_per_session_threads,
       has_graph_level, graph_level, allow_gpu_memory_growth,
       per_process_gpu_memory_fraction, allow_soft_placement, memory_limit_mb,
       tftrt_config, auto_mixed_precision, &session_options);
@@ -954,23 +931,18 @@ TRITONTF_ModelCreateFromSavedModel(
   std::unique_ptr<tensorflow::SavedModelBundle> bundle(
       new tensorflow::SavedModelBundle);
 
-  // If user does not specify a 'tag' in the configuration file, use 'serve' as
-  // default
   std::unordered_set<std::string> saved_model_tags;
-  const std::string TAG_TO_USE = (strcmp(graph_tag, "") == 0)
-                                     ? tensorflow::kSavedModelTagServe
-                                     : graph_tag;
-  saved_model_tags.insert(TAG_TO_USE);
+  saved_model_tags.insert(tensorflow::kSavedModelTagServe);
 
   tensorflow::RunOptions run_options;
   RETURN_IF_TF_ERROR(tensorflow::LoadSavedModel(
       session_options, run_options, model_path, saved_model_tags,
       bundle.get()));
 
-  // Verify that the bundle has the correct tag
+  // Verify that the bundle has the "serve" tag
   bool found_serve_tag = false;
   for (const auto& tag : bundle->meta_graph_def.meta_info_def().tags()) {
-    if (tag == TAG_TO_USE) {
+    if (tag == tensorflow::kSavedModelTagServe) {
       found_serve_tag = true;
       break;
     }
@@ -978,39 +950,33 @@ TRITONTF_ModelCreateFromSavedModel(
   if (!found_serve_tag) {
     return TRITONTF_ErrorNew(
         "unable to load model '" + std::string(model_name) + "', expected '" +
-        TAG_TO_USE + "' tag");
+        tensorflow::kSavedModelTagServe + "' tag");
   }
 
-  // If user does not specify a 'signature_def' in the configuration file,
-  // then use "serving_default" as default
-  const std::string SIGNATURE_DEF_KEY_TO_USE =
-      (strcmp(signature_def, "") == 0) ? "serving_default" : signature_def;
+  // Verify that a "serving_default" signature exists, that is what
+  // will be used to verify the inputs and outputs.
+  static const std::string DEFAULT_SERVING_SIGNATURE_DEF_KEY("serving_default");
   static const std::string INIT_OP_SIGNATURE_DEF_KEY("__saved_model_init_op");
   static const std::string TRAIN_OP_SIGNATURE_DEF_KEY("__saved_model_train_op");
-  auto sig_itr =
-      bundle->meta_graph_def.signature_def().find(SIGNATURE_DEF_KEY_TO_USE);
+  auto sig_itr = bundle->meta_graph_def.signature_def().find(
+      DEFAULT_SERVING_SIGNATURE_DEF_KEY);
   if (sig_itr == bundle->meta_graph_def.signature_def().end()) {
-    // If serving signature_def key is not specified and default is not found,
-    // maybe it is named something else. Use one that is neither init_op key
-    // nor train_op key
-    if(strcmp(signature_def, "") == 0){
-      for (sig_itr = bundle->meta_graph_def.signature_def().begin();
+    // If default serving signature_def key is not found, maybe it is named
+    // something else, use one that is neither init_op key nor train_op key
+    for (sig_itr = bundle->meta_graph_def.signature_def().begin();
          sig_itr != bundle->meta_graph_def.signature_def().end(); sig_itr++) {
-        if ((sig_itr->first != INIT_OP_SIGNATURE_DEF_KEY) &&
-            (sig_itr->first != TRAIN_OP_SIGNATURE_DEF_KEY)) {
-          LOG(WARNING) << "unable to find serving signature '"
-                      << SIGNATURE_DEF_KEY_TO_USE;
-          LOG(WARNING) << "using signature '" << sig_itr->first << "'";
-          break;
-        }
+      if ((sig_itr->first != INIT_OP_SIGNATURE_DEF_KEY) &&
+          (sig_itr->first != TRAIN_OP_SIGNATURE_DEF_KEY)) {
+        LOG(WARNING) << "unable to find default serving signature '"
+                     << DEFAULT_SERVING_SIGNATURE_DEF_KEY
+                     << "', using signature '" << sig_itr->first << "'";
+        break;
       }
     }
-    
-    // If serving signature_def key is not found, return error
     if (sig_itr == bundle->meta_graph_def.signature_def().end()) {
       return TRITONTF_ErrorNew(
           "unable to load model '" + std::string(model_name) + "', expected '" +
-          SIGNATURE_DEF_KEY_TO_USE + "' signature");
+          DEFAULT_SERVING_SIGNATURE_DEF_KEY + "' signature");
     }
   }
 
@@ -1019,8 +985,8 @@ TRITONTF_ModelCreateFromSavedModel(
   // Collect the inputs...
   TRITONTF_IOList* inputs = nullptr;
   for (const auto& sin : def.inputs()) {
-    inputs = TRITONTF_IOListNew(
-        sin.first.c_str(), sin.second.name().c_str(), inputs);
+    inputs =
+        TRITONTF_IOListNew(sin.first.c_str(), sin.second.name().c_str(), inputs);
     TRITONTF_IO* io = inputs->io_;
 
     const TRITONTF_DataType dt = ConvertDataType(sin.second.dtype());
@@ -1148,9 +1114,8 @@ TRITONTF_ModelMakeCallable(
 
 TRITONTF_Error*
 TRITONTF_ModelRun(
-    TRITONTF_Model* model, TRITONTF_TensorList* input_tensors,
-    size_t num_outputs, const char** output_names,
-    TRITONTF_TensorList** output_tensors)
+    TRITONTF_Model* model, TRITONTF_TensorList* input_tensors, size_t num_outputs,
+    const char** output_names, TRITONTF_TensorList** output_tensors)
 {
   ModelImpl* m = reinterpret_cast<ModelImpl*>(model);
 
@@ -1162,33 +1127,3 @@ TRITONTF_ModelRun(
   return m->Run(input_tensors, output_tensor_names, output_tensors);
 }
 
-TRITONTF_Error*
-TRITONTF_ModelInitialize(
-    TRITONTF_Model* model, size_t num_init_operations,
-    const char** init_operation_names)
-{
-  ModelImpl* m = reinterpret_cast<ModelImpl*>(model);
-  for (auto i = 0; i < num_init_operations; i++) {
-    TRITONTF_Error* err = m->RunOp(init_operation_names[i]);
-    if (err != nullptr) {
-      return err;
-    }
-  }
-
-  return nullptr;
-}
-
-TRITONTF_Error*
-TRITONTF_LoadAndRegisterLibrary(const char* path)
-{
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib = TF_LoadLibrary(path, status);
-  TF_Code status_code = TF_GetCode(status);
-  std::string status_msg(TF_Message(status));
-  TF_DeleteStatus(status);
-  if (status_code != TF_OK) {
-    return TRITONTF_ErrorNew(status_msg);
-  }
-  
-  return nullptr;
-}

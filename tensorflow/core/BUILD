@@ -3089,7 +3089,6 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/eval_const_tensor.h",
     "common_runtime/graph_runner.h",
     "common_runtime/shape_refiner.h",
-    "common_runtime/node_shape_info.h",
     "framework/versions.h",
     "common_runtime/process_function_library_runtime.h",
     "common_runtime/function.h",
@@ -3199,20 +3198,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
 
-filegroup(
-    name = "pywrap_required_hdrs",
-    srcs = CORE_CPU_LIB_HEADERS + [
-        "common_runtime/gpu/gpu_id.h",
-        "framework/op_gen_lib.h",
-        "public/session.h",
-        "public/session_options.h",
-    ],
-    visibility = [
-        "//tensorflow/c:__pkg__",
-        "//tensorflow/python:__subpackages__",
-    ],
-)
-
 tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
@@ -3305,7 +3290,9 @@ tf_cuda_library(
         "//tensorflow/core/profiler:nvtx_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/internal:traceme_recorder",
-    ] + mkl_deps(),
+    ] + if_not_windows([
+        "@nvtx_archive//:nvtx",
+    ]) + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -3513,7 +3500,6 @@ cc_library(
 GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
-    "common_runtime/gpu/gpu_cudamallocasync_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
     "common_runtime/gpu/gpu_host_allocator.h",
@@ -3533,7 +3519,6 @@ tf_cuda_library(
     name = "gpu_runtime_impl",
     srcs = [
         "common_runtime/gpu/gpu_cudamalloc_allocator.cc",
-        "common_runtime/gpu/gpu_cudamallocasync_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",

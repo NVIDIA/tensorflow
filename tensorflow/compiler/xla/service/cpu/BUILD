@@ -30,15 +30,6 @@ filegroup(
     ]),
 )
 
-cc_library(
-    name = "test_header_helper",
-    testonly = True,
-    hdrs = ["test_target_triple_helper.h"],
-    deps = [
-        "//tensorflow/core:test",
-    ],
-)
-
 filegroup(
     name = "single_threaded_runtime_srcs",
     srcs = [
@@ -191,9 +182,6 @@ cc_library(
         "@llvm-project//llvm:target",
         "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
     ] + select({
-        "//tensorflow:linux_aarch64": [
-            "@llvm-project//llvm:aarch64_code_gen",  # fixdeps: keep
-        ],
         "//tensorflow:linux_ppc64le": [
             "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
         ],
@@ -1051,11 +1039,9 @@ tf_cc_test(
     name = "vectorized_reduce_with_no_vector_registers_test",
     size = "small",
     srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
-    tags = ["no_aarch64"],
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",
-        ":test_header_helper",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

@@ -43,7 +43,7 @@ cc_library(
     hdrs = ["nvtx_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-      "//tensorflow/core:lib",
+      "//tensorflow/core:framework",
       "@nvtx_archive//:nvtx",
     ],
 )

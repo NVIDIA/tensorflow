@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -79,6 +79,25 @@ constexpr int64 kWarpSize = 32;
 
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
+
+// A call to cuDNN for softmax is represented as CustomCall HLO with
+// a call target equal to one of these strings.
+//
+// The operands to and outputs of these calls are the same as those of the
+// corresponding HLOs, except:
+//
+//  - feature_index and log are proper operands, at the end of the operands
+//    list.  They must be HLO constants.
+extern const char* const kCudnnSoftmaxCallTarget;
+
+// Returns true if `hlo` will be implemented as a call to a cuDNN softmax
+// routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// the kCudnnSoftmax constant above, but returns *false* for an HLO
+// with kSoftmax opcode, because these are lowered either to a
+// sequence of generic HLOs or to a cuDNN CustomCall.
+bool IsCustomCallToDnnSoftmax(const HloInstruction& hlo);
 
 // A call to cuDNN for softmax is represented as CustomCall HLO with
 // a call target equal to one of these strings.
@@ -218,7 +237,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability);
+    const stream_executor::DeviceDescription* device_description);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,

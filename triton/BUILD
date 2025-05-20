@@ -1,6 +1,8 @@
 # Description:
 # TRITON API.
 
+exports_files(["tf_triton_version_script.lds"])
+
 cc_library(
     name = "triton_tf",
     visibility = ["//visibility:public"],
@@ -14,6 +16,5 @@ cc_library(
         "//tensorflow/core:core",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:tag_constants",
-        "//tensorflow/c:c_api",
     ],
 )

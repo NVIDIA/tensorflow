@@ -865,6 +865,14 @@ Status IrEmitter::HandleSoftmax(HloInstruction* softmax) {
       "CudnnSoftMaxRewriter.");
 }
 
+Status IrEmitter::HandleSoftmax(HloInstruction* softmax) {
+  return Unimplemented(
+      "The GPU backend does not implement Softmax directly.  It "
+      "should be lowered before IR emission to HLO-soup using "
+      "SoftmaxExpander or to a cudnn CustomCall using "
+      "CudnnSoftMaxRewriter.");
+}
+
 Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "

@@ -894,26 +894,24 @@ int64 MinSystemMemory(int64 available_memory, int cc_major) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
-  // Otherwise, depending on the capability version assign
-  //  715MiB (for cuda_compute_capability <= 6.x) or
-  // 1064MiB (for cuda_compute_capability <= 7.x) or
-  // 1800MiB (for cuda_compute_capability >= 8.x) or
-  // 4096MiB (for cuda_compute_capability >= 9.x)
+  // Otherwise, depending on the capability version assign 
+  // 300MiB (for cuda_compute_capability <= 6.x) or 
+  // 800MiB (for cuda_compute_capability >= 7.x)
   //
   // In the future we could be more sophisticated by using a table of devices.
   int64 min_system_memory;
   if (available_memory < (1LL << 31)) {
-    min_system_memory = 225LL * 1024 * 1024;
+    // 225MiB
+    min_system_memory = 225 * 1024 * 1024;
   } else {
-    if (cc_major <= 6) {
-      min_system_memory = 715LL * 1024 * 1024;
-    } else if (cc_major <= 7) {
-      min_system_memory = 1064LL * 1024 * 1024;
-    } else if (cc_major <= 8) {
-      min_system_memory = 1800LL * 1024 * 1024;
-    } else {
-      min_system_memory = 4096LL * 1024 * 1024;
-    }
+      if (cc_major <= 6) {
+        // 300MiB
+        min_system_memory = 300 * 1024 * 1024;
+      }
+      else {
+        // 800MiB
+        min_system_memory = 800 * 1024 * 1024;
+      }
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
@@ -929,7 +927,7 @@ int64 MinSystemMemory(int64 available_memory, int cc_major) {
 #if defined(ANDROID_TEGRA)
   // 1GB system mem for NVIDIA Tegra devices since they use the same mem for
   // RAM and Video RAM
-  min_system_memory = 1LL << 30;
+  min_system_memory = 1 << 30;
 #endif
   return min_system_memory;
 }
@@ -987,7 +985,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
     //Convert MBytes to Bytes
     allowable_reserved_memory = allowable_reserved_memory * 1024 * 1024; 
     // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides per_process_gpu_memory_fraction
-    if((int64)allowable_reserved_memory <= available_memory) {
+    if(allowable_reserved_memory <= available_memory) {
       allocated_memory = available_memory - allowable_reserved_memory;
       VLOG(1) << "Setting the GPU reserved bytes to "
          << strings::HumanReadableNumBytes(allocated_memory) << " MBytes";
@@ -1184,12 +1182,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
       }
 #endif
     }
-    // Reset to the original device, if it is a valid visible gpu. Otherwise use
-    // the first visible device.
-    if (std::find(visible_gpu_order.begin(), visible_gpu_order.end(),
-                  original_device) == visible_gpu_order.end()) {
-      original_device = visible_gpu_order[0].value();
-    }
+    // Reset to the original device.
 #if GOOGLE_CUDA
     err = cudaSetDevice(original_device);
     if (err != cudaSuccess) {
@@ -1360,7 +1353,6 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
             << (bytes_limit >> 20) << " MB memory) -> physical GPU ("
             << GetShortDeviceDescription(platform_gpu_id, *desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
-  gpu_allocator->SetStream(gpu_device->GetStream());
   devices->push_back(std::move(gpu_device));
 
   return Status::OK();

@@ -223,15 +223,11 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
   if (custom_call->custom_call_target() ==
       kCudnnBatchNormForwardTrainingCallTarget) {
-    bool has_side_input = custom_call->operand_count() == 6;
-    int epsilon_dim = (has_side_input) ? 4 : 3;
-    int feature_index_dim = epsilon_dim + 1;
-    const HloInstruction* epsilon = custom_call->operand(epsilon_dim);
+    const HloInstruction* epsilon = custom_call->operand(3);
     CHECK(epsilon->IsConstant());
     float epsilon_value = epsilon->literal().Get<float>({});
 
-    const HloInstruction* feature_index =
-        custom_call->operand(feature_index_dim);
+    const HloInstruction* feature_index = custom_call->operand(4);
     CHECK(feature_index->IsConstant());
     int64 feature_index_value = feature_index->literal().Get<int64>({});
 
@@ -373,7 +369,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
-          custom_call->custom_call_target(), std::string(platform_name()))) {
+          custom_call->custom_call_target(), platform()->Name())) {
     auto get_slices_for_instr = [&](const HloInstruction* instr) {
       ShapeTree<BufferAllocation::Slice> slices(instr->shape());
       slices.ForEachMutableElement(

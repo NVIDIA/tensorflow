@@ -237,19 +237,16 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // First, find out all potential target candidates. We will filter out
   // unsupported/non-profitable cases below.
   absl::flat_hash_set<HloInstruction*> fusible_candidates;
-  std::vector<HloInstruction*> ordered_fusible_candidates;
   for (auto opnd : consumer->operands()) {
     auto predecessor = opnd->LatestNonGteAncestor();
     // We support kLoop fusion and element-wise HLOs now. We may extend the
     // support list if needs arise.
     if (IsFusibleCandidate(*predecessor)) {
-      if (fusible_candidates.insert(predecessor).second) {
-        ordered_fusible_candidates.push_back(predecessor);
-      }
+      fusible_candidates.insert(predecessor);
     }
   }
 
-  for (auto instr : ordered_fusible_candidates) {
+  for (auto instr : fusible_candidates) {
     if (!IsConsumerTheOnlyNonRootUser(*instr, *consumer)) {
       VLOG(2) << "Reject maybe illegal instr " << instr->ToString()
               << "; including it may create cycles in HLO.";
@@ -502,15 +499,11 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
 
-  // Traverse from use to def. Bitcasts are placed after h-fusions to resolve
-  // shape mismatch but bitcasts could prevent future h-fusion from happening.
-  // So, a bottom-up, use-to-def order should be more favorable. It also helps
-  // to save compiler iterations to reach the fixed point.
-  std::vector<HloInstruction*> use_to_def_order =
+  // Using def-to-use order is sound since we do not modify users.
+  std::vector<HloInstruction*> def_to_use_order =
       computation_->MakeInstructionPostOrder();
-  absl::c_reverse(use_to_def_order);
-  for (size_t i = 0; i < use_to_def_order.size(); ++i) {
-    auto consumer = use_to_def_order[i];
+  for (size_t i = 0; i < def_to_use_order.size(); ++i) {
+    auto consumer = def_to_use_order[i];
     HorizontalLoopFusionImpl::FusionCandidates fusion_candidates(consumer);
     while (true) {
       auto fusibles = fusion_candidates.GetNextSpanOfFusions();

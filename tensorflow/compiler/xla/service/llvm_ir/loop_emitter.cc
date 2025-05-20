@@ -134,8 +134,7 @@ Status LoopEmitter::EmitLoop(absl::string_view loop_name,
   }
 
   for (const IrArray::Index& array_index :
-       EmitIndexAndSetExitBasicBlock(loop_name, index_type,
-                                     /*base_index*/nullptr)) {
+       EmitIndexAndSetExitBasicBlock(loop_name, index_type)) {
     TF_RETURN_IF_ERROR(body_emitter_(array_index));
   }
 

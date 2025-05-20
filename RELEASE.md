@@ -1,31 +1,7 @@
-# Release 1.15.5+nv22.12
-## Bug fixes and Other Changes
-* Fixes OOB access in FractionalMaxPool and FractionalAVGPool.
-  ([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900)).
-
-
-# Release 1.15.5+nv22.06
-## Bug Fixes and Other Changes
-* Fixes OOB read in TfLite Gather_Nd.
-  ([CVE-2022-35937](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35937)).
-
-
-# Release 1.15.5+nv22.06
-## Bug Fixes and Other Changes
-* Fixes code injection in saved_model_cli.
-  ([CVE-2022-29216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29216)).
-* Fixes segfault and OOB write due to incomplete validation in EditDistance.
-  ([CVE-2022-29208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29208)).
-
-
 # Release 1.15.5+nv22.03
 ## Bug Fixes and Other Changes
-* Fixes CHECK-failures in ops with large tensor shapes.
-  ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197)).
 * Fixes a crash in tf.sparse.split when axis is a tuple.
   ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206)).
-* Fixes incomplete validation in boosted trees.
-  ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208)).
 * Fixes division by zero in grappler cost estimator.
   ([CVE-2022-21725](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21725)).
 * Fixes OOB read in ReverseSequence.
@@ -72,8 +48,6 @@
   ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567)).
 * Fixes integer overflow in AddManySparseToTensorsMap.
   ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568)).
-* Fixes various CHECK-fails.
-  ([CVE-2022-23569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23569)).
 * Fixes CHECK-fail when decoding invalid tensors from proto.
   ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571)).
 * Fixes uninitialized variable access in AssignOp.

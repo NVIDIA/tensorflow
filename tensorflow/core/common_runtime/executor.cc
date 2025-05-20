@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
-#include "tensorflow/core/common_runtime/node_shape_info.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/nvtx_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -73,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/nvtx_utils.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -640,7 +639,6 @@ Status ExecutorImpl::Initialize() {
 
     Status s = params_.create_kernel(n->def(), &item->kernel);
     if (!s.ok()) {
-      params_.delete_kernel(item->kernel);
       item->kernel = nullptr;
       s = AttachDef(s, *n);
       LOG(ERROR) << "Executor failed to create kernel. " << s;
@@ -1475,10 +1473,6 @@ Status ExecutorImpl::BuildControlFlowInfo(const Graph* g,
     } else if (IsExit(curr_node)) {
       // Exit to the parent frame.
       parent = parent_nodes[curr_id];
-      if (!parent) {
-        return errors::InvalidArgument(
-            "Invalid Exit op: Cannot find a corresponding Enter op.");
-      }
       frame_name = cf_info->frame_names[parent->id()];
       parent = parent_nodes[parent->id()];
     } else {
@@ -2047,16 +2041,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   if (node->id() < device_context_map_.size()) {
     device_context = device_context_map_[node->id()];
   }
-  bool is_shape_fully_defined =
-      ExcludePossibleDynamicOps() &&
-      tensorflow::NodeShapesInfo::GetNodeShapesInfo()->IsNodeFullyDefined(
-          node->name());
-  std::vector<string> out_shapes_vec;
+
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
-    if (is_shape_fully_defined) {
-      out_shapes_vec.push_back(val.tensor->shape().DebugString());
-    }
     if (val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, the node must produce a
       // tensor value at i-th output.
@@ -2073,8 +2060,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
 
-      // Sanity check of output tensor types. We need to inspect this safely
-      // as we are in the tensor buffer.
+      // Sanity check of output tensor types. We need to inspect this safely as
+      // we are in the tensor buffer.
       DataType dtype = val.dtype_safe();
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
@@ -2120,27 +2107,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       delete val.tensor;
     }
   }
-  if (is_shape_fully_defined) {
-    string result;
-    absl::StrAppend(&result, " [", absl::StrJoin(out_shapes_vec, ","), "]");
-    if (result != tensorflow::NodeShapesInfo::GetNodeShapesInfo()
-                      ->ToStringFullyDefinedNode(node->name())) {
-      LOG(WARNING)
-          << node->name() << " Shape inference: "
-          << tensorflow::NodeShapesInfo::GetNodeShapesInfo()
-                 ->ToStringFullyDefinedNode(node->name())
-          << " Executor: " << result
-          << " Replacing the shape information in the singleton based on "
-             "runtime values. However, if this line is logged more than once, "
-             "for a particular node, during the lifetime of this process, it "
-             "implies that the initial shape inference evaluation of this node "
-             "is inconsistent with runtime results.";
-      tensorflow::NodeShapesInfo::GetNodeShapesInfo()
-          ->SetFullyDefinedNodesOutShapesVec(node->name(),
-                                             std::move(out_shapes_vec));
-    }
-  }
-
   return s;
 }
 

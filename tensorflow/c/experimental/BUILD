@@ -13,7 +13,7 @@ package(
 )
 
 tf_cuda_library(
-    name = "rendezvous_internal",
+    name = "internal",
     srcs = [
         "rendezvous.cc",
     ],

@@ -38,7 +38,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
-  opts.set_xla_gpu_persistent_cache_dir("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_include_timestamp(true);
@@ -49,7 +48,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
-  opts.set_xla_gpu_use_cudnn_batchnorm_level(0);
+  opts.set_xla_gpu_use_cudnn_batchnorm(false);
   // Set cudnn softmax off by default.
   opts.set_xla_gpu_use_cudnn_softmax(false);
 
@@ -161,12 +160,6 @@ static void AllocateFlags() {
   // Custom "sub-parser" lambda for xla_gpu_ptx_file.
   auto setter_for_xla_gpu_ptx_file = [](string value) {
     flag_values->add_xla_gpu_ptx_file(value);
-    return true;
-  };
-
-  // Custom "sub-parser" lambda for xla_gpu_llvm_ir_file.
-  auto setter_for_xla_gpu_llvm_ir_file = [](string value) {
-    flag_values->add_xla_gpu_llvm_ir_file(value);
     return true;
   };
 
@@ -369,13 +362,6 @@ static void AllocateFlags() {
                        "ptx from XLA. Modify it. Then pass it back via this "
                        "option."),
       tensorflow::Flag(
-          "xla_gpu_llvm_ir_file", setter_for_xla_gpu_llvm_ir_file, "",
-          "If non-empty, specifies a file containing textual LLVM IR to use. The "
-          "filename prefix must have the same pattern as LLVM dumped by XLA "
-          "(i.e. module_0001.ir-no-opt.ll -> module_0001.MY_NEW_FILE.ll). This "
-          "allows to match one specific module. General workflow. Get the not "
-          "optimized LLVM IR from XLA, modify it, then pass it back via this option."),
-      tensorflow::Flag(
           "xla_test_all_output_layouts",
           bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
           flag_values->xla_test_all_output_layouts(),
@@ -409,14 +395,11 @@ static void AllocateFlags() {
           "Allows the GPU backend to implement softmax HLOs using cudnn, "
           "rather than expanding them to a soup of HLOs."),
       tensorflow::Flag(
-          "xla_gpu_use_cudnn_batchnorm_level",
-          int32_setter_for(
-              &DebugOptions::set_xla_gpu_use_cudnn_batchnorm_level),
-          flag_values->xla_gpu_use_cudnn_batchnorm_level(),
+          "xla_gpu_use_cudnn_batchnorm",
+          bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_batchnorm),
+          flag_values->xla_gpu_use_cudnn_batchnorm(),
           "Allows the GPU backend to implement batchnorm HLOs using cudnn, "
-          "rather than expanding them to a soup of HLOs. 0 = off; 1 = on only "
-          "when BatchNorm+Activation+Add cudnn fusion is possible; 2 = fully "
-          "on."),
+          "rather than expanding them to a soup of HLOs."),
       tensorflow::Flag("xla_cpu_use_mkl_dnn",
                        bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
                        flag_values->xla_cpu_use_mkl_dnn(),
@@ -452,11 +435,6 @@ static void AllocateFlags() {
               &DebugOptions::set_xla_gpu_disable_gpuasm_optimizations),
           flag_values->xla_gpu_disable_gpuasm_optimizations(),
           "In XLA:GPU run ptxas in -O0 (default is -O3)."),
-      tensorflow::Flag(
-          "xla_gpu_persistent_cache_dir",
-          string_setter_for(
-	     &DebugOptions::set_xla_gpu_persistent_cache_dir), "",
-          "The directory for the persistent compilation cache."),
       tensorflow::Flag(
           "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
           "Sets compiler fuel, useful for bisecting bugs in passes.  Format "

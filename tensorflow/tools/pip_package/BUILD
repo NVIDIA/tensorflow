@@ -13,7 +13,7 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps", "if_dynamic_pywrap")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps")
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
@@ -88,7 +88,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
-    "//tensorflow/python/kernel_tests:sparse_tensor_dense_matmul_op_base",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
@@ -278,7 +277,7 @@ sh_binary(
                "//conditions:default": [
                    ":simple_console",
                ],
-           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]) + if_dynamic_pywrap(["//tensorflow:libtensorflow_cc.so.1"]),
+           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

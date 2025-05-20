@@ -822,13 +822,11 @@ class CudnnConvolutionDescriptor {
   }
 
   void set_use_tensor_op_math(bool use_tensor_op_math) const {
+#if CUDNN_VERSION >= 7000
     cudnnMathType_t math_type =
-#if CUDNN_VERSION >= 8000
-        (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH);
-#else
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
-#endif
     CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
+#endif
   }
 
   cudnnConvolutionDescriptor_t handle() const { return handle_.get(); }
@@ -1223,6 +1221,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
                             cudnn, input_size, data_type, rnn_desc.get(),
                             rnn_mode, direction_mode, num_layers));
 
+#if CUDNN_VERSION >= 7000
     // Require explicit algorithm config to enable tensor cores. Some configs
     // return CUDNN_NOT_SUPPORTED when tensor ops are enabled (which is against
     // the idiom that enabling tensor ops is only a hint: see nvbugs/2172799).
@@ -1230,26 +1229,23 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // in profile mode, which is run with algorithms returned from
     // GetRnnAlgorithms() (which are non-default and explicitly set whether to
     // use tensor ops). CuDNN 7.2.1 fixed this issue
-    bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
-    if (data_type == CUDNN_DATA_FLOAT)
-      allow_tensor_ops = tensorflow::tensor_float_32_execution_enabled();
-    bool use_tensor_ops =
-        algorithm_config.algorithm().has_value()
-            ? algorithm_config.algorithm()->tensor_ops_enabled()
-            : allow_tensor_ops;
-    if (use_tensor_ops && !allow_tensor_ops) {
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "Algo requests disallowed tensor op evaluation.");
-    }
-
-#if CUDNN_VERSION >= 8000
-    cudnnMathType_t math_type =
-        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
+    cudnnMathType_t math_type;
+    if (algorithm_config.algorithm().has_value()) {
+      math_type = algorithm_config.algorithm()->tensor_ops_enabled()
+                      ? CUDNN_TENSOR_OP_MATH
+                      : CUDNN_DEFAULT_MATH;
+    } else {
+#if CUDNN_VERSION >= 7201
+      math_type = tensorflow::tensor_float_32_execution_enabled()
+                      ? CUDNN_TENSOR_OP_MATH
+                      : CUDNN_DEFAULT_MATH;
 #else
-    cudnnMathType_t math_type =
-        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
-#endif
+      math_type = CUDNN_DEFAULT_MATH;
+#endif  // CUDNN_VERSION >= 7201
+    }
     CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
+#endif  // CUDNN_VERSION >= 7000
+
     return CudnnRnnDescriptor(cudnn, std::move(rnn_desc), std::move(rnn_plan),
                               num_layers, hidden_size, input_size, cell_size,
                               batch_size, input_mode, direction_mode, rnn_mode,
@@ -2625,29 +2621,6 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
     const CudnnFilterDescriptor& filter, const CudnnConvolutionDescriptor& conv,
     const CudnnTensorDescriptor& output_nd, bool specify_workspace_limit,
     size_t memory_limit_bytes) {
-#if CUDNN_VERSION >= 8000
-  const int num_requested_algos = 5;
-  int num_returned_algos = 0;
-  cudnnConvolutionFwdAlgoPerf_t perf_results[num_requested_algos];
-
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
-      cudnn.handle(), input_nd.handle(), filter.handle(), conv.handle(),
-      output_nd.handle(), num_requested_algos, &num_returned_algos,
-      perf_results));
-
-  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
-  for (int r=0; r<num_returned_algos; r++) {
-    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
-        perf_results[r].algo != CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-        perf_results[r].memory <= mem_limit) {
-      return perf_results[r].algo;
-    }
-  }
-  return port::Status(
-      port::error::INTERNAL,
-      "cudnnGetConvolutionForwardAlgorithm_v7 returned "
-      "no suitable algorithms. This could be a cudnn bug.");
-#else
   cudnnConvolutionFwdPreference_t preference =
       specify_workspace_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
                               : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
@@ -2656,7 +2629,6 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
       cudnn.handle(), input_nd.handle(), filter.handle(), conv.handle(),
       output_nd.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
-#endif
 }
 
 port::StatusOr<cudnnConvolutionBwdDataAlgo_t>
@@ -2667,29 +2639,6 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
                                     const CudnnTensorDescriptor& output_nd,
                                     bool specify_workspace_limit,
                                     size_t memory_limit_bytes) {
-#if CUDNN_VERSION >= 8000
-  const int num_requested_algos = 5;
-  int num_returned_algos = 0;
-  cudnnConvolutionBwdDataAlgoPerf_t perf_results[num_requested_algos];
-  
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(
-      cudnn.handle(), filter.handle(), output_nd.handle(), conv.handle(),
-      input_nd.handle(), num_requested_algos, &num_returned_algos,
-      perf_results));
-
-  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
-  for (int r=0; r<num_returned_algos; r++) {
-    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
-        perf_results[r].algo != CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED &&
-        perf_results[r].memory <= mem_limit) {
-      return perf_results[r].algo;
-    }
-  }
-  return port::Status(
-      port::error::INTERNAL,
-      "cudnnGetConvolutionBackwardDataAlgorithm_v7 returned "
-      "no suitable algorithms. This could be a cudnn bug.");
-#else
   cudnnConvolutionBwdDataPreference_t preference =
       specify_workspace_limit
           ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
@@ -2699,7 +2648,6 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
       cudnn.handle(), filter.handle(), output_nd.handle(), conv.handle(),
       input_nd.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
-#endif
 }
 
 port::StatusOr<cudnnConvolutionBwdFilterAlgo_t>
@@ -2710,28 +2658,6 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
                                       const CudnnTensorDescriptor& output_nd,
                                       bool specify_workspace_limit,
                                       size_t memory_limit_bytes) {
-#if CUDNN_VERSION >= 8000
-  const int num_requested_algos = 5;
-  int num_returned_algos = 0;
-  cudnnConvolutionBwdFilterAlgoPerf_t perf_results[num_requested_algos];
-
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(
-      cudnn.handle(), input_nd.handle(), output_nd.handle(), conv.handle(),
-      filter.handle(), num_requested_algos, &num_returned_algos, perf_results));
-
-  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
-  for (int r=0; r<num_returned_algos; r++) {
-    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
-        perf_results[r].algo != CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED &&
-        perf_results[r].memory <= mem_limit) {
-      return perf_results[r].algo;
-    }
-  }
-  return port::Status(
-      port::error::INTERNAL,
-      "cudnnGetConvolutionBackwardFilterAlgorithm_v7 returned "
-      "no suitable algorithms. This could be a cudnn bug.");
-#else
   cudnnConvolutionBwdFilterPreference_t preference =
       specify_workspace_limit
           ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
@@ -2741,7 +2667,6 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
       cudnn.handle(), input_nd.handle(), output_nd.handle(), conv.handle(),
       filter.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
-#endif
 }
 
 port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
@@ -2877,7 +2802,8 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 }
 
 static bool TensorOpMathAvailable(int cc_major) {
-  return cc_major >= 7;
+  return tensorflow::tensor_float_32_execution_enabled() && cc_major >= 7 &&
+         CUDNN_VERSION >= 7000;
 }
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
@@ -4026,11 +3952,7 @@ port::Status CudnnSupport::DoConvolve(
 static bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
   cudnnMathType_t math_type;
   CHECK_CUDNN_OK(cudnnGetConvolutionMathType(conv.handle(), &math_type));
-#if CUDNN_VERSION >= 8000
-  return math_type != CUDNN_FMA_MATH;
-#else
   return math_type == CUDNN_TENSOR_OP_MATH;
-#endif
 }
 
 port::Status CudnnSupport::DoConvolve(
@@ -4680,7 +4602,7 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
-                    .setEngineConfig(filtered_configs[i], op_graph->getTag())
+                    .setEngineConfig(filtered_configs[i])
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
       if (cudnn_frontend::check_errata(json_handle, plan.getTag(),

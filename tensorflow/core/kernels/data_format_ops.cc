@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -186,7 +186,7 @@ class DataFormatVecPermuteOp : public OpKernel {
                   errors::InvalidArgument(
                       "Format specifier must contain H and W for 2D case"));
     }
-    ComputeDstIndex(input.dims(), &dst_idx);
+    ComputeDstIndex(src_format_str, dst_format_str, input.dims(), &dst_idx);
 
     functor::DataFormatVecPermute<Device, T>()(context->eigen_device<Device>(),
                                                input.flat<T>(),

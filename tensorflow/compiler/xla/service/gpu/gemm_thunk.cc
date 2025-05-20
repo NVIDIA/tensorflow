@@ -268,8 +268,7 @@ Status RunGemm(const HloInstruction *gemm,
   tensorflow::nvtx::ScopedRangeIfEnabled<tensorflow::nvtx::CoreDomain>
       nvtx_range(gemm->metadata().op_type(), [&]() {
         return tensorflow::nvtx::GetThunkExecutionRangeMessage(
-            gemm->GetModule()->name(), gemm->metadata().op_name(),
-            gemm->metadata().op_type());
+            gemm->GetModule()->name(), gemm->metadata().op_name());
       });
 
   bool launch_ok = [&]() {

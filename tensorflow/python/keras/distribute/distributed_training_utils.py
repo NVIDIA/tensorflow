@@ -936,7 +936,7 @@ def _make_execution_function_with_cloning(model, mode):
     distributed_model = get_distributed_model(model, mode)
   assert distributed_model
 
-  # Also create an execution fuction on that distributed model.
+  # Also create an execution function on that distributed model.
   if context.executing_eagerly():
     distributed_function = _make_eager_execution_function(model, mode)
   else:
